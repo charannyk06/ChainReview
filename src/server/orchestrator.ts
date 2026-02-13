@@ -3,7 +3,8 @@ import { codeImportGraph, codePatternScan } from "./tools/code";
 import { repoDiff } from "./tools/repo";
 import { runArchitectureAgent } from "./agents/architecture";
 import { runSecurityAgent } from "./agents/security";
-import { runValidatorChallenge } from "./agents/validator";
+// Note: runValidatorChallenge is available but no longer called automatically.
+// Validation is triggered on-demand per-finding via crp.review.validate_finding.
 import type {
   Store,
 } from "./store";
@@ -98,7 +99,7 @@ export async function runReview(
       });
     }
 
-    // ── Step 4: Run Semgrep scan (non-blocking, 30s timeout) ──
+    // ── Step 4: Run Semgrep scan (non-blocking, 30s timeout with proper kill) ──
     emitEvent("evidence_collected", undefined, {
       kind: "pipeline_step",
       step: "pattern_scan",
@@ -107,16 +108,27 @@ export async function runReview(
     let semgrepResults;
     try {
       const SEMGREP_TIMEOUT = 30_000;
-      const scanResult = await Promise.race([
-        codePatternScan({}),
-        new Promise<{ results: never[]; totalResults: number; warning: string }>((resolve) =>
-          setTimeout(() => resolve({
+      // Use an AbortController to properly kill the Semgrep child process on timeout
+      const semgrepAbort = new AbortController();
+      const semgrepTimer = setTimeout(() => semgrepAbort.abort(), SEMGREP_TIMEOUT);
+
+      let scanResult: { results: any[]; totalResults: number; warning?: string };
+      try {
+        scanResult = await codePatternScan({ signal: semgrepAbort.signal });
+      } catch (err: any) {
+        if (semgrepAbort.signal.aborted) {
+          scanResult = {
             results: [],
             totalResults: 0,
-            warning: "Semgrep timed out (30s) — agents can run pattern scans on-demand",
-          }), SEMGREP_TIMEOUT)
-        ),
-      ]);
+            warning: "Semgrep timed out (30s) — child process killed. Agents can run pattern scans on-demand.",
+          };
+        } else {
+          throw err;
+        }
+      } finally {
+        clearTimeout(semgrepTimer);
+      }
+
       semgrepResults = scanResult.results;
       if (scanResult.warning) {
         emitEvent("evidence_collected", undefined, {
@@ -306,60 +318,18 @@ export async function runReview(
       });
     }
 
-    // Check for cancellation before validator
-    if (signal.aborted) {
-      activeReviewAbort = null;
-      store.completeRun(runId, "error");
-      return {
-        runId,
-        findings: allFindings,
-        events: store.getEvents(runId),
-        status: "error",
-        error: "Review cancelled by user",
-      };
-    }
-
-    // ── Step 7: Run Validator Agent (challenge mode) ──
+    // ── Step 7: Validator Agent ──
+    // The automatic pipeline validator has been disabled to avoid running
+    // the validator twice (once here, and once when the user clicks "Verify"
+    // on individual findings in the UI).  Users can trigger on-demand
+    // validation per-finding via the Verify button, which calls
+    // crp.review.validate_finding → validateFinding() in chat.ts.
     if (allFindings.length > 0) {
-      emitEvent("agent_started", "validator", {
+      emitEvent("evidence_collected", "validator", {
         kind: "agent_lifecycle",
-        message: "Validator Agent challenging findings...",
+        event: "skipped",
+        message: `Skipped automatic validation of ${allFindings.length} finding(s) — use the Verify button to validate individual findings on-demand.`,
       });
-
-      try {
-        const validatedFindings = await runValidatorChallenge(
-          allFindings,
-          repoPath,
-          agentCallbacks("validator"),
-          signal
-        );
-        emitEvent("evidence_collected", "validator", {
-          kind: "agent_lifecycle",
-          event: "completed",
-          message: "Validator Agent completed",
-        });
-
-        // Update findings with validated confidence scores
-        for (const vf of validatedFindings) {
-          const original = allFindings.find(
-            (f) => f.title === vf.title || f.description === vf.description
-          );
-          if (original && vf.confidence !== original.confidence) {
-            emitEvent("patch_validated", "validator", {
-              findingId: original.id,
-              originalConfidence: original.confidence,
-              validatedConfidence: vf.confidence,
-              title: vf.title,
-            });
-          }
-        }
-      } catch (err: any) {
-        emitEvent("evidence_collected", "validator", {
-          kind: "agent_lifecycle",
-          event: "error",
-          error: `Validator agent failed: ${err.message}`,
-        });
-      }
     }
 
     // ── Complete ──
