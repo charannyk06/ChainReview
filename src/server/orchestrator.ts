@@ -3,8 +3,7 @@ import { codeImportGraph, codePatternScan } from "./tools/code";
 import { repoDiff } from "./tools/repo";
 import { runArchitectureAgent } from "./agents/architecture";
 import { runSecurityAgent } from "./agents/security";
-// Note: runValidatorChallenge is available but no longer called automatically.
-// Validation is triggered on-demand per-finding via crp.review.validate_finding.
+import { runValidatorChallenge } from "./agents/validator";
 import type {
   Store,
 } from "./store";
@@ -228,7 +227,7 @@ export async function runReview(
     // Helper to store+emit findings for an agent
     function processFindings(
       agentFindings: AgentFinding[],
-      agentName: "architecture" | "security"
+      agentName: "architecture" | "security" | "validator"
     ) {
       for (const af of agentFindings) {
         const findingId = store.insertFinding(runId, {
@@ -318,18 +317,43 @@ export async function runReview(
       });
     }
 
-    // ── Step 7: Validator Agent ──
-    // The automatic pipeline validator has been disabled to avoid running
-    // the validator twice (once here, and once when the user clicks "Verify"
-    // on individual findings in the UI).  Users can trigger on-demand
-    // validation per-finding via the Verify button, which calls
-    // crp.review.validate_finding → validateFinding() in chat.ts.
-    if (allFindings.length > 0) {
-      emitEvent("evidence_collected", "validator", {
+    // ── Step 7: Validator Agent — Challenge + Verify Findings ──
+    // The validator independently investigates each finding, reading code,
+    // searching for mitigations, and adjusting confidence/severity.
+    // The UI "Verify" button triggers per-finding RE-validation on demand.
+    if (allFindings.length > 0 && !signal.aborted) {
+      emitEvent("agent_started", "validator", {
         kind: "agent_lifecycle",
-        event: "skipped",
-        message: `Skipped automatic validation of ${allFindings.length} finding(s) — use the Verify button to validate individual findings on-demand.`,
+        message: `Validator Agent challenging ${allFindings.length} finding(s)...`,
       });
+
+      try {
+        const validatorResult = await runValidatorChallenge(
+          allFindings,
+          repoPath,
+          agentCallbacks("validator"),
+          signal
+        );
+
+        emitEvent("evidence_collected", "validator", {
+          kind: "agent_lifecycle",
+          event: "completed",
+          message: `Validator completed — reviewed ${allFindings.length} finding(s), produced ${validatorResult.length} validated finding(s)`,
+        });
+
+        // If validator produces refined findings, store them as validator findings
+        if (validatorResult.length > 0) {
+          processFindings(validatorResult, "validator");
+        }
+      } catch (err: any) {
+        if (!signal.aborted) {
+          emitEvent("evidence_collected", "validator", {
+            kind: "agent_lifecycle",
+            event: "error",
+            error: `Validator agent failed: ${err.message}`,
+          });
+        }
+      }
     }
 
     // ── Complete ──

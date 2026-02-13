@@ -29,6 +29,13 @@ export interface AgentLoopOptions {
   model?: string;
   /** AbortSignal for cancellation — when aborted, the agent loop stops immediately */
   signal?: AbortSignal;
+  /**
+   * Force the model to use tools for the first N turns before allowing text-only output.
+   * Uses tool_choice: { type: "any" } to guarantee tool calls happen.
+   * Set to 0 to disable forced tool use (e.g., for validator spot-checks).
+   * Default: 3 for investigation agents, 0 for validators.
+   */
+  forcedToolTurns?: number;
 }
 
 const FINDING_EXTRACTION_PROMPT = `
@@ -84,6 +91,10 @@ export async function runAgentLoop(
   // Agents default to Haiku 4.5 for cost efficiency.
   // Validator/orchestrator can override with Opus 4.6 for critical reasoning.
   const model = opts.model ?? "claude-haiku-4-5-20251001";
+  // Force tool use for the first N turns to ensure agents actively investigate
+  // before producing findings. Without this, fast models like Haiku will skip
+  // tool calls entirely and produce findings solely from the initial context.
+  const forcedToolTurns = opts.forcedToolTurns ?? 3;
 
   const messages: MessageParam[] = [
     {
@@ -96,6 +107,7 @@ export async function runAgentLoop(
   // this loop. We do NOT emit it here to avoid duplicate "started" events in UI.
 
   let turn = 0;
+  let toolCallCount = 0;
   let allText = "";
 
   while (turn < maxTurns) {
@@ -115,7 +127,17 @@ export async function runAgentLoop(
       messages,
     };
 
-    if (enableThinking) {
+    // Force tool use during investigation phase to ensure agents actually
+    // read files, search code, and run scans before producing findings.
+    // After enough tool calls, let the model decide when to stop.
+    // NOTE: Anthropic API does not allow thinking + forced tool_choice together,
+    // so we disable thinking during forced tool turns and re-enable it after.
+    const inForcedPhase = forcedToolTurns > 0 && toolCallCount < forcedToolTurns;
+
+    if (inForcedPhase) {
+      requestParams.tool_choice = { type: "any" };
+      // Thinking is incompatible with forced tool_choice — skip it
+    } else if (enableThinking) {
       requestParams.thinking = {
         type: "enabled",
         budget_tokens: 4096,
@@ -159,11 +181,7 @@ export async function runAgentLoop(
         allText += textBlock.text;
       } else if (block.type === "tool_use") {
         const toolBlock = block as ToolUseBlock;
-
-        // NOTE: We do NOT emit evidence_collected here — the orchestrator's
-        // agentCallbacks.onToolCall handler already emits tool_call_start/end
-        // events via emitEvent(). Emitting here would create DUPLICATE events
-        // in the timeline and duplicate tool_call blocks in the UI.
+        toolCallCount++;
 
         // Execute the tool via the agent's onToolCall wrapper.
         // The wrapper in architecture.ts/security.ts already calls both
@@ -194,21 +212,28 @@ export async function runAgentLoop(
       }
     }
 
-    // If no tool use, we're done
-    if (response.stop_reason !== "tool_use") {
+    // If no tool calls were made this turn and we're past forced turns, we're done.
+    // When tool_choice is "any", the model always produces at least one tool_use,
+    // so this condition only triggers after forced investigation is complete.
+    if (toolResults.length === 0 && response.stop_reason !== "tool_use") {
       break;
     }
 
-    // Add assistant message and tool results for next turn
-    messages.push({
-      role: "assistant",
-      content: assistantContent as any,
-    });
+    // If the model used tools, continue the conversation with results
+    if (toolResults.length > 0) {
+      messages.push({
+        role: "assistant",
+        content: assistantContent as any,
+      });
 
-    messages.push({
-      role: "user",
-      content: toolResults,
-    });
+      messages.push({
+        role: "user",
+        content: toolResults,
+      });
+    } else {
+      // No tools, not forced — break
+      break;
+    }
   }
 
   // Extract findings from the accumulated text

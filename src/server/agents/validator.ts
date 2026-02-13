@@ -270,7 +270,9 @@ Set confidence to 0 for false positives. Add explanation for any changes.`;
     onThinking: callbacks.onThinking,
     onEvent: callbacks.onEvent,
     maxTurns: 50,
-    model: "claude-haiku-4-5-20251001", // Haiku 4.5 for all agents
+    model: "claude-haiku-4-5-20251001",
+    // Validator must also investigate — force it to read files and verify claims
+    forcedToolTurns: 2,
     signal,
   });
 }
