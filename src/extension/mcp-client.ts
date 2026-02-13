@@ -241,6 +241,29 @@ export class CrpClient {
     return JSON.parse(result);
   }
 
+  // ── History Tools ──
+
+  async listRuns(limit = 50): Promise<Array<{
+    id: string;
+    repoPath: string;
+    repoName: string;
+    mode: string;
+    status: string;
+    startedAt: string;
+    completedAt: string | null;
+    findingsCount: number;
+    criticalCount: number;
+    highCount: number;
+  }>> {
+    const result = await this.callTool("crp.review.list_runs", { limit });
+    return JSON.parse(result);
+  }
+
+  async deleteRun(runId: string): Promise<{ deleted: boolean; runId: string }> {
+    const result = await this.callTool("crp.review.delete_run", { runId });
+    return JSON.parse(result);
+  }
+
   // ── Chat Query ──
 
   async chatQuery(

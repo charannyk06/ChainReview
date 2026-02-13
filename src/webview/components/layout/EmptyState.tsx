@@ -2,16 +2,18 @@ import { SpotlightBackground } from "@/components/ui/spotlight";
 import { ColourfulText } from "@/components/ui/colourful-text";
 import { EncryptedText } from "@/components/ui/encrypted-text";
 import { HoverBorderGradient } from "@/components/ui/hover-border-gradient";
-import { FolderSearchIcon, GitCompareArrowsIcon } from "lucide-react";
+import { FolderSearchIcon, GitCompareArrowsIcon, ClockIcon } from "lucide-react";
 
 interface EmptyStateProps {
   onStartRepoReview: () => void;
   onStartDiffReview: () => void;
+  onOpenHistory?: () => void;
 }
 
 export function EmptyState({
   onStartRepoReview,
   onStartDiffReview,
+  onOpenHistory,
 }: EmptyStateProps) {
   return (
     <SpotlightBackground
@@ -61,6 +63,17 @@ export function EmptyState({
             </span>
           </HoverBorderGradient>
         </div>
+
+        {/* History link */}
+        {onOpenHistory && (
+          <button
+            onClick={onOpenHistory}
+            className="flex items-center gap-1.5 text-[11px] text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] transition-colors"
+          >
+            <ClockIcon className="size-3" />
+            View past reviews
+          </button>
+        )}
 
         {/* Version */}
         <p className="text-[9px] text-[var(--cr-text-ghost)] tracking-widest uppercase font-medium">

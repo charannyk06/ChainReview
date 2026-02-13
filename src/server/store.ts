@@ -9,6 +9,19 @@ import type {
   Evidence,
 } from "./types";
 
+export interface ReviewRunSummary {
+  id: string;
+  repoPath: string;
+  repoName: string;
+  mode: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  findingsCount: number;
+  criticalCount: number;
+  highCount: number;
+}
+
 export interface Store {
   createRun(repoPath: string, mode: string): string;
   completeRun(runId: string, status: "complete" | "error"): void;
@@ -21,6 +34,8 @@ export interface Store {
   getEvents(runId: string): AuditEvent[];
   getPatch(patchId: string): Patch | undefined;
   getFindingById(findingId: string): Finding | undefined;
+  getReviewRuns(limit?: number): ReviewRunSummary[];
+  deleteRun(runId: string): void;
   close(): void;
 }
 
@@ -113,6 +128,23 @@ export function createStore(dbPath: string): Store {
     ),
     getPatch: db.prepare("SELECT * FROM patches WHERE id = ?"),
     getFindingById: db.prepare("SELECT * FROM findings WHERE id = ?"),
+    getReviewRuns: db.prepare(`
+      SELECT
+        r.id, r.repo_path, r.mode, r.status, r.started_at, r.completed_at,
+        COUNT(f.id) as findings_count,
+        SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END) as critical_count,
+        SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END) as high_count
+      FROM review_runs r
+      LEFT JOIN findings f ON f.run_id = r.id
+      GROUP BY r.id
+      ORDER BY r.started_at DESC
+      LIMIT ?
+    `),
+    deleteRunEvents: db.prepare("DELETE FROM events WHERE run_id = ?"),
+    deleteRunUserActions: db.prepare("DELETE FROM user_actions WHERE run_id = ?"),
+    deleteRunPatches: db.prepare("DELETE FROM patches WHERE run_id = ?"),
+    deleteRunFindings: db.prepare("DELETE FROM findings WHERE run_id = ?"),
+    deleteRunRow: db.prepare("DELETE FROM review_runs WHERE id = ?"),
   };
 
   function now(): string {
@@ -238,6 +270,35 @@ export function createStore(dbPath: string): Store {
     getFindingById(findingId: string): Finding | undefined {
       const row = stmts.getFindingById.get(findingId) as any;
       return row ? rowToFinding(row) : undefined;
+    },
+
+    getReviewRuns(limit = 50): ReviewRunSummary[] {
+      const rows = stmts.getReviewRuns.all(limit) as any[];
+      return rows.map((row) => ({
+        id: row.id,
+        repoPath: row.repo_path,
+        repoName: row.repo_path.split("/").pop() || row.repo_path,
+        mode: row.mode,
+        status: row.status,
+        startedAt: row.started_at,
+        completedAt: row.completed_at || null,
+        findingsCount: row.findings_count || 0,
+        criticalCount: row.critical_count || 0,
+        highCount: row.high_count || 0,
+      }));
+    },
+
+    deleteRun(runId: string): void {
+      // Delete in order to respect foreign key constraints
+      // (though FK is ON, better-sqlite3 doesn't always enforce cascade)
+      const deleteAll = db.transaction(() => {
+        stmts.deleteRunEvents.run(runId);
+        stmts.deleteRunUserActions.run(runId);
+        stmts.deleteRunPatches.run(runId);
+        stmts.deleteRunFindings.run(runId);
+        stmts.deleteRunRow.run(runId);
+      });
+      deleteAll();
     },
 
     close(): void {

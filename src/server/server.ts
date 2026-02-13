@@ -284,6 +284,32 @@ server.tool(
   }
 );
 
+// ── Review History Tools ──
+
+server.tool(
+  "crp.review.list_runs",
+  "List past review runs with summary stats",
+  {
+    limit: z.number().optional().describe("Max runs to return (default: 50)"),
+  },
+  async (args) => {
+    const runs = store.getReviewRuns(args.limit);
+    return { content: [{ type: "text" as const, text: JSON.stringify(runs) }] };
+  }
+);
+
+server.tool(
+  "crp.review.delete_run",
+  "Delete a review run and all associated data",
+  {
+    runId: z.string().describe("Review run ID to delete"),
+  },
+  async (args) => {
+    store.deleteRun(args.runId);
+    return { content: [{ type: "text" as const, text: JSON.stringify({ deleted: true, runId: args.runId }) }] };
+  }
+);
+
 // ── Chat Query Tool (with real-time streaming) ──
 // Streams thinking, text, tool calls, and tool results via stderr
 // so the extension can push them to the webview incrementally.
