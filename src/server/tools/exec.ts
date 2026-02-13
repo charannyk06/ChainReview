@@ -58,6 +58,16 @@ function validateCommand(command: string): { valid: boolean; reason?: string } {
   const trimmed = command.trim();
   if (!trimmed) return { valid: false, reason: "Empty command" };
 
+  // Block shell metacharacters that allow command chaining/injection
+  // This prevents bypasses like: cat README.md && rm -rf /
+  const SHELL_CHAIN_PATTERN = /[;&|`$(){}]/;
+  if (SHELL_CHAIN_PATTERN.test(trimmed)) {
+    return {
+      valid: false,
+      reason: "Shell metacharacters (;&|`$(){}) are not allowed to prevent command injection",
+    };
+  }
+
   // Extract the base command (first word)
   const parts = trimmed.split(/\s+/);
   const baseCmd = path.basename(parts[0]);

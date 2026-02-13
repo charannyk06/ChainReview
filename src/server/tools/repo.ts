@@ -139,7 +139,10 @@ export async function repoFile(args: {
   const repoPath = getActiveRepoPath();
   const filePath = path.resolve(repoPath, args.path);
 
-  if (!filePath.startsWith(repoPath)) {
+  // Secure path traversal check using path.relative
+  // This prevents bypasses like /tmp/repo2 passing when repoPath is /tmp/repo
+  const relative = path.relative(repoPath, filePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error("Path traversal detected");
   }
 

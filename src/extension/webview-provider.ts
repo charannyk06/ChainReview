@@ -1837,7 +1837,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         encoding: "utf-8",
       });
 
-      if (result.status !== 0 && result.error) {
+      if (result.status !== 0) {
         throw new Error(`Command "${server.command}" not found`);
       }
 
