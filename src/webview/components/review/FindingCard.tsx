@@ -222,8 +222,8 @@ export function FindingCard({
           )}
         </div>
 
-        {/* Meta row: badges + confidence */}
-        <div className="flex items-center gap-2 mt-3">
+        {/* Meta row: badges + confidence — aligned with title (past severity dot + gap) */}
+        <div className="flex items-center gap-2 mt-3" style={{ marginLeft: 'calc(10px + 0.75rem)' }}>
           {/* Category pill */}
           <span
             className={cn(
@@ -275,9 +275,9 @@ export function FindingCard({
           </div>
         </div>
 
-        {/* Referenced files — compact chips */}
+        {/* Referenced files — compact chips, aligned with title */}
         {finding.evidence.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
+          <div className="flex flex-wrap gap-1.5 mt-3" style={{ marginLeft: 'calc(10px + 0.75rem)' }}>
             {finding.evidence.map((ev, i) => (
               <FileChip
                 key={i}
