@@ -41,6 +41,7 @@ type Action =
   | { type: "RESET" }
   | { type: "FINDING_VALIDATING"; findingId: string }
   | { type: "FINDING_VALIDATED"; findingId: string; verdict: ValidatorVerdict; reasoning: string }
+  | { type: "FINDING_VALIDATION_ERROR"; findingId: string; error: string }
   | { type: "MCP_MANAGER_OPEN" }
   | { type: "MCP_MANAGER_CLOSE" }
   | { type: "MCP_SERVERS_SET"; servers: MCPServerInfo[] }
@@ -250,6 +251,13 @@ function reducer(state: ReviewState, action: Action): ReviewState {
       };
     }
 
+    case "FINDING_VALIDATION_ERROR": {
+      // Clear validating state without setting a fake verdict
+      const next = new Set(state.validatingFindings);
+      next.delete(action.findingId);
+      return { ...state, validatingFindings: next };
+    }
+
     // ── MCP Manager ──
     case "MCP_MANAGER_OPEN":
       return { ...state, mcpManagerOpen: true };
@@ -350,6 +358,9 @@ export function useReviewState() {
       // Validation messages
       case "findingValidated":
         dispatch({ type: "FINDING_VALIDATED", findingId: msg.findingId, verdict: msg.verdict, reasoning: msg.reasoning });
+        break;
+      case "findingValidationError":
+        dispatch({ type: "FINDING_VALIDATION_ERROR", findingId: msg.findingId, error: msg.error });
         break;
 
       // MCP Manager messages
