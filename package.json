@@ -1,0 +1,108 @@
+{
+  "name": "chainreview",
+  "displayName": "ChainReview",
+  "description": "Advanced repo-scale AI code reviewer for TypeScript repos",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "publisher": "chainreview",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./dist/extension/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "chainreview-sidebar",
+          "title": "ChainReview",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "chainreview-sidebar": [
+        {
+          "id": "chainreview.reviewCockpit",
+          "name": "Review Cockpit",
+          "type": "webview",
+          "icon": "media/icon.svg",
+          "contextualTitle": "ChainReview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "chainreview.startRepoReview",
+        "title": "ChainReview: Review Repository"
+      },
+      {
+        "command": "chainreview.startDiffReview",
+        "title": "ChainReview: Review Diff"
+      }
+    ],
+    "configuration": {
+      "title": "ChainReview",
+      "properties": {
+        "chainreview.mcpServers": {
+          "type": "array",
+          "default": [],
+          "description": "List of external MCP servers to connect to",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "command": { "type": "string" },
+              "args": { "type": "array", "items": { "type": "string" } },
+              "env": { "type": "object" },
+              "enabled": { "type": "boolean" }
+            },
+            "required": ["id", "name", "command"]
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "npm run build:webview && npm run build:extension && npm run build:server",
+    "build:extension": "esbuild src/extension/extension.ts --bundle --outfile=dist/extension/extension.js --external:vscode --external:better-sqlite3 --external:ts-morph --external:@anthropic-ai/sdk --external:@modelcontextprotocol/sdk --external:simple-git --format=cjs --platform=node --sourcemap",
+    "build:server": "esbuild src/server/server.ts --bundle --outfile=dist/server/server.js --external:better-sqlite3 --external:ts-morph --external:@anthropic-ai/sdk --external:@modelcontextprotocol/sdk --external:simple-git --format=cjs --platform=node --sourcemap",
+    "build:webview": "vite build",
+    "watch:extension": "esbuild src/extension/extension.ts --bundle --outfile=dist/extension/extension.js --external:vscode --external:better-sqlite3 --external:ts-morph --external:@anthropic-ai/sdk --external:@modelcontextprotocol/sdk --external:simple-git --format=cjs --platform=node --sourcemap --watch",
+    "watch:webview": "vite build --watch",
+    "dev": "concurrently \"npm run watch:extension\" \"npm run watch:webview\""
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "motion": "^12.0.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.0.0",
+    "@tabler/icons-react": "^3.28.0",
+    "lucide-react": "^0.469.0",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.0",
+    "ts-morph": "^25.0.0",
+    "better-sqlite3": "^11.7.0",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/better-sqlite3": "^7.6.12",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "esbuild": "^0.24.0",
+    "concurrently": "^9.1.0"
+  }
+}

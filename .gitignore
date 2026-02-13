@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.vsix
+.env
+.env.*
+*.sqlite
+*.sqlite3
+chainreview-store.db
+.DS_Store
+.vscode/launch.json
+.claude/
