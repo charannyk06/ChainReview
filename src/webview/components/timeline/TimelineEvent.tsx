@@ -111,7 +111,7 @@ export function TimelineEvent({ event, index }: TimelineEventProps) {
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: Math.min(index * 0.03, 0.5), duration: 0.2 }}
-      className="flex gap-3"
+      className="flex gap-3.5"
     >
       {/* Timeline dot + line */}
       <div className="flex flex-col items-center shrink-0">
@@ -125,10 +125,10 @@ export function TimelineEvent({ event, index }: TimelineEventProps) {
       </div>
 
       {/* Event content */}
-      <div className="pb-3.5 flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
+      <div className="pb-4 flex-1 min-w-0">
+        <div className="flex items-center gap-2.5 mb-1">
           <EventIcon className="size-3.5 text-[var(--cr-text-muted)] shrink-0" />
-          <span className="text-xs font-semibold text-[var(--cr-text-primary)]">
+          <span className="text-[12px] font-semibold text-[var(--cr-text-primary)]">
             {EVENT_LABELS[event.type] || event.type}
           </span>
           {agentConfig && AgentIcon && (
@@ -149,14 +149,14 @@ export function TimelineEvent({ event, index }: TimelineEventProps) {
 
         {/* Summary line */}
         {summary && (
-          <p className="text-[11px] text-[var(--cr-text-muted)] mt-0.5 truncate">
+          <p className="text-[11px] text-[var(--cr-text-muted)] mt-1 truncate">
             {summary}
           </p>
         )}
 
         {/* Filtered event data — only show if there are non-internal fields */}
         {displayData.length > 0 && !summary && (
-          <div className="mt-1 text-[11px] text-[var(--cr-text-muted)] bg-[var(--cr-bg-tertiary)] rounded-md px-2 py-1.5 border border-[var(--cr-border-subtle)]">
+          <div className="mt-1.5 text-[11px] text-[var(--cr-text-muted)] bg-[var(--cr-bg-tertiary)] rounded-lg px-3 py-2 border border-[var(--cr-border-subtle)]">
             {displayData.slice(0, 3).map(([key, val]) => (
               <div key={key} className="flex gap-2">
                 <span className="text-[var(--cr-text-ghost)] shrink-0">{key}:</span>

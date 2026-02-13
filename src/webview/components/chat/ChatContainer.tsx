@@ -100,14 +100,16 @@ export function ChatContainer({
           )}
         </div>
         {onSendQuery && (
-          <ChatInput
-            onSend={onSendQuery}
-            onStartRepoReview={onStartRepoReview}
-            onStartDiffReview={onStartDiffReview}
-            onCancelReview={onCancelReview}
-            disabled={false}
-            isReviewing={isReviewing}
-          />
+          <div className="border-t border-[var(--cr-border)] bg-[var(--cr-bg-root)]">
+            <ChatInput
+              onSend={onSendQuery}
+              onStartRepoReview={onStartRepoReview}
+              onStartDiffReview={onStartDiffReview}
+              onCancelReview={onCancelReview}
+              disabled={false}
+              isReviewing={isReviewing}
+            />
+          </div>
         )}
       </div>
     );
@@ -118,9 +120,10 @@ export function ChatContainer({
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto"
+        style={{ scrollbarGutter: "stable both-edges" }}
         onScroll={handleScroll}
       >
-        <div className="flex flex-col gap-2 pb-4 pt-2">
+        <div className="flex flex-col gap-1 pb-6 pt-2">
           {messages.map((msg) => (
             <ChatMessage
               key={msg.id}
@@ -133,14 +136,16 @@ export function ChatContainer({
       </div>
 
       {onSendQuery && (
-        <ChatInput
-          onSend={onSendQuery}
-          onStartRepoReview={onStartRepoReview}
-          onStartDiffReview={onStartDiffReview}
-          onCancelReview={onCancelReview}
-          disabled={false}
-          isReviewing={isReviewing}
-        />
+        <div className="border-t border-[var(--cr-border)] bg-[var(--cr-bg-root)]">
+          <ChatInput
+            onSend={onSendQuery}
+            onStartRepoReview={onStartRepoReview}
+            onStartDiffReview={onStartDiffReview}
+            onCancelReview={onCancelReview}
+            disabled={false}
+            isReviewing={isReviewing}
+          />
+        </div>
       )}
     </div>
   );

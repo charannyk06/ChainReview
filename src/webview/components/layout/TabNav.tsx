@@ -43,7 +43,7 @@ export function TabNav({
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              "relative flex-1 flex items-center justify-center gap-2 px-4 py-3 text-[13px] font-medium transition-all duration-150",
+              "relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-all duration-150",
               isActive
                 ? "text-[var(--cr-text-primary)]"
                 : "text-[var(--cr-text-muted)] hover:text-[var(--cr-text-tertiary)]"

@@ -124,7 +124,7 @@ export function MCPManagerPanel({
             </div>
 
             {/* Server List */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto" style={{ scrollbarGutter: "stable both-edges" }}>
               {servers.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full px-8 text-center">
                   <div className="size-10 rounded-xl bg-gradient-to-br from-indigo-500/15 to-violet-500/15 border border-indigo-500/10 flex items-center justify-center mb-3">
@@ -185,7 +185,7 @@ export function MCPManagerPanel({
             </div>
 
             {/* Footer info */}
-            <div className="px-4 py-2 border-t border-[var(--cr-border-subtle)] shrink-0">
+            <div className="px-3 py-2 border-t border-[var(--cr-border-subtle)] shrink-0">
               <p className="text-[9px] text-[var(--cr-text-muted)] leading-relaxed">
                 MCP servers provide additional tools for code review agents. Configure servers that expose tools via the Model Context Protocol.
               </p>

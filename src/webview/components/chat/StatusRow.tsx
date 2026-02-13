@@ -49,7 +49,7 @@ export function StatusRow({ block }: StatusRowProps) {
   return (
     <div
       className={cn(
-        "flex items-start gap-2 px-2.5 py-1.5 rounded-md text-[11px] leading-relaxed border",
+        "flex items-start gap-2.5 px-3 py-2 rounded-lg text-[11.5px] leading-relaxed border",
         config.bgClass,
         config.borderClass
       )}

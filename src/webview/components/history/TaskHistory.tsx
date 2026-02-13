@@ -95,38 +95,38 @@ export function TaskHistory({
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-[var(--cr-border)] bg-[var(--cr-bg-primary)] shrink-0">
+      <div className="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--cr-border)] bg-[var(--cr-bg-primary)] shrink-0">
         <button
           onClick={onClose}
           className={cn(
-            "size-7 flex items-center justify-center rounded-lg",
+            "size-8 flex items-center justify-center rounded-lg",
             "text-[var(--cr-text-muted)]",
             "hover:text-[var(--cr-text-secondary)] hover:bg-[var(--cr-bg-hover)]",
             "transition-all duration-150 cursor-pointer"
           )}
         >
-          <ArrowLeftIcon className="size-3.5" />
+          <ArrowLeftIcon className="size-4" />
         </button>
-        <span className="text-[12px] font-semibold text-[var(--cr-text-primary)] tracking-tight flex-1">
+        <span className="text-[13px] font-semibold text-[var(--cr-text-primary)] tracking-tight flex-1">
           Task History
         </span>
-        <span className="text-[10px] text-[var(--cr-text-muted)]">
+        <span className="text-[11px] text-[var(--cr-text-muted)]">
           {filteredRuns.length} review{filteredRuns.length !== 1 ? "s" : ""}
         </span>
       </div>
 
       {/* Search + Filter bar */}
-      <div className="px-3 pt-3 pb-2 space-y-2 shrink-0">
-        <div className="flex items-center gap-2">
+      <div className="px-3 pt-3 pb-2 space-y-2.5 shrink-0">
+        <div className="flex items-center gap-2.5">
           <div className="flex-1 relative">
-            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-[var(--cr-text-ghost)]" />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-[var(--cr-text-ghost)]" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search reviews..."
               className={cn(
-                "w-full pl-7 pr-3 py-1.5 rounded-lg text-[11px]",
+                "w-full pl-8 pr-3 py-2 rounded-lg text-[12px]",
                 "bg-[var(--cr-bg-secondary)] border border-[var(--cr-border)]",
                 "text-[var(--cr-text-primary)] placeholder:text-[var(--cr-text-ghost)]",
                 "focus:outline-none focus:border-[var(--cr-accent)]",
@@ -137,14 +137,14 @@ export function TaskHistory({
           <button
             onClick={() => setShowFilter(!showFilter)}
             className={cn(
-              "size-7 flex items-center justify-center rounded-lg border",
+              "size-8 flex items-center justify-center rounded-lg border",
               showFilter
                 ? "border-[var(--cr-accent)] text-[var(--cr-accent)] bg-[var(--cr-accent-subtle)]"
                 : "border-[var(--cr-border)] text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] hover:bg-[var(--cr-bg-hover)]",
               "transition-all duration-150 cursor-pointer"
             )}
           >
-            <FilterIcon className="size-3" />
+            <FilterIcon className="size-3.5" />
           </button>
         </div>
 
@@ -182,7 +182,7 @@ export function TaskHistory({
       </div>
 
       {/* Runs list */}
-      <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2 cr-scrollbar">
+      <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2.5 cr-scrollbar" style={{ scrollbarGutter: "stable both-edges" }}>
         {filteredRuns.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <CalendarIcon className="size-8 text-[var(--cr-text-ghost)] opacity-40" />
@@ -206,21 +206,21 @@ export function TaskHistory({
                   transition={{ duration: 0.15 }}
                   onClick={() => onLoadRun(run.id)}
                   className={cn(
-                    "group relative rounded-lg border border-[var(--cr-border)]",
-                    "bg-[var(--cr-bg-secondary)] p-3 cursor-pointer",
+                    "group relative rounded-xl border border-[var(--cr-border)]",
+                    "bg-[var(--cr-bg-secondary)] p-4 cursor-pointer",
                     "hover:border-[var(--cr-border-hover)] hover:bg-[var(--cr-bg-hover)]",
                     "transition-all duration-150"
                   )}
                 >
                   {/* Top row: repo name + status */}
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {run.mode === "repo" ? (
                         <FolderSearchIcon className="size-3.5 text-indigo-400 shrink-0" />
                       ) : (
                         <GitCompareArrowsIcon className="size-3.5 text-cyan-400 shrink-0" />
                       )}
-                      <span className="text-[12px] font-medium text-[var(--cr-text-primary)] truncate">
+                      <span className="text-[13px] font-semibold text-[var(--cr-text-primary)] truncate">
                         {run.repoName}
                       </span>
                     </div>
@@ -236,8 +236,8 @@ export function TaskHistory({
                   </div>
 
                   {/* Middle: findings summary */}
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-[11px] text-[var(--cr-text-muted)]">
+                  <div className="flex items-center gap-3 mb-2.5">
+                    <span className="text-[12px] text-[var(--cr-text-muted)]">
                       {run.findingsCount} finding{run.findingsCount !== 1 ? "s" : ""}
                     </span>
                     {run.criticalCount > 0 && (

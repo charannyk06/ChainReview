@@ -12,7 +12,7 @@ export function Header({ onNewThread, onOpenMCPManager, onOpenHistory, className
   return (
     <div
       className={cn(
-        "flex items-center gap-2.5 px-4 py-2 border-b shrink-0",
+        "flex items-center gap-2.5 px-3 py-2 border-b shrink-0",
         "border-[var(--cr-border)] bg-[var(--cr-bg-primary)]",
         className
       )}
