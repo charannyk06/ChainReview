@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import {
   SendIcon,
   FolderSearchIcon,
@@ -7,11 +7,12 @@ import {
   SquareIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MentionInput, MentionInputHandle, AVAILABLE_AGENTS } from "./MentionInput";
 
 interface ChatInputProps {
-  onSend: (query: string) => void;
-  onStartRepoReview?: () => void;
-  onStartDiffReview?: () => void;
+  onSend: (query: string, agents?: string[], targetPath?: string) => void;
+  onStartRepoReview?: (agents?: string[]) => void;
+  onStartDiffReview?: (agents?: string[]) => void;
   onCancelReview?: () => void;
   disabled?: boolean;
   isReviewing?: boolean;
@@ -27,44 +28,67 @@ export function ChatInput({
   isReviewing = false,
   className,
 }: ChatInputProps) {
-  const [value, setValue] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const adjustHeight = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
-  }, []);
-
-  useEffect(() => { adjustHeight(); }, [value, adjustHeight]);
+  const mentionRef = useRef<MentionInputHandle>(null);
+  const [currentText, setCurrentText] = useState("");
+  const [currentMentions, setCurrentMentions] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!disabled && !isReviewing) textareaRef.current?.focus();
+    if (!disabled && !isReviewing) {
+      mentionRef.current?.focus();
+    }
   }, [disabled, isReviewing]);
 
   const handleSubmit = useCallback(() => {
-    const trimmed = value.trim();
+    const text = mentionRef.current?.getText() || "";
+    const mentions = mentionRef.current?.getMentions() || [];
+    const trimmed = text.trim();
+    
     if (!trimmed || disabled || isReviewing) return;
-    onSend(trimmed);
-    setValue("");
-    requestAnimationFrame(() => {
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
-    });
-  }, [value, disabled, isReviewing, onSend]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
+    // Parse target path from text (e.g., "@Security check src/auth/")
+    const pathMatch = trimmed.match(/(?:check|analyze|review)\s+([^\s@]+)/i);
+    const targetPath = pathMatch?.[1];
+
+    // Expand @all to all review agents
+    let agents = mentions;
+    if (mentions.includes("all")) {
+      agents = ["security", "architecture", "bugs"];
     }
-  };
 
-  const hasContent = value.trim().length > 0;
+    onSend(trimmed, agents.length > 0 ? agents : undefined, targetPath);
+    mentionRef.current?.clear();
+    setCurrentText("");
+    setCurrentMentions([]);
+  }, [disabled, isReviewing, onSend]);
+
+  const handleChange = useCallback((text: string, mentions: string[]) => {
+    setCurrentText(text);
+    setCurrentMentions(mentions);
+  }, []);
+
+  const handleRepoReview = useCallback(() => {
+    // If there are mentions, use those agents; otherwise run all
+    let agents = currentMentions;
+    if (agents.includes("all")) {
+      agents = ["security", "architecture", "bugs"];
+    }
+    onStartRepoReview?.(agents.length > 0 ? agents : undefined);
+  }, [currentMentions, onStartRepoReview]);
+
+  const handleDiffReview = useCallback(() => {
+    let agents = currentMentions;
+    if (agents.includes("all")) {
+      agents = ["security", "architecture", "bugs"];
+    }
+    onStartDiffReview?.(agents.length > 0 ? agents : undefined);
+  }, [currentMentions, onStartDiffReview]);
+
+  const hasContent = currentText.trim().length > 0;
+  const hasMentions = currentMentions.length > 0;
 
   return (
     <div className={cn("flex-shrink-0 px-3 pb-3 pt-2", className)}>
-      {/* Review progress indicator — above the input card */}
+      {/* Review progress indicator */}
       {isReviewing && (
         <div className="flex items-center justify-between px-3.5 py-2 mb-3 rounded-xl bg-[var(--cr-accent-subtle)] border border-[var(--cr-border-subtle)]">
           <div className="flex items-center gap-2.5">
@@ -86,30 +110,42 @@ export function ChatInput({
         </div>
       )}
 
-      {/* Input card — rounded with strong border, elevated feel */}
+      {/* Agent badges when mentioned */}
+      {hasMentions && !isReviewing && (
+        <div className="flex items-center gap-1.5 px-1 pb-2">
+          <span className="text-[10px] text-[var(--cr-text-muted)]">Agents:</span>
+          {currentMentions.map((agentId) => {
+            const agent = AVAILABLE_AGENTS.find((a) => a.id === agentId);
+            if (!agent) return null;
+            return (
+              <div
+                key={agentId}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--cr-accent-subtle)] border border-[var(--cr-accent)]/20"
+              >
+                <span className="text-[var(--cr-accent)]">{agent.icon}</span>
+                <span className="text-[10px] font-medium text-[var(--cr-accent)]">
+                  {agent.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Input card */}
       <div className="rounded-2xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] overflow-hidden shadow-sm">
-        {/* Input area */}
+        {/* Mention Input */}
         <div className="relative">
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
+          <MentionInput
+            ref={mentionRef}
             disabled={disabled || isReviewing}
             placeholder={
               isReviewing
                 ? "Review in progress..."
-                : "Describe your task (@mention for context)"
+                : "Type @ to mention an agent (e.g., @Security check src/auth/)"
             }
-            rows={1}
-            className={cn(
-              "w-full resize-none bg-transparent px-4 py-3 pr-12",
-              "text-[13px] leading-relaxed text-[var(--cr-text-primary)]",
-              "placeholder:text-[var(--cr-text-muted)]",
-              "focus:outline-none",
-              "disabled:opacity-35 disabled:cursor-not-allowed",
-              "min-h-[48px] max-h-[150px]",
-            )}
+            onSubmit={handleSubmit}
+            onChange={handleChange}
           />
 
           {/* Send button */}
@@ -131,23 +167,23 @@ export function ChatInput({
           </div>
         </div>
 
-        {/* Bottom bar — inside the card, well-spaced */}
+        {/* Bottom bar */}
         <div className="flex items-center justify-between px-3 pb-2.5 pt-0">
           <div className="flex items-center gap-1">
             {onStartRepoReview && !isReviewing && (
               <button
-                onClick={onStartRepoReview}
+                onClick={handleRepoReview}
                 disabled={disabled}
                 className="cr-btn cr-btn-ghost"
                 style={{ padding: "5px 12px", fontSize: "10px" }}
               >
                 <FolderSearchIcon className="size-3" />
-                Review Repo
+                {hasMentions ? "Review with Selected" : "Review Repo"}
               </button>
             )}
             {onStartDiffReview && !isReviewing && (
               <button
-                onClick={onStartDiffReview}
+                onClick={handleDiffReview}
                 disabled={disabled}
                 className="cr-btn cr-btn-ghost"
                 style={{ padding: "5px 12px", fontSize: "10px" }}
@@ -159,7 +195,11 @@ export function ChatInput({
           </div>
 
           <span className="text-[10px] text-[var(--cr-text-ghost)] select-none pr-1">
-            {isReviewing ? "Click Stop to cancel" : hasContent ? "Send (\u2318 + \u21B5)" : "Shift+\u21B5 newline"}
+            {isReviewing
+              ? "Click Stop to cancel"
+              : hasContent
+              ? "Send (⌘ + ↵)"
+              : "Type @ for agents"}
           </span>
         </div>
       </div>

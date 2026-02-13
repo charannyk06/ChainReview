@@ -5,6 +5,7 @@ import { runArchitectureAgent } from "./agents/architecture";
 import { runSecurityAgent } from "./agents/security";
 import { runValidatorChallenge } from "./agents/validator";
 import { runExplainerAgent, type Explanation } from "./agents/explainer";
+import { runBugsAgent } from "./agents/bugs";
 import type {
   Store,
 } from "./store";
@@ -37,11 +38,19 @@ export function cancelActiveReview(): void {
   }
 }
 
+export interface ReviewOptions {
+  /** Which agents to run. If empty/undefined, runs all agents. */
+  agents?: ("security" | "architecture" | "bugs")[];
+  /** Target path to focus on (e.g., "src/auth/") */
+  targetPath?: string;
+}
+
 export async function runReview(
   repoPath: string,
   mode: ReviewMode,
   store: Store,
-  callbacks: ReviewCallbacks
+  callbacks: ReviewCallbacks,
+  options?: ReviewOptions
 ): Promise<ReviewResult> {
   // Create abort controller for this review run
   const abortController = new AbortController();
@@ -282,42 +291,83 @@ export async function runReview(
       };
     }
 
-    const [archResult, secResult] = await Promise.allSettled([
-      runArchitectureAgent(context, agentCallbacks("architecture"), signal),
-      runSecurityAgent(context, agentCallbacks("security"), signal),
-    ]);
+    // Determine which agents to run
+    const agentsToRun = options?.agents ?? ["architecture", "security", "bugs"];
+    const targetPath = options?.targetPath;
 
-    // Process Architecture results
-    if (archResult.status === "fulfilled") {
-      emitEvent("evidence_collected", "architecture", {
-        kind: "agent_lifecycle",
-        event: "completed",
-        message: "Architecture Agent completed",
-      });
-      processFindings(archResult.value, "architecture");
-    } else {
-      emitEvent("evidence_collected", "architecture", {
-        kind: "agent_lifecycle",
-        event: "error",
-        error: `Architecture agent failed: ${archResult.reason?.message || archResult.reason}`,
-      });
+    // Build agent execution promises based on selection
+    const agentPromises: Promise<any>[] = [];
+    const agentNames: string[] = [];
+
+    if (agentsToRun.includes("architecture")) {
+      agentNames.push("architecture");
+      agentPromises.push(runArchitectureAgent(context, agentCallbacks("architecture"), signal));
+    }
+    if (agentsToRun.includes("security")) {
+      agentNames.push("security");
+      agentPromises.push(runSecurityAgent(context, agentCallbacks("security"), signal));
+    }
+    if (agentsToRun.includes("bugs")) {
+      agentNames.push("bugs");
+      agentPromises.push(runBugsAgent(targetPath, runId, {
+        onEvent: callbacks.onEvent,
+        onFinding: (finding) => {
+          const f: Finding = {
+            id: finding.id,
+            agentId: "bugs",
+            category: "bugs",
+            title: finding.title,
+            description: finding.description,
+            filePath: finding.filePath,
+            lineStart: finding.lineStart,
+            lineEnd: finding.lineEnd,
+            severity: finding.severity,
+            confidence: finding.confidence,
+            evidence: finding.evidence,
+            suggestedFix: finding.suggestedFix,
+            status: "pending",
+          };
+          allFindings.push(f);
+          store.insertFinding(runId, f);
+          emitEvent("finding_emitted", "bugs", {
+            findingId: f.id,
+            title: f.title,
+            severity: f.severity,
+          });
+        },
+        onThinking: (text) => callbacks.onText("bugs", text, false),
+        onToolCall: (name, input) => callbacks.onToolCall("bugs", name, input as Record<string, unknown>),
+      }, signal));
     }
 
-    // Process Security results
-    if (secResult.status === "fulfilled") {
-      emitEvent("evidence_collected", "security", {
-        kind: "agent_lifecycle",
-        event: "completed",
-        message: "Security Agent completed",
-      });
-      processFindings(secResult.value, "security");
-    } else {
-      emitEvent("evidence_collected", "security", {
-        kind: "agent_lifecycle",
-        event: "error",
-        error: `Security agent failed: ${secResult.reason?.message || secResult.reason}`,
-      });
-    }
+    emitEvent("agent_started", undefined, {
+      kind: "pipeline_step",
+      message: `Running ${agentNames.length} agent(s): ${agentNames.join(", ")}${targetPath ? ` on ${targetPath}` : ""}`,
+    });
+
+    const results = await Promise.allSettled(agentPromises);
+
+    // Process results
+    results.forEach((result, index) => {
+      const agentName = agentNames[index];
+      if (result.status === "fulfilled") {
+        emitEvent("evidence_collected", agentName as any, {
+          kind: "agent_lifecycle",
+          event: "completed",
+          message: `${agentName.charAt(0).toUpperCase() + agentName.slice(1)} Agent completed`,
+        });
+        // For architecture and security, process findings
+        if (agentName !== "bugs" && result.value) {
+          processFindings(result.value, agentName as any);
+        }
+      } else {
+        emitEvent("evidence_collected", agentName as any, {
+          kind: "agent_lifecycle",
+          event: "error",
+          error: `${agentName} agent failed: ${result.reason?.message || result.reason}`,
+        });
+      }
+    });
 
     // ── Step 7: Validator Agent — Challenge + Verify Findings ──
     // The validator independently investigates each finding, reading code,
