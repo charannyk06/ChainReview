@@ -170,6 +170,7 @@ function detectCycles(adjacencyMap: Map<string, Set<string>>): string[][] {
 export async function codePatternScan(args: {
   config?: string;
   pattern?: string;
+  signal?: AbortSignal;
 }): Promise<{ results: SemgrepResult[]; totalResults: number; warning?: string }> {
   const repoPath = getActiveRepoPath();
 
@@ -210,9 +211,17 @@ export async function codePatternScan(args: {
   semgrepArgs.push(repoPath);
 
   try {
-    const output = await runSemgrep(semgrepBin, semgrepArgs);
+    const output = await runSemgrep(semgrepBin, semgrepArgs, args.signal);
     return parseSemgrepOutput(output, repoPath);
   } catch (err: any) {
+    // If aborted, return a clean warning instead of a cryptic error
+    if (args.signal?.aborted) {
+      return {
+        results: [],
+        totalResults: 0,
+        warning: "Semgrep scan was cancelled",
+      };
+    }
     return {
       results: [],
       totalResults: 0,
@@ -221,8 +230,9 @@ export async function codePatternScan(args: {
   }
 }
 
-/** Run semgrep and return stdout. Semgrep exits 1 when findings exist, which is not an error. */
-function runSemgrep(bin: string, args: string[]): Promise<string> {
+/** Run semgrep and return stdout. Semgrep exits 1 when findings exist, which is not an error.
+ *  Accepts an optional AbortSignal to kill the child process externally (e.g. on timeout). */
+function runSemgrep(bin: string, args: string[], signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const { execFile: exec } = require("child_process");
     // Ensure child process inherits augmented PATH so semgrep can find its dependencies
@@ -231,6 +241,13 @@ function runSemgrep(bin: string, args: string[]): Promise<string> {
     if (!currentPath.includes("/opt/homebrew/bin")) {
       env.PATH = `/opt/homebrew/bin:/usr/local/bin:${currentPath}`;
     }
+
+    // If already aborted, don't even start
+    if (signal?.aborted) {
+      reject(new Error("Semgrep scan aborted before start"));
+      return;
+    }
+
     const child = exec(
       bin,
       args,
@@ -248,6 +265,23 @@ function runSemgrep(bin: string, args: string[]): Promise<string> {
         }
       }
     );
+
+    // Listen for abort signal and kill the child process immediately
+    if (signal) {
+      const onAbort = () => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // Process may already be dead
+        }
+        reject(new Error("Semgrep scan aborted"));
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      // Clean up listener when child process exits naturally
+      child.on("exit", () => {
+        signal.removeEventListener("abort", onAbort);
+      });
+    }
   });
 }
 
