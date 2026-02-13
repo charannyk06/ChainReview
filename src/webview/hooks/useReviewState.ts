@@ -1,0 +1,344 @@
+import { useReducer, useCallback } from "react";
+import type {
+  ReviewState,
+  ExtensionMessage,
+  ConversationMessage,
+  ContentBlock,
+  Finding,
+  AuditEvent,
+  Patch,
+  MCPServerInfo,
+} from "../lib/types";
+
+const initialState: ReviewState = {
+  status: "idle",
+  messages: [],
+  findings: [],
+  patches: [],
+  events: [],
+  mcpManagerOpen: false,
+  mcpServers: [],
+};
+
+type Action =
+  | { type: "REVIEW_STARTED"; mode: "repo" | "diff" }
+  | { type: "ADD_BLOCK"; block: ContentBlock; agent?: string }
+  | { type: "UPDATE_BLOCK"; blockId: string; updates: Partial<ContentBlock> }
+  | { type: "ADD_USER_MESSAGE"; query: string }
+  | { type: "CHAT_RESPONSE_START"; messageId: string }
+  | { type: "CHAT_RESPONSE_BLOCK"; messageId: string; block: ContentBlock }
+  | { type: "CHAT_RESPONSE_END"; messageId: string }
+  | { type: "ADD_FINDING"; finding: Finding }
+  | { type: "ADD_EVENT"; event: AuditEvent }
+  | { type: "ADD_PATCH"; patch: Patch }
+  | { type: "REVIEW_COMPLETE"; findings: Finding[]; events: AuditEvent[] }
+  | { type: "REVIEW_ERROR"; error: string }
+  | { type: "RESET" }
+  | { type: "MCP_MANAGER_OPEN" }
+  | { type: "MCP_MANAGER_CLOSE" }
+  | { type: "MCP_SERVERS_SET"; servers: MCPServerInfo[] }
+  | { type: "MCP_SERVER_UPDATED"; server: MCPServerInfo }
+  | { type: "MCP_SERVER_REMOVED"; serverId: string };
+
+function reducer(state: ReviewState, action: Action): ReviewState {
+  switch (action.type) {
+    case "REVIEW_STARTED":
+      return { ...initialState, status: "running", mode: action.mode, mcpServers: state.mcpServers };
+
+    case "ADD_BLOCK": {
+      const block = action.block;
+      const targetAgent = action.agent; // Agent routing info from extension
+      const msgs = [...state.messages];
+
+      // SubAgentEvent "started" creates a new assistant message for that agent
+      if (block.kind === "sub_agent_event" && block.event === "started") {
+        msgs.push({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          agent: block.agent,
+          blocks: [block],
+          status: "streaming",
+          timestamp: block.timestamp,
+        });
+        return { ...state, messages: msgs };
+      }
+
+      // Find the correct message to append to:
+      // 1. If we have agent routing info, find the STREAMING message for that agent
+      // 2. Fall back to the last streaming assistant message
+      // 3. Fall back to the last assistant message
+      let targetIdx = -1;
+
+      if (targetAgent) {
+        // Find the streaming message for this specific agent (search backwards)
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (
+            msgs[i].role === "assistant" &&
+            msgs[i].agent === targetAgent &&
+            msgs[i].status === "streaming"
+          ) {
+            targetIdx = i;
+            break;
+          }
+        }
+      }
+
+      // Fallback: find last streaming assistant message
+      if (targetIdx < 0) {
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === "assistant" && msgs[i].status === "streaming") {
+            targetIdx = i;
+            break;
+          }
+        }
+      }
+
+      // Fallback: last assistant message of any status
+      if (targetIdx < 0) {
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === "assistant") {
+            targetIdx = i;
+            break;
+          }
+        }
+      }
+
+      if (targetIdx >= 0) {
+        const targetMsg = { ...msgs[targetIdx] };
+        targetMsg.blocks = [...targetMsg.blocks, block];
+
+        // If it's a sub_agent_event "completed" or "error", mark the message complete
+        if (block.kind === "sub_agent_event" && (block.event === "completed" || block.event === "error")) {
+          targetMsg.status = "complete";
+        }
+
+        msgs[targetIdx] = targetMsg;
+      } else {
+        // No assistant message yet — create one
+        msgs.push({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          agent: targetAgent as any,
+          blocks: [block],
+          status: "streaming",
+          timestamp: block.timestamp,
+        });
+      }
+
+      return { ...state, messages: msgs };
+    }
+
+    case "UPDATE_BLOCK": {
+      // Find the block by ID across all messages and update it in-place
+      const msgs = state.messages.map((msg) => {
+        const blockIdx = msg.blocks.findIndex((b) => b.id === action.blockId);
+        if (blockIdx < 0) return msg;
+
+        const updatedBlocks = [...msg.blocks];
+        updatedBlocks[blockIdx] = { ...updatedBlocks[blockIdx], ...action.updates } as ContentBlock;
+        return { ...msg, blocks: updatedBlocks };
+      });
+      return { ...state, messages: msgs };
+    }
+
+    case "ADD_USER_MESSAGE": {
+      const userMsg: ConversationMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        blocks: [
+          {
+            kind: "text",
+            id: crypto.randomUUID(),
+            text: action.query,
+            format: "plain",
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        status: "complete",
+        timestamp: new Date().toISOString(),
+      };
+      return { ...state, messages: [...state.messages, userMsg] };
+    }
+
+    case "CHAT_RESPONSE_START": {
+      const chatMsg: ConversationMessage = {
+        id: action.messageId,
+        role: "assistant",
+        agent: "system",
+        blocks: [],
+        status: "streaming",
+        timestamp: new Date().toISOString(),
+      };
+      return { ...state, messages: [...state.messages, chatMsg] };
+    }
+
+    case "CHAT_RESPONSE_BLOCK": {
+      const msgs = [...state.messages];
+      const idx = msgs.findIndex((m) => m.id === action.messageId);
+      if (idx >= 0) {
+        const msg = { ...msgs[idx] };
+        msg.blocks = [...msg.blocks, action.block];
+        msgs[idx] = msg;
+      }
+      return { ...state, messages: msgs };
+    }
+
+    case "CHAT_RESPONSE_END": {
+      const msgs = [...state.messages];
+      const idx = msgs.findIndex((m) => m.id === action.messageId);
+      if (idx >= 0) {
+        msgs[idx] = { ...msgs[idx], status: "complete" };
+      }
+      return { ...state, messages: msgs };
+    }
+
+    case "ADD_FINDING":
+      return { ...state, findings: [...state.findings, action.finding] };
+
+    case "ADD_EVENT":
+      return { ...state, events: [...state.events, action.event] };
+
+    case "ADD_PATCH":
+      return { ...state, patches: [...state.patches, action.patch] };
+
+    case "REVIEW_COMPLETE":
+      return {
+        ...state,
+        status: "complete",
+        findings: action.findings.length > 0 ? action.findings : state.findings,
+        events: action.events.length > 0 ? action.events : state.events,
+      };
+
+    case "REVIEW_ERROR":
+      return { ...state, status: "error", error: action.error };
+
+    case "RESET":
+      return { ...initialState, mcpServers: state.mcpServers };
+
+    // ── MCP Manager ──
+    case "MCP_MANAGER_OPEN":
+      return { ...state, mcpManagerOpen: true };
+
+    case "MCP_MANAGER_CLOSE":
+      return { ...state, mcpManagerOpen: false };
+
+    case "MCP_SERVERS_SET":
+      return { ...state, mcpServers: action.servers };
+
+    case "MCP_SERVER_UPDATED": {
+      const servers = [...(state.mcpServers || [])];
+      const idx = servers.findIndex((s) => s.id === action.server.id);
+      if (idx >= 0) {
+        servers[idx] = action.server;
+      } else {
+        servers.push(action.server);
+      }
+      return { ...state, mcpServers: servers };
+    }
+
+    case "MCP_SERVER_REMOVED":
+      return {
+        ...state,
+        mcpServers: (state.mcpServers || []).filter((s) => s.id !== action.serverId),
+      };
+
+    default:
+      return state;
+  }
+}
+
+export function useReviewState() {
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  const handleExtensionMessage = useCallback((msg: ExtensionMessage) => {
+    switch (msg.type) {
+      case "reviewStarted":
+        dispatch({ type: "REVIEW_STARTED", mode: msg.mode });
+        break;
+      case "addBlock":
+        dispatch({ type: "ADD_BLOCK", block: msg.block, agent: msg.agent });
+        break;
+      case "updateBlock":
+        dispatch({ type: "UPDATE_BLOCK", blockId: msg.blockId, updates: msg.updates });
+        break;
+      case "chatResponseStart":
+        dispatch({ type: "CHAT_RESPONSE_START", messageId: msg.messageId });
+        break;
+      case "chatResponseBlock":
+        dispatch({
+          type: "CHAT_RESPONSE_BLOCK",
+          messageId: msg.messageId,
+          block: msg.block,
+        });
+        break;
+      case "chatResponseEnd":
+        dispatch({ type: "CHAT_RESPONSE_END", messageId: msg.messageId });
+        break;
+      case "finding":
+        dispatch({ type: "ADD_FINDING", finding: msg.finding });
+        break;
+      case "addEvent":
+        dispatch({ type: "ADD_EVENT", event: msg.event });
+        break;
+      case "patchReady":
+        dispatch({ type: "ADD_PATCH", patch: msg.patch });
+        break;
+      case "reviewComplete":
+        dispatch({
+          type: "REVIEW_COMPLETE",
+          findings: msg.findings,
+          events: msg.events,
+        });
+        break;
+      case "reviewError":
+        dispatch({ type: "REVIEW_ERROR", error: msg.error });
+        break;
+      case "reviewCancelled":
+        dispatch({ type: "REVIEW_COMPLETE", findings: [], events: [] });
+        break;
+      // MCP Manager messages
+      case "mcpManagerOpen":
+        dispatch({ type: "MCP_MANAGER_OPEN" });
+        break;
+      case "mcpServers":
+        dispatch({ type: "MCP_SERVERS_SET", servers: msg.servers });
+        break;
+      case "mcpServerUpdated":
+        dispatch({ type: "MCP_SERVER_UPDATED", server: msg.server });
+        break;
+      case "mcpServerRemoved":
+        dispatch({ type: "MCP_SERVER_REMOVED", serverId: msg.serverId });
+        break;
+    }
+  }, []);
+
+  const addUserMessage = useCallback((query: string) => {
+    dispatch({ type: "ADD_USER_MESSAGE", query });
+  }, []);
+
+  const startReview = useCallback((mode: "repo" | "diff") => {
+    dispatch({ type: "REVIEW_STARTED", mode });
+  }, []);
+
+  const reset = useCallback(() => {
+    dispatch({ type: "RESET" });
+  }, []);
+
+  const openMCPManager = useCallback(() => {
+    dispatch({ type: "MCP_MANAGER_OPEN" });
+  }, []);
+
+  const closeMCPManager = useCallback(() => {
+    dispatch({ type: "MCP_MANAGER_CLOSE" });
+  }, []);
+
+  return {
+    state,
+    handleExtensionMessage,
+    addUserMessage,
+    startReview,
+    reset,
+    openMCPManager,
+    closeMCPManager,
+  };
+}
