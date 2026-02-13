@@ -34,6 +34,7 @@ export interface Store {
   getEvents(runId: string): AuditEvent[];
   getPatch(patchId: string): Patch | undefined;
   getFindingById(findingId: string): Finding | undefined;
+  getRunRepoPath(runId: string): string | undefined;
   getReviewRuns(limit?: number): ReviewRunSummary[];
   deleteRun(runId: string): void;
   close(): void;
@@ -128,6 +129,7 @@ export function createStore(dbPath: string): Store {
     ),
     getPatch: db.prepare("SELECT * FROM patches WHERE id = ?"),
     getFindingById: db.prepare("SELECT * FROM findings WHERE id = ?"),
+    getRunRepoPath: db.prepare("SELECT repo_path FROM review_runs WHERE id = ?"),
     getReviewRuns: db.prepare(`
       SELECT
         r.id, r.repo_path, r.mode, r.status, r.started_at, r.completed_at,
@@ -270,6 +272,11 @@ export function createStore(dbPath: string): Store {
     getFindingById(findingId: string): Finding | undefined {
       const row = stmts.getFindingById.get(findingId) as any;
       return row ? rowToFinding(row) : undefined;
+    },
+
+    getRunRepoPath(runId: string): string | undefined {
+      const row = stmts.getRunRepoPath.get(runId) as any;
+      return row?.repo_path || undefined;
     },
 
     getReviewRuns(limit = 50): ReviewRunSummary[] {

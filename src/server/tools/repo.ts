@@ -40,6 +40,11 @@ export function getActiveRepoPath(): string {
   return activeRepoPath;
 }
 
+/** Check if a repo is currently open */
+export function hasActiveRepo(): boolean {
+  return activeRepoPath !== null;
+}
+
 // ── crp.repo.open ──
 
 export async function repoOpen(args: {

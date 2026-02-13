@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import * as path from "path";
 import { createStore } from "./store";
-import { repoOpen, repoTree, repoFile, repoSearch, repoDiff } from "./tools/repo";
+import { repoOpen, repoTree, repoFile, repoSearch, repoDiff, hasActiveRepo } from "./tools/repo";
 import { codeImportGraph, codePatternScan } from "./tools/code";
 import { patchPropose, patchValidate, applyPatchToFile } from "./tools/patch";
 import { recordEvent } from "./tools/audit";
@@ -54,6 +54,7 @@ server.tool(
     pattern: z.string().optional().describe("Filter files by pattern"),
   },
   async (args) => {
+    await ensureRepoOpen();
     const result = await repoTree(args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -68,6 +69,7 @@ server.tool(
     endLine: z.number().optional().describe("End line (1-based)"),
   },
   async (args) => {
+    await ensureRepoOpen();
     const result = await repoFile(args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -82,6 +84,7 @@ server.tool(
     maxResults: z.number().optional().describe("Maximum number of results"),
   },
   async (args) => {
+    await ensureRepoOpen();
     const result = await repoSearch(args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -96,6 +99,7 @@ server.tool(
     staged: z.boolean().optional().describe("Show staged changes"),
   },
   async (args) => {
+    await ensureRepoOpen();
     const result = await repoDiff(args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -110,6 +114,7 @@ server.tool(
     path: z.string().optional().describe("Subdirectory to analyze (relative)"),
   },
   async (args) => {
+    await ensureRepoOpen();
     const result = await codeImportGraph(args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -123,6 +128,7 @@ server.tool(
     pattern: z.string().optional().describe("Specific pattern to scan for"),
   },
   async (args) => {
+    await ensureRepoOpen();
     const result = await codePatternScan(args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -311,6 +317,37 @@ server.tool(
   }
 );
 
+// ── Ensure Repo is Open ──
+// CRP tools (repo, code, exec) require an active repo path.
+// If the server process restarted or no review was run yet, we need to
+// re-open the repo. This looks up the repo path from the most recent run
+// in the store, or from the finding's evidence if a runId isn't available.
+
+async function ensureRepoOpen(hint?: { runId?: string; findingJson?: string }): Promise<void> {
+  if (hasActiveRepo()) return; // Already open, nothing to do
+
+  // Strategy 1: Look up repo path from a specific run
+  if (hint?.runId) {
+    const repoPath = store.getRunRepoPath(hint.runId);
+    if (repoPath) {
+      await repoOpen({ repoPath });
+      return;
+    }
+  }
+
+  // Strategy 2: Get the most recent run's repo path
+  const runs = store.getReviewRuns(1);
+  if (runs.length > 0 && runs[0].repoPath) {
+    await repoOpen({ repoPath: runs[0].repoPath });
+    return;
+  }
+
+  throw new Error(
+    "No repository is open and no previous review runs found. " +
+    "Please run a code review first, or open a repo with crp.repo.open."
+  );
+}
+
 // ── API Key Guard ──
 // Gives a clear error for LLM-dependent tools instead of cryptic SDK failures
 
@@ -337,6 +374,7 @@ server.tool(
   },
   async (args) => {
     requireApiKey("crp.chat.query");
+    await ensureRepoOpen({ runId: args.runId });
     const result = await chatQuery(args.query, args.runId, store, {
       onTextDelta: (delta) => {
         streamEvent({ type: "chatTextDelta", delta });
@@ -371,6 +409,7 @@ server.tool(
   },
   async (args) => {
     requireApiKey("crp.review.validate_finding");
+    await ensureRepoOpen({ findingJson: args.findingJson });
     const result = await validateFinding(args.findingJson, {
       onTextDelta: (delta) => {
         streamEvent({ type: "validateTextDelta", delta });
@@ -423,6 +462,7 @@ server.tool(
     timeout: z.number().optional().describe("Timeout in ms (default: 10000)"),
   },
   async (args) => {
+    await ensureRepoOpen();
     const result = await execCommand(args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }

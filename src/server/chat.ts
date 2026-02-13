@@ -6,7 +6,8 @@ import type {
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
-import { repoTree, repoFile, repoSearch } from "./tools/repo";
+import { repoTree, repoFile, repoSearch, repoDiff } from "./tools/repo";
+import { codeImportGraph, codePatternScan } from "./tools/code";
 import { execCommand } from "./tools/exec";
 import { webSearch } from "./tools/web";
 import type { Store } from "./store";
@@ -352,57 +353,235 @@ export async function chatQuery(
   return { answer, toolCalls };
 }
 
-// ── Validate Finding (True SDK Streaming) ──
+// ── Validate Finding (Full Agent Loop with Forced Investigation) ──
+
+// Full tool suite for the validator — same tools as the orchestrator validator agent
+const VALIDATOR_TOOLS = [
+  {
+    name: "crp_repo_tree",
+    description: "Get repository file tree to understand project structure and find related files",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        maxDepth: { type: "number", description: "Maximum directory depth" },
+        pattern: { type: "string", description: "Filter files by pattern" },
+      },
+    },
+  },
+  {
+    name: "crp_repo_file",
+    description: "Read file contents to verify findings and check for mitigating factors",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string", description: "Relative path to the file" },
+        startLine: { type: "number", description: "Start line (1-based)" },
+        endLine: { type: "number", description: "End line (1-based)" },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "crp_repo_search",
+    description: "Search repository for related patterns, mitigations, and validation code",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        pattern: { type: "string", description: "Search pattern (regex)" },
+        glob: { type: "string", description: "Glob pattern to filter files" },
+        maxResults: { type: "number", description: "Maximum results" },
+      },
+      required: ["pattern"],
+    },
+  },
+  {
+    name: "crp_repo_diff",
+    description: "Get git diff to check if flagged code was recently changed or if there are pending fixes",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        ref1: { type: "string", description: "First git ref" },
+        ref2: { type: "string", description: "Second git ref" },
+        staged: { type: "boolean", description: "Show staged changes" },
+      },
+    },
+  },
+  {
+    name: "crp_code_import_graph",
+    description: "Trace module dependencies to understand if flagged code is actually reachable and how it connects to the rest of the system",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string", description: "Subdirectory to analyze" },
+      },
+    },
+  },
+  {
+    name: "crp_code_pattern_scan",
+    description: "Run Semgrep to check if the flagged issue is a known anti-pattern or if mitigations exist",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        config: { type: "string", description: "Semgrep config" },
+        pattern: { type: "string", description: "Specific pattern to scan" },
+      },
+    },
+  },
+  {
+    name: "crp_exec_command",
+    description: "Execute read-only shell commands for deeper investigation (git log, git blame, grep, find, wc, npm ls, etc.)",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        command: { type: "string", description: "Shell command to execute" },
+        timeout: { type: "number", description: "Timeout in ms (default: 10000)" },
+      },
+      required: ["command"],
+    },
+  },
+  {
+    name: "crp_web_search",
+    description: "Search the web to verify if flagged patterns are actually dangerous, check CVE databases, and find best practices",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string", description: "Web search query" },
+        maxResults: { type: "number", description: "Max results (default: 5)" },
+      },
+      required: ["query"],
+    },
+  },
+];
+
+/** Route validator tool calls to the actual CRP tool backends */
+async function handleValidatorToolCall(
+  name: string,
+  args: Record<string, unknown>
+): Promise<unknown> {
+  switch (name) {
+    case "crp_repo_tree":
+      return repoTree(args as any);
+    case "crp_repo_file":
+      return repoFile(args as any);
+    case "crp_repo_search":
+      return repoSearch(args as any);
+    case "crp_repo_diff":
+      return repoDiff(args as any);
+    case "crp_code_import_graph":
+      return codeImportGraph(args as any);
+    case "crp_code_pattern_scan":
+      return codePatternScan(args as any);
+    case "crp_exec_command":
+      return execCommand(args as any);
+    case "crp_web_search":
+      return webSearch(args as any);
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
+}
+
+const VALIDATOR_SYSTEM_PROMPT = `You are the Validator Agent in ChainReview. Your job is to INDEPENDENTLY VERIFY whether a code review finding is a real bug or a false positive.
+
+CRITICAL: You MUST use your tools to investigate BEFORE giving a verdict. Do NOT guess. Read the actual code, search for mitigating factors, and build real evidence.
+
+Investigation checklist (you MUST do at least steps 1-3):
+1. READ the file(s) mentioned in the evidence using crp_repo_file — verify the code actually matches the claim
+2. SEARCH the codebase using crp_repo_search for mitigating factors (input validation, error handlers, sanitization, middleware, type guards)
+3. CHECK context using crp_exec_command (git blame, git log) to understand the history and intent
+4. TRACE dependencies using crp_code_import_graph if the finding relates to architecture or module coupling
+5. SCAN for patterns using crp_code_pattern_scan if the finding relates to a security anti-pattern
+6. CHECK git diff using crp_repo_diff to see if a fix is already in progress
+
+After thorough investigation, provide your verdict. You MUST commit to a definitive verdict — "uncertain" is only acceptable if tools genuinely fail to return data.
+
+Verdict options:
+- "confirmed" — the code clearly has this issue, evidence verified
+- "likely_valid" — strong evidence supports the finding, minor caveats
+- "likely_false_positive" — mitigating factors exist that address the concern
+- "false_positive" — the finding is definitively wrong, code is safe
+
+Output format (you MUST use these exact tags):
+<verdict>confirmed|likely_valid|likely_false_positive|false_positive</verdict>
+<reasoning>
+Detailed explanation citing specific files, line numbers, and code you found.
+Reference your tool call results as evidence for your conclusion.
+</reasoning>`;
 
 export async function validateFinding(
   findingJson: string,
   callbacks?: ChatCallbacks
 ): Promise<ValidateResult> {
   const client = new Anthropic();
-  const maxTurns = 15;
+  const maxTurns = 25;
   const toolCalls: ChatToolCall[] = [];
 
-  const systemPrompt = `You are a code review validator. Your job is to challenge and verify a finding from another agent. Be skeptical — check if the evidence actually supports the claim. Read the relevant files and search for counter-evidence.
+  // Parse finding to build a more structured prompt
+  let findingTitle = "Unknown";
+  let findingDesc = "";
+  let evidenceFiles: string[] = [];
+  try {
+    const parsed = JSON.parse(findingJson);
+    findingTitle = parsed.title || "Unknown";
+    findingDesc = parsed.description || "";
+    evidenceFiles = (parsed.evidence || []).map((e: any) =>
+      `${e.filePath}:${e.startLine}-${e.endLine}`
+    );
+  } catch {
+    // If parsing fails, use raw JSON
+  }
 
-After investigation, provide your verdict as one of:
-- "confirmed" — the finding is definitely valid
-- "likely_valid" — the finding is probably valid but minor issues in evidence
-- "uncertain" — not enough evidence to confirm or deny
-- "likely_false_positive" — the evidence doesn't strongly support the claim
-- "false_positive" — the finding is clearly wrong
+  const userPrompt = `Validate this code review finding by investigating the actual code. You have 8 powerful tools — USE THEM.
 
-Output your verdict in this format:
-<verdict>confirmed|likely_valid|uncertain|likely_false_positive|false_positive</verdict>
-<reasoning>Your detailed reasoning here</reasoning>`;
+Finding: ${findingTitle}
+${findingDesc}
 
-  const userPrompt = `Please validate this code review finding:\n\n${findingJson}\n\nInvestigate the code to determine if this finding is valid. Check the evidence, look for counter-evidence, and provide your verdict.`;
+Evidence files to check: ${evidenceFiles.join(", ") || "See finding JSON below"}
+
+Full finding JSON:
+${findingJson}
+
+REQUIRED INVESTIGATION STEPS:
+1. First, use crp_repo_file to READ the files mentioned in the evidence
+2. Then use crp_repo_search to search for mitigating factors (validation, sanitization, error handling)
+3. Use crp_exec_command with "git blame" or "git log" on the relevant files for context
+4. Based on what you find, give a DEFINITIVE verdict — confirmed, likely_valid, likely_false_positive, or false_positive
+
+DO NOT skip tools. DO NOT guess. Investigate first, then decide.`;
 
   const messages: MessageParam[] = [
     { role: "user", content: userPrompt },
   ];
 
-  // Use only read-only tools for validation
-  const validatorTools = TOOLS.filter((t) =>
-    ["crp_repo_file", "crp_repo_search", "crp_repo_tree", "crp_exec_command"].includes(t.name)
-  );
-
   let answer = "";
   let turn = 0;
+  let toolCallCount = 0;
+  // Force at least 2 tool turns before allowing text-only response
+  const FORCED_TOOL_TURNS = 2;
 
   while (turn < maxTurns) {
     turn++;
 
+    // Build request — force tool use during investigation phase
+    const inForcedPhase = toolCallCount < FORCED_TOOL_TURNS;
     const requestParams: Record<string, unknown> = {
       model: "claude-haiku-4-5-20251001",
       max_tokens: 16000,
-      system: systemPrompt,
-      tools: validatorTools,
+      system: VALIDATOR_SYSTEM_PROMPT,
+      tools: VALIDATOR_TOOLS,
       messages,
-      thinking: {
+    };
+
+    if (inForcedPhase) {
+      // Force tool use — Haiku must investigate before producing text
+      // NOTE: Anthropic API does not allow thinking + forced tool_choice together
+      requestParams.tool_choice = { type: "any" };
+    } else {
+      // After forced phase, enable thinking for better reasoning
+      requestParams.thinking = {
         type: "enabled",
         budget_tokens: 4096,
-      },
-    };
+      };
+    }
 
     let assistantContent: any[];
     let stopReason: string | null;
@@ -418,17 +597,17 @@ Output your verdict in this format:
 
     const toolResults: ToolResultBlockParam[] = [];
 
-    // Process tool_use blocks (text/thinking already streamed via SDK events)
     for (const block of assistantContent) {
       if (block.type === "text") {
         answer += (block as TextBlock).text;
       } else if (block.type === "tool_use") {
         const toolBlock = block as ToolUseBlock;
+        toolCallCount++;
 
         callbacks?.onToolCall?.(toolBlock.name, toolBlock.input as Record<string, unknown>);
 
         try {
-          const result = await handleToolCall(
+          const result = await handleValidatorToolCall(
             toolBlock.name,
             toolBlock.input as Record<string, unknown>
           );
@@ -467,22 +646,86 @@ Output your verdict in this format:
       }
     }
 
-    if (stopReason !== "tool_use") {
+    // If no tool calls were made and we're past forced phase, we're done
+    if (toolResults.length === 0 && stopReason !== "tool_use") {
       break;
     }
 
-    messages.push({ role: "assistant", content: assistantContent as any });
-    messages.push({ role: "user", content: toolResults });
+    // Continue if tools were called
+    if (toolResults.length > 0) {
+      messages.push({ role: "assistant", content: assistantContent as any });
+      messages.push({ role: "user", content: toolResults });
+    } else {
+      break;
+    }
   }
 
-  // Extract verdict
-  const verdictMatch = answer.match(/<verdict>(.*?)<\/verdict>/);
-  const reasoningMatch = answer.match(/<reasoning>([\s\S]*?)<\/reasoning>/);
-
-  const verdict = (verdictMatch?.[1] || "uncertain") as ValidateResult["verdict"];
-  const reasoning = reasoningMatch?.[1]?.trim() || answer;
+  // Extract verdict with robust parsing
+  const verdict = extractVerdict(answer);
+  const reasoning = extractReasoning(answer);
 
   return { verdict, reasoning, toolCalls };
+}
+
+/** Robustly extract verdict from LLM output — tries multiple patterns */
+function extractVerdict(text: string): ValidateResult["verdict"] {
+  const validVerdicts = new Set([
+    "confirmed", "likely_valid", "uncertain", "likely_false_positive", "false_positive",
+  ]);
+
+  // Try <verdict> tags first
+  const tagMatch = text.match(/<verdict>\s*([\w_]+)\s*<\/verdict>/);
+  if (tagMatch && validVerdicts.has(tagMatch[1])) {
+    return tagMatch[1] as ValidateResult["verdict"];
+  }
+
+  // Try **Verdict:** pattern
+  const boldMatch = text.match(/\*?\*?[Vv]erdict\*?\*?:\s*`?([\w_]+)`?/);
+  if (boldMatch && validVerdicts.has(boldMatch[1])) {
+    return boldMatch[1] as ValidateResult["verdict"];
+  }
+
+  // Try "verdict: X" or "Verdict: X" plain text
+  const plainMatch = text.match(/[Vv]erdict\s*[:=]\s*"?([\w_]+)"?/);
+  if (plainMatch && validVerdicts.has(plainMatch[1])) {
+    return plainMatch[1] as ValidateResult["verdict"];
+  }
+
+  // Inference from strong language in the text
+  const lower = text.toLowerCase();
+  if (lower.includes("confirmed") && (lower.includes("the finding is valid") || lower.includes("is a real bug") || lower.includes("is confirmed"))) {
+    return "confirmed";
+  }
+  if (lower.includes("false positive") && (lower.includes("the finding is a false positive") || lower.includes("not a real"))) {
+    return "false_positive";
+  }
+  if (lower.includes("likely valid") || lower.includes("probably valid") || lower.includes("evidence supports")) {
+    return "likely_valid";
+  }
+  if (lower.includes("likely false positive") || lower.includes("probably false positive") || lower.includes("mitigated")) {
+    return "likely_false_positive";
+  }
+
+  // Last resort — if the agent investigated but couldn't decide
+  return "likely_valid";
+}
+
+/** Extract reasoning from LLM output — tries tags then falls back to full text */
+function extractReasoning(text: string): string {
+  // Try <reasoning> tags
+  const tagMatch = text.match(/<reasoning>([\s\S]*?)<\/reasoning>/);
+  if (tagMatch?.[1]?.trim()) {
+    return tagMatch[1].trim();
+  }
+
+  // Try **Reasoning:** section
+  const sectionMatch = text.match(/\*?\*?[Rr]easoning\*?\*?:\s*([\s\S]+?)(?=<verdict>|$)/);
+  if (sectionMatch?.[1]?.trim()) {
+    return sectionMatch[1].trim();
+  }
+
+  // Fall back to the full answer, stripping verdict tags
+  return text.replace(/<verdict>[\s\S]*?<\/verdict>/, "").trim() || "Investigation completed — see tool calls for evidence.";
 }
 
 // ── Generate Patch Fix (Phase 4) ──
