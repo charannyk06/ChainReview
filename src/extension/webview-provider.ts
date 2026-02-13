@@ -75,9 +75,21 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   private _activeChatMessageId: string | null = null;
   /** Last running tool block for chat queries */
   private _chatLastRunningToolBlockId: string | null = null;
+  /** Active text block being streamed to incrementally (delta-by-delta) */
+  private _chatStreamingTextBlockId: string | null = null;
+  private _chatStreamingTextAccum = "";
+  /** Active thinking block being streamed to incrementally */
+  private _chatStreamingThinkingBlockId: string | null = null;
+  private _chatStreamingThinkingAccum = "";
   /** Active validate message ID */
   private _activeValidateMessageId: string | null = null;
   private _validateLastRunningToolBlockId: string | null = null;
+  /** Active text block for validation streaming */
+  private _validateStreamingTextBlockId: string | null = null;
+  private _validateStreamingTextAccum = "";
+  /** Active thinking block for validation streaming */
+  private _validateStreamingThinkingBlockId: string | null = null;
+  private _validateStreamingThinkingAccum = "";
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -322,7 +334,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
             ? this._lastRunningToolBlockIds[eventAgent]
             : this._lastRunningToolBlockId;
           if (runningId) {
-            const resultSummary = (data?.resultSummary as string)?.slice(0, 80) || "";
+            const resultSummary = (data?.resultSummary as string)?.slice(0, 300) || "";
             this._updateBlock(runningId, {
               status: "done",
               result: resultSummary,
@@ -365,24 +377,27 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
           break;
         }
 
-        // Pipeline step progress — show status messages, not just warnings
+        // Pipeline step progress — show status messages and warnings
         if (kind === "pipeline_step") {
           const warning = data?.warning as string;
           const message = data?.message as string;
+          const step = data?.step as string;
           if (warning) {
             this._emitBlock({
-              kind: "text",
+              kind: "status",
               id: `ps-${++this._blockCounter}`,
-              text: `⚠ ${warning}`,
-              format: "plain",
+              text: warning,
+              level: "warning",
+              step,
               timestamp: auditEvent.timestamp || new Date().toISOString(),
             }, eventAgent);
           } else if (message) {
             this._emitBlock({
-              kind: "text",
+              kind: "status",
               id: `ps-${++this._blockCounter}`,
-              text: `📋 ${message}`,
-              format: "plain",
+              text: message,
+              level: "info",
+              step,
               timestamp: auditEvent.timestamp || new Date().toISOString(),
             }, eventAgent);
           }
@@ -408,48 +423,132 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       }
 
       // ═══════════════════════════════════════════════════════
-      // CHAT QUERY STREAMING EVENTS (real-time from chatQuery)
+      // CHAT QUERY STREAMING EVENTS (real-time delta streaming)
       // ═══════════════════════════════════════════════════════
-      case "chatThinking": {
-        if (!this._activeChatMessageId) break;
-        const text = event.text as string;
-        if (text && text.trim().length > 10) {
-          this.postMessage({
-            type: "chatResponseBlock",
-            messageId: this._activeChatMessageId,
-            block: {
-              kind: "thinking",
-              id: `cth-${++this._blockCounter}`,
-              text,
-              collapsed: true,
-              timestamp: new Date().toISOString(),
-            },
-          });
-        }
-        break;
-      }
 
-      case "chatText": {
+      // ── Text delta: arrives token-by-token for true real-time streaming ──
+      case "chatTextDelta": {
         if (!this._activeChatMessageId) break;
-        const text = event.text as string;
-        if (text) {
+        const delta = event.delta as string;
+        if (!delta) break;
+
+        // If we don't have a streaming text block yet, create one
+        if (!this._chatStreamingTextBlockId) {
+          const blockId = `ctx-${++this._blockCounter}`;
+          this._chatStreamingTextBlockId = blockId;
+          this._chatStreamingTextAccum = delta;
           this.postMessage({
             type: "chatResponseBlock",
             messageId: this._activeChatMessageId,
             block: {
               kind: "text",
-              id: `ctx-${++this._blockCounter}`,
-              text,
+              id: blockId,
+              text: delta,
               format: "markdown",
               timestamp: new Date().toISOString(),
             },
           });
+        } else {
+          // Append delta to existing block via update
+          this._chatStreamingTextAccum += delta;
+          this._updateBlock(this._chatStreamingTextBlockId, {
+            text: this._chatStreamingTextAccum,
+          });
+        }
+        break;
+      }
+
+      // ── Thinking delta: arrives token-by-token ──
+      case "chatThinkingDelta": {
+        if (!this._activeChatMessageId) break;
+        const delta = event.delta as string;
+        if (!delta) break;
+
+        if (!this._chatStreamingThinkingBlockId) {
+          const blockId = `cth-${++this._blockCounter}`;
+          this._chatStreamingThinkingBlockId = blockId;
+          this._chatStreamingThinkingAccum = delta;
+          this.postMessage({
+            type: "chatResponseBlock",
+            messageId: this._activeChatMessageId,
+            block: {
+              kind: "thinking",
+              id: blockId,
+              text: delta,
+              collapsed: true,
+              timestamp: new Date().toISOString(),
+            },
+          });
+        } else {
+          this._chatStreamingThinkingAccum += delta;
+          this._updateBlock(this._chatStreamingThinkingBlockId, {
+            text: this._chatStreamingThinkingAccum,
+          });
+        }
+        break;
+      }
+
+      // ── Complete block callbacks (finalize the streaming blocks) ──
+      case "chatThinking": {
+        // A complete thinking block arrived — finalize any streaming block
+        if (this._chatStreamingThinkingBlockId) {
+          // Block already exists from deltas, just reset tracking
+          this._chatStreamingThinkingBlockId = null;
+          this._chatStreamingThinkingAccum = "";
+        } else if (this._activeChatMessageId) {
+          // No delta events were received (fallback) — emit full block
+          const text = event.text as string;
+          if (text && text.trim().length > 10) {
+            this.postMessage({
+              type: "chatResponseBlock",
+              messageId: this._activeChatMessageId,
+              block: {
+                kind: "thinking",
+                id: `cth-${++this._blockCounter}`,
+                text,
+                collapsed: true,
+                timestamp: new Date().toISOString(),
+              },
+            });
+          }
+        }
+        break;
+      }
+
+      case "chatText": {
+        // A complete text block arrived — finalize any streaming block
+        if (this._chatStreamingTextBlockId) {
+          // Block already exists from deltas, just reset tracking
+          this._chatStreamingTextBlockId = null;
+          this._chatStreamingTextAccum = "";
+        } else if (this._activeChatMessageId) {
+          // No delta events were received (fallback) — emit full block
+          const text = event.text as string;
+          if (text) {
+            this.postMessage({
+              type: "chatResponseBlock",
+              messageId: this._activeChatMessageId,
+              block: {
+                kind: "text",
+                id: `ctx-${++this._blockCounter}`,
+                text,
+                format: "markdown",
+                timestamp: new Date().toISOString(),
+              },
+            });
+          }
         }
         break;
       }
 
       case "chatToolCall": {
         if (!this._activeChatMessageId) break;
+        // Reset any streaming text/thinking block when a tool call starts
+        this._chatStreamingTextBlockId = null;
+        this._chatStreamingTextAccum = "";
+        this._chatStreamingThinkingBlockId = null;
+        this._chatStreamingThinkingAccum = "";
+
         const tool = event.tool as string;
         const args = (event.args as Record<string, unknown>) || {};
         const blockId = `ctc-${++this._blockCounter}`;
@@ -474,7 +573,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
       case "chatToolResult": {
         if (this._chatLastRunningToolBlockId) {
-          const resultStr = (event.result as string)?.slice(0, 200) || "";
+          const resultStr = (event.result as string)?.slice(0, 500) || "";
           this._updateBlock(this._chatLastRunningToolBlockId, {
             status: "done",
             result: resultStr,
@@ -485,48 +584,124 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       }
 
       // ═══════════════════════════════════════════════════════
-      // VALIDATE FINDING STREAMING EVENTS
+      // VALIDATE FINDING STREAMING EVENTS (real-time delta streaming)
       // ═══════════════════════════════════════════════════════
-      case "validateThinking": {
-        if (!this._activeValidateMessageId) break;
-        const text = event.text as string;
-        if (text && text.trim().length > 10) {
-          this.postMessage({
-            type: "chatResponseBlock",
-            messageId: this._activeValidateMessageId,
-            block: {
-              kind: "thinking",
-              id: `vth-${++this._blockCounter}`,
-              text,
-              collapsed: true,
-              timestamp: new Date().toISOString(),
-            },
-          });
-        }
-        break;
-      }
 
-      case "validateText": {
+      // ── Validate text delta: token-by-token ──
+      case "validateTextDelta": {
         if (!this._activeValidateMessageId) break;
-        const text = event.text as string;
-        if (text) {
+        const delta = event.delta as string;
+        if (!delta) break;
+
+        if (!this._validateStreamingTextBlockId) {
+          const blockId = `vtx-${++this._blockCounter}`;
+          this._validateStreamingTextBlockId = blockId;
+          this._validateStreamingTextAccum = delta;
           this.postMessage({
             type: "chatResponseBlock",
             messageId: this._activeValidateMessageId,
             block: {
               kind: "text",
-              id: `vtx-${++this._blockCounter}`,
-              text,
+              id: blockId,
+              text: delta,
               format: "markdown",
               timestamp: new Date().toISOString(),
             },
           });
+        } else {
+          this._validateStreamingTextAccum += delta;
+          this._updateBlock(this._validateStreamingTextBlockId, {
+            text: this._validateStreamingTextAccum,
+          });
+        }
+        break;
+      }
+
+      // ── Validate thinking delta: token-by-token ──
+      case "validateThinkingDelta": {
+        if (!this._activeValidateMessageId) break;
+        const delta = event.delta as string;
+        if (!delta) break;
+
+        if (!this._validateStreamingThinkingBlockId) {
+          const blockId = `vth-${++this._blockCounter}`;
+          this._validateStreamingThinkingBlockId = blockId;
+          this._validateStreamingThinkingAccum = delta;
+          this.postMessage({
+            type: "chatResponseBlock",
+            messageId: this._activeValidateMessageId,
+            block: {
+              kind: "thinking",
+              id: blockId,
+              text: delta,
+              collapsed: true,
+              timestamp: new Date().toISOString(),
+            },
+          });
+        } else {
+          this._validateStreamingThinkingAccum += delta;
+          this._updateBlock(this._validateStreamingThinkingBlockId, {
+            text: this._validateStreamingThinkingAccum,
+          });
+        }
+        break;
+      }
+
+      // ── Complete block callbacks (finalize) ──
+      case "validateThinking": {
+        if (this._validateStreamingThinkingBlockId) {
+          this._validateStreamingThinkingBlockId = null;
+          this._validateStreamingThinkingAccum = "";
+        } else if (this._activeValidateMessageId) {
+          const text = event.text as string;
+          if (text && text.trim().length > 10) {
+            this.postMessage({
+              type: "chatResponseBlock",
+              messageId: this._activeValidateMessageId,
+              block: {
+                kind: "thinking",
+                id: `vth-${++this._blockCounter}`,
+                text,
+                collapsed: true,
+                timestamp: new Date().toISOString(),
+              },
+            });
+          }
+        }
+        break;
+      }
+
+      case "validateText": {
+        if (this._validateStreamingTextBlockId) {
+          this._validateStreamingTextBlockId = null;
+          this._validateStreamingTextAccum = "";
+        } else if (this._activeValidateMessageId) {
+          const text = event.text as string;
+          if (text) {
+            this.postMessage({
+              type: "chatResponseBlock",
+              messageId: this._activeValidateMessageId,
+              block: {
+                kind: "text",
+                id: `vtx-${++this._blockCounter}`,
+                text,
+                format: "markdown",
+                timestamp: new Date().toISOString(),
+              },
+            });
+          }
         }
         break;
       }
 
       case "validateToolCall": {
         if (!this._activeValidateMessageId) break;
+        // Reset streaming blocks when tool call starts
+        this._validateStreamingTextBlockId = null;
+        this._validateStreamingTextAccum = "";
+        this._validateStreamingThinkingBlockId = null;
+        this._validateStreamingThinkingAccum = "";
+
         const tool = event.tool as string;
         const args = (event.args as Record<string, unknown>) || {};
         const blockId = `vtc-${++this._blockCounter}`;
@@ -551,7 +726,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
       case "validateToolResult": {
         if (this._validateLastRunningToolBlockId) {
-          const resultStr = (event.result as string)?.slice(0, 200) || "";
+          const resultStr = (event.result as string)?.slice(0, 500) || "";
           this._updateBlock(this._validateLastRunningToolBlockId, {
             status: "done",
             result: resultStr,
@@ -585,7 +760,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
       case "toolResult": {
         if (this._lastRunningToolBlockId) {
-          const resultStr = (event.result as string)?.slice(0, 200) || "";
+          const resultStr = (event.result as string)?.slice(0, 500) || "";
           this._updateBlock(this._lastRunningToolBlockId, {
             status: "done",
             result: resultStr,
@@ -649,6 +824,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         timestamp: new Date().toISOString(),
       });
 
+      // ── Generate detailed final report ──
+      this._emitFinalReport(this._findings);
+
       this.postMessage({ type: "reviewComplete", findings: result.findings, events: result.events });
     } catch (err: any) {
       this.postMessage({ type: "reviewError", error: `Review failed: ${err.message}` });
@@ -661,6 +839,184 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   private _updateBlock(blockId: string, updates: Record<string, unknown>) {
     this.postMessage({ type: "updateBlock", blockId, updates });
+  }
+
+  // ── Executive Summary Generation ──
+  // Produces a clear, human-readable overview AFTER all agent cards have
+  // completed and auto-collapsed.  This is NOT a findings breakdown — the
+  // Findings tab already provides that.  The summary explains the overall
+  // health of the codebase in plain language so the user can immediately
+  // grasp the situation.
+
+  private _emitFinalReport(findings: Finding[]) {
+    if (findings.length === 0) {
+      this._emitBlock({
+        kind: "text",
+        id: `summary-${++this._blockCounter}`,
+        text: "## ✅ Review Complete\n\nNo issues were detected. The codebase looks healthy — no architecture, security, or bug concerns were found by the review agents.",
+        format: "markdown",
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // ── Categorize ──
+    const bySeverity: Record<string, Finding[]> = { critical: [], high: [], medium: [], low: [], info: [] };
+    const byCategory: Record<string, Finding[]> = {};
+
+    for (const f of findings) {
+      const sev = (f.severity || "info").toLowerCase();
+      if (!bySeverity[sev]) bySeverity[sev] = [];
+      bySeverity[sev].push(f);
+
+      const cat = f.category || "general";
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(f);
+    }
+
+    const criticalCount = bySeverity.critical?.length || 0;
+    const highCount = bySeverity.high?.length || 0;
+    const medCount = bySeverity.medium?.length || 0;
+    const lowCount = bySeverity.low?.length || 0;
+    const infoCount = bySeverity.info?.length || 0;
+
+    // ── Determine overall health ──
+    let healthLabel: string;
+    let healthEmoji: string;
+    if (criticalCount > 0) {
+      healthEmoji = "🔴";
+      healthLabel = "Needs Immediate Attention";
+    } else if (highCount > 0) {
+      healthEmoji = "🟠";
+      healthLabel = "Significant Issues Found";
+    } else if (medCount > 0) {
+      healthEmoji = "🟡";
+      healthLabel = "Moderate Concerns";
+    } else {
+      healthEmoji = "🟢";
+      healthLabel = "Generally Healthy";
+    }
+
+    const lines: string[] = [];
+
+    // ── Header ──
+    lines.push(`## ${healthEmoji} Executive Summary`);
+    lines.push("");
+    lines.push(`**Overall Assessment: ${healthLabel}**`);
+    lines.push("");
+
+    // ── One-liner overview ──
+    const parts: string[] = [];
+    if (criticalCount > 0) parts.push(`${criticalCount} critical`);
+    if (highCount > 0) parts.push(`${highCount} high`);
+    if (medCount > 0) parts.push(`${medCount} medium`);
+    if (lowCount > 0) parts.push(`${lowCount} low`);
+    if (infoCount > 0) parts.push(`${infoCount} informational`);
+    lines.push(`The review identified **${findings.length} finding${findings.length !== 1 ? "s" : ""}** across the codebase — ${parts.join(", ")}.`);
+    lines.push("");
+
+    // ── Category-level plain-English summaries ──
+    const archFindings = byCategory["architecture"] || [];
+    const secFindings = byCategory["security"] || [];
+    const bugFindings = byCategory["bugs"] || [];
+
+    if (archFindings.length > 0 || secFindings.length > 0 || bugFindings.length > 0) {
+      lines.push("---");
+      lines.push("");
+    }
+
+    if (archFindings.length > 0) {
+      const archCritHigh = archFindings.filter(f => f.severity === "critical" || f.severity === "high").length;
+      lines.push(`### 🏛 Architecture — ${archFindings.length} finding${archFindings.length !== 1 ? "s" : ""}`);
+      lines.push("");
+      if (archCritHigh > 0) {
+        lines.push(`The architecture agent found **${archCritHigh} serious concern${archCritHigh !== 1 ? "s" : ""}** that could affect maintainability and scalability. Key areas include:`);
+      } else {
+        lines.push("The architecture agent found some areas that could be improved:");
+      }
+      lines.push("");
+      // List just the titles — keep it scannable, no code
+      for (const f of archFindings.slice(0, 8)) {
+        const sevIcon = f.severity === "critical" ? "🔴" : f.severity === "high" ? "🟠" : f.severity === "medium" ? "🟡" : "🔵";
+        lines.push(`- ${sevIcon} **${f.title}** — ${f.description.split(/[.\n]/)[0].trim()}`);
+      }
+      if (archFindings.length > 8) {
+        lines.push(`- *...and ${archFindings.length - 8} more*`);
+      }
+      lines.push("");
+    }
+
+    if (secFindings.length > 0) {
+      const secCritHigh = secFindings.filter(f => f.severity === "critical" || f.severity === "high").length;
+      lines.push(`### 🔒 Security — ${secFindings.length} finding${secFindings.length !== 1 ? "s" : ""}`);
+      lines.push("");
+      if (secCritHigh > 0) {
+        lines.push(`The security agent identified **${secCritHigh} high-priority vulnerability${secCritHigh !== 1 ? "ies" : "y"}** that should be addressed before deployment:`);
+      } else {
+        lines.push("The security agent identified some areas to harden:");
+      }
+      lines.push("");
+      for (const f of secFindings.slice(0, 8)) {
+        const sevIcon = f.severity === "critical" ? "🔴" : f.severity === "high" ? "🟠" : f.severity === "medium" ? "🟡" : "🔵";
+        lines.push(`- ${sevIcon} **${f.title}** — ${f.description.split(/[.\n]/)[0].trim()}`);
+      }
+      if (secFindings.length > 8) {
+        lines.push(`- *...and ${secFindings.length - 8} more*`);
+      }
+      lines.push("");
+    }
+
+    if (bugFindings.length > 0) {
+      lines.push(`### 🐛 Bugs — ${bugFindings.length} finding${bugFindings.length !== 1 ? "s" : ""}`);
+      lines.push("");
+      lines.push("Potential bugs and reliability issues were detected:");
+      lines.push("");
+      for (const f of bugFindings.slice(0, 8)) {
+        const sevIcon = f.severity === "critical" ? "🔴" : f.severity === "high" ? "🟠" : f.severity === "medium" ? "🟡" : "🔵";
+        lines.push(`- ${sevIcon} **${f.title}** — ${f.description.split(/[.\n]/)[0].trim()}`);
+      }
+      if (bugFindings.length > 8) {
+        lines.push(`- *...and ${bugFindings.length - 8} more*`);
+      }
+      lines.push("");
+    }
+
+    // ── Recommended next steps ──
+    lines.push("---");
+    lines.push("");
+    lines.push("### 💡 What to Do Next");
+    lines.push("");
+
+    let stepNum = 1;
+    if (criticalCount > 0) {
+      lines.push(`${stepNum}. **Fix critical issues first** — these represent the highest risk to your application`);
+      stepNum++;
+    }
+    if (highCount > 0) {
+      lines.push(`${stepNum}. **Address high-severity findings** — resolve these before merging or deploying`);
+      stepNum++;
+    }
+    if (medCount > 0) {
+      lines.push(`${stepNum}. **Review medium-severity items** — fix now or create tickets to track them`);
+      stepNum++;
+    }
+    if (criticalCount === 0 && highCount === 0 && medCount === 0) {
+      lines.push(`${stepNum}. **Low-risk findings only** — review at your discretion, no blockers detected`);
+      stepNum++;
+    }
+    lines.push(`${stepNum}. Switch to the **Findings** tab for details on each issue`);
+    stepNum++;
+    lines.push(`${stepNum}. Use **Explain** on any finding for a deep-dive, or **Verify** to challenge it`);
+    lines.push("");
+
+    // Emit as a standalone text block (no agent tag = appears after all agent cards)
+    this._emitBlock({
+      kind: "text",
+      id: `summary-${++this._blockCounter}`,
+      text: lines.join("\n"),
+      format: "markdown",
+      timestamp: new Date().toISOString(),
+    });
   }
 
   // ── Chat Query Flow (Real-time Streaming) ──
@@ -682,6 +1038,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     const messageId = `chat-${Date.now()}`;
     this._activeChatMessageId = messageId;
     this._chatLastRunningToolBlockId = null;
+    this._chatStreamingTextBlockId = null;
+    this._chatStreamingTextAccum = "";
+    this._chatStreamingThinkingBlockId = null;
+    this._chatStreamingThinkingAccum = "";
 
     // Create the streaming assistant message
     this.postMessage({ type: "chatResponseStart", messageId });
@@ -712,6 +1072,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     } finally {
       this._activeChatMessageId = null;
       this._chatLastRunningToolBlockId = null;
+      this._chatStreamingTextBlockId = null;
+      this._chatStreamingTextAccum = "";
+      this._chatStreamingThinkingBlockId = null;
+      this._chatStreamingThinkingAccum = "";
     }
   }
 
@@ -729,25 +1093,31 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     }
     if (!finding) return;
 
-    const evidenceText = finding.evidence
-      .map((ev) => `\n**${ev.filePath}** (lines ${ev.startLine}-${ev.endLine}):\n\`\`\`\n${ev.snippet}\n\`\`\``)
+    // Build an investigation prompt so the LLM actively researches the finding
+    const evidenceSummary = finding.evidence
+      .map((ev) => `  - ${ev.filePath}:${ev.startLine}-${ev.endLine}`)
       .join("\n");
 
-    const explanation = [
-      `**${finding.title}**`, ``,
+    const query = [
+      `Explain this code review finding in detail. Investigate the code and provide a thorough analysis:`,
+      ``,
+      `**Finding:** ${finding.title}`,
       `**Severity:** ${finding.severity.toUpperCase()} | **Confidence:** ${Math.round(finding.confidence * 100)}%`,
       `**Agent:** ${finding.agent} | **Category:** ${finding.category}`,
-      ``, finding.description, ``,
-      `**Evidence:**`, evidenceText,
+      `**Description:** ${finding.description}`,
+      ``,
+      `**Evidence locations:**`,
+      evidenceSummary,
+      ``,
+      `Please read the relevant files, understand the context, and explain:`,
+      `1. What exactly is the issue and why it matters`,
+      `2. The potential impact and risk`,
+      `3. Whether this is a true positive or could be a false positive`,
+      `4. Suggested fix or mitigation`,
     ].join("\n");
 
-    const messageId = `explain-${Date.now()}`;
-    this.postMessage({ type: "chatResponseStart", messageId });
-    this.postMessage({
-      type: "chatResponseBlock", messageId,
-      block: { kind: "text", id: `exp-${++this._blockCounter}`, text: explanation, format: "markdown", timestamp: new Date().toISOString() },
-    });
-    this.postMessage({ type: "chatResponseEnd", messageId });
+    // Trigger an actual chat query — the LLM will investigate with tool calls
+    await this._handleChatQuery(query);
   }
 
   // ── Send to Validator (Real Validator Agent — Real-time Streaming) ──
@@ -773,6 +1143,13 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     const messageId = `val-${Date.now()}`;
     this._activeValidateMessageId = messageId;
     this._validateLastRunningToolBlockId = null;
+    this._validateStreamingTextBlockId = null;
+    this._validateStreamingTextAccum = "";
+    this._validateStreamingThinkingBlockId = null;
+    this._validateStreamingThinkingAccum = "";
+
+    // Switch to chat tab so user can see validation in real-time
+    this.postMessage({ type: "switchTab", tab: "chat" });
 
     this.postMessage({ type: "chatResponseStart", messageId });
 
@@ -833,6 +1210,15 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       });
 
       this.postMessage({ type: "chatResponseEnd", messageId });
+
+      // Send verdict back to FindingCard so it can update its badge
+      this.postMessage({
+        type: "findingValidated",
+        findingId,
+        verdict: result.verdict,
+        reasoning: result.reasoning,
+      });
+
       vscode.window.showInformationMessage(`ChainReview: Validator verdict — ${result.verdict}`);
     } catch (err: any) {
       this.postMessage({
@@ -840,9 +1226,21 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         block: { kind: "text", id: `val-${++this._blockCounter}`, text: `Validation error: ${err.message}`, format: "plain", timestamp: new Date().toISOString() },
       });
       this.postMessage({ type: "chatResponseEnd", messageId });
+
+      // On error, send uncertain verdict so the card stops showing "verifying"
+      this.postMessage({
+        type: "findingValidated",
+        findingId,
+        verdict: "uncertain",
+        reasoning: `Validation failed: ${err.message}`,
+      });
     } finally {
       this._activeValidateMessageId = null;
       this._validateLastRunningToolBlockId = null;
+      this._validateStreamingTextBlockId = null;
+      this._validateStreamingTextAccum = "";
+      this._validateStreamingThinkingBlockId = null;
+      this._validateStreamingThinkingAccum = "";
     }
   }
 

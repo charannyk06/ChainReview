@@ -126,8 +126,9 @@ export class CrpClient {
               agent: "system",
               timestamp: new Date().toISOString(),
               data: {
-                kind: "agent_text",
-                text: `⚠ Server: ${trimmed}`,
+                kind: "pipeline_step",
+                step: "Server",
+                warning: trimmed,
               },
             },
           });
