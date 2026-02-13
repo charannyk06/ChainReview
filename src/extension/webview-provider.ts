@@ -1103,6 +1103,27 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     }
     if (!finding) return;
 
+    // Switch to chat tab so user sees the conversation
+    this.postMessage({ type: "switchTab", tab: "chat" });
+
+    // Inject a user message showing the explain request
+    const evidenceList = finding.evidence
+      .map((ev) => `- \`${ev.filePath}\` (lines ${ev.startLine}–${ev.endLine})`)
+      .join("\n");
+    const userTicket = [
+      `✨ **Explain Finding**`,
+      ``,
+      `**${finding.title}**`,
+      `**Severity:** ${finding.severity.toUpperCase()} · **Category:** ${finding.category} · **Confidence:** ${Math.round(finding.confidence * 100)}%`,
+      ``,
+      `${finding.description}`,
+      ``,
+      `**Evidence:**`,
+      evidenceList,
+    ].join("\n");
+
+    this.postMessage({ type: "injectUserMessage", text: userTicket });
+
     // Build an investigation prompt so the LLM actively researches the finding
     const evidenceSummary = finding.evidence
       .map((ev) => `  - ${ev.filePath}:${ev.startLine}-${ev.endLine}`)
@@ -1401,6 +1422,12 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     );
 
     const prompt = commentLines.join("\n");
+
+    if (agentId === "config-more") {
+      // Open ChainReview settings
+      vscode.commands.executeCommand("workbench.action.openSettings", "chainreview");
+      return;
+    }
 
     if (agentId === "export-markdown") {
       // Save finding as a markdown file in .chainreview/

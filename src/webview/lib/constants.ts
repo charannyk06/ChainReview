@@ -92,7 +92,7 @@ export const CATEGORY_CONFIG: Record<
   },
 };
 
-// Coding agents for "Send to Agent" dropdown
+// Coding agents for "Handoff To" dropdown
 export const CODING_AGENTS: Array<{
   id: string;
   label: string;
@@ -101,6 +101,12 @@ export const CODING_AGENTS: Array<{
   suffix?: string;
   separator?: boolean;
 }> = [
+  {
+    id: "config-more",
+    label: "Config more...",
+    icon: "",
+    color: "text-neutral-400",
+  },
   {
     id: "kilo-code",
     label: "Kilo Code",
@@ -121,19 +127,6 @@ export const CODING_AGENTS: Array<{
     color: "text-emerald-300",
     suffix: ".sh",
   },
-  {
-    id: "claude-code",
-    label: "Claude Code",
-    icon: "https://cdn.simpleicons.org/anthropic/white",
-    color: "text-orange-300",
-    suffix: ".sh",
-  },
-  {
-    id: "cursor",
-    label: "Cursor",
-    icon: "https://cursor.sh/brand/icon.svg",
-    color: "text-blue-300",
-  },
   // ── Separator ──
   {
     id: "__sep__",
@@ -153,6 +146,12 @@ export const CODING_AGENTS: Array<{
     label: "Export as Markdown",
     icon: "",
     color: "text-neutral-400",
+  },
+  {
+    id: "cursor",
+    label: "Cursor",
+    icon: "https://cursor.sh/brand/icon.svg",
+    color: "text-blue-300",
   },
 ];
 

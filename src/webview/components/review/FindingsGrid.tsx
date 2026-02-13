@@ -7,6 +7,7 @@ import {
   XIcon,
   ClipboardCopyIcon,
   ExternalLinkIcon,
+  SettingsIcon,
   CheckCircleIcon,
   SendIcon,
   ShieldAlertIcon,
@@ -307,6 +308,8 @@ export function FindingsGrid({
                                     (e.target as HTMLImageElement).style.display = "none";
                                   }}
                                 />
+                              ) : agent.id === "config-more" ? (
+                                <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
                               ) : agent.id === "clipboard" ? (
                                 <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
                               ) : agent.id === "export-markdown" ? (

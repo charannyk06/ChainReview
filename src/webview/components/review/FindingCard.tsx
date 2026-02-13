@@ -15,6 +15,7 @@ import {
   ExternalLinkIcon,
   LoaderIcon,
   CircleIcon,
+  SunIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AGENT_CONFIG, SEVERITY_CONFIG, CATEGORY_CONFIG, CODING_AGENTS } from "@/lib/constants";
@@ -299,7 +300,7 @@ export function FindingCard({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-5 pb-5 space-y-4">
+            <div className="px-5 pb-5 space-y-4" style={{ paddingLeft: 'calc(20px + 10px + 0.75rem)' }}>
               {/* Evidence snippets with proper file headers */}
               {finding.evidence.map((ev, i) => (
                 <div
@@ -378,15 +379,15 @@ export function FindingCard({
 
                 {/* Secondary actions row */}
                 <div className="flex gap-2 items-center flex-wrap">
-                  {/* Send to Agent — dropdown trigger */}
+                  {/* Handoff To — dropdown trigger */}
                   {onSendToCodingAgent && (
                     <div className="relative" ref={handoffRef}>
                       <button
                         onClick={() => setHandoffOpen((p) => !p)}
                         className="cr-btn cr-btn-orange"
                       >
-                        <ExternalLinkIcon className="size-3.5" />
-                        Send to Agent
+                        <SunIcon className="size-3.5" />
+                        Handoff To
                         <ChevronDownIcon className={cn(
                           "size-3 transition-transform",
                           handoffOpen && "rotate-180"
@@ -430,6 +431,8 @@ export function FindingCard({
                                         (e.target as HTMLImageElement).style.display = "none";
                                       }}
                                     />
+                                  ) : agent.id === "config-more" ? (
+                                    <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
                                   ) : agent.id === "clipboard" ? (
                                     <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
                                   ) : agent.id === "export-markdown" ? (

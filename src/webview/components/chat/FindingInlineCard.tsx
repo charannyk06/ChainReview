@@ -311,6 +311,8 @@ export function FindingInlineCard({
                                         (e.target as HTMLImageElement).style.display = "none";
                                       }}
                                     />
+                                  ) : agent.id === "config-more" ? (
+                                    <SettingsIcon className="size-4 text-neutral-400" />
                                   ) : agent.id === "clipboard" ? (
                                     <ClipboardCopyIcon className="size-4 text-neutral-400" />
                                   ) : agent.id === "export-markdown" ? (
