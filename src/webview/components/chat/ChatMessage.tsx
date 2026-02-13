@@ -85,6 +85,10 @@ export function ChatMessage({
 
   // User messages — clean bubble aligned right
   if (message.role === "user") {
+    const userText =
+      message.blocks[0]?.kind === "text" ? message.blocks[0].text : "";
+    const hasMarkdown = /[*_`#\-|]/.test(userText);
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 4 }}
@@ -94,11 +98,15 @@ export function ChatMessage({
       >
         <div className="flex justify-end">
           <div className="max-w-[85%] rounded-xl bg-[var(--cr-accent-muted)] border border-[var(--cr-accent)]/15 px-3.5 py-2">
-            <p className="text-[12px] text-[var(--cr-text-primary)] leading-relaxed">
-              {message.blocks[0]?.kind === "text"
-                ? message.blocks[0].text
-                : ""}
-            </p>
+            {hasMarkdown ? (
+              <div className="text-[12px] text-[var(--cr-text-primary)] leading-relaxed [&_h1]:text-[13px] [&_h2]:text-[12.5px] [&_h3]:text-[12px] [&_p]:text-[12px] [&_li]:text-[12px] [&_code]:text-[11px]">
+                <MarkdownBlock text={userText} />
+              </div>
+            ) : (
+              <p className="text-[12px] text-[var(--cr-text-primary)] leading-relaxed">
+                {userText}
+              </p>
+            )}
           </div>
         </div>
       </motion.div>
