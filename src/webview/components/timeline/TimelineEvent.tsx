@@ -56,7 +56,7 @@ const HIDDEN_DATA_KEYS = new Set([
 
 /** Extract a meaningful summary line from the event data */
 function getEventSummary(event: AuditEvent): string | null {
-  const data = event.data;
+  const data = event.data ?? {};
 
   switch (event.type) {
     case "agent_started":
@@ -69,8 +69,15 @@ function getEventSummary(event: AuditEvent): string | null {
     case "patch_proposed":
       return (data?.filePath as string) || (data?.description as string) || null;
     case "patch_validated": {
-      const validated = data?.validated;
-      return validated ? "Patch validated successfully" : "Patch validation failed";
+      const original = data?.originalConfidence as number | undefined;
+      const validated = data?.validatedConfidence as number | undefined;
+      const title = data?.title as string | undefined;
+      if (original != null && validated != null) {
+        const delta = validated - original;
+        const arrow = delta > 0 ? "+" : "";
+        return `${title ? title + " — " : ""}Confidence: ${(original * 100).toFixed(0)}% → ${(validated * 100).toFixed(0)}% (${arrow}${(delta * 100).toFixed(0)}%)`;
+      }
+      return title ? `Validated: ${title}` : "Finding validated";
     }
     case "human_accepted":
     case "human_rejected":
@@ -94,8 +101,8 @@ export function TimelineEvent({ event, index }: TimelineEventProps) {
   const AgentIcon = event.agent ? AGENT_ICONS[event.agent] : null;
   const summary = getEventSummary(event);
 
-  // Filter event data to only show useful fields
-  const displayData = Object.entries(event.data).filter(
+  // Filter event data to only show useful fields (guard against undefined/null data)
+  const displayData = Object.entries(event.data ?? {}).filter(
     ([key]) => !HIDDEN_DATA_KEYS.has(key)
   );
 

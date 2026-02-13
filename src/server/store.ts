@@ -119,9 +119,11 @@ export function createStore(dbPath: string): Store {
     return new Date().toISOString();
   }
 
-  function safeJsonParse<T>(json: string, fallback: T): T {
+  function safeJsonParse<T>(json: string | null | undefined, fallback: T): T {
+    if (json == null) return fallback;
     try {
-      return JSON.parse(json) as T;
+      const parsed = JSON.parse(json);
+      return parsed ?? fallback;
     } catch {
       return fallback;
     }
