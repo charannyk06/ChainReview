@@ -184,15 +184,16 @@ export async function codePatternScan(args: {
   }
 
   // Build args: when using --pattern, don't pass --config
-  const semgrepArgs: string[] = ["scan", "--json", "--quiet"];
+  const semgrepArgs: string[] = ["scan", "--json", "--quiet", "--no-git-ignore"];
 
   if (args.pattern) {
     semgrepArgs.push("--pattern", args.pattern, "--lang", "ts");
   } else {
-    // Use p/typescript by default — "auto" downloads ALL rules from the
-    // Semgrep registry on every run which takes 60-120s and blocks the pipeline.
-    // p/typescript is faster and focused on TypeScript issues.
-    semgrepArgs.push("--config", args.config ?? "p/typescript");
+    // Registry configs like "p/typescript" require network + login on newer Semgrep versions.
+    // Use "auto" for local analysis (uses built-in rules without registry access),
+    // or fall back to the user-provided config.
+    const config = args.config ?? "auto";
+    semgrepArgs.push("--config", config);
   }
 
   // Restrict to TypeScript/JavaScript files only — Semgrep crashes on
@@ -224,16 +225,24 @@ export async function codePatternScan(args: {
 function runSemgrep(bin: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const { execFile: exec } = require("child_process");
+    // Ensure child process inherits augmented PATH so semgrep can find its dependencies
+    const env = { ...process.env };
+    const currentPath = env.PATH || "";
+    if (!currentPath.includes("/opt/homebrew/bin")) {
+      env.PATH = `/opt/homebrew/bin:/usr/local/bin:${currentPath}`;
+    }
     const child = exec(
       bin,
       args,
-      { maxBuffer: 20 * 1024 * 1024, timeout: 45000 },
-      (err: any, stdout: string, _stderr: string) => {
+      { maxBuffer: 20 * 1024 * 1024, timeout: 45000, env },
+      (err: any, stdout: string, stderr: string) => {
         // Semgrep returns exit code 1 when findings are present — that's normal
         if (stdout && stdout.trim().startsWith("{")) {
           resolve(stdout);
         } else if (err) {
-          reject(err);
+          // Include stderr in error for better debugging
+          const errMsg = stderr ? `${err.message}\nStderr: ${stderr.slice(0, 500)}` : err.message;
+          reject(new Error(errMsg));
         } else {
           resolve(stdout || "{}");
         }

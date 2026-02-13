@@ -30,6 +30,8 @@ const ALLOWED_COMMANDS = new Set([
   "cut",
   "awk",
   "sed",
+  "semgrep", // Allow agents to invoke semgrep directly
+  "rg",      // ripgrep for agents
 ]);
 
 // Dangerous git subcommands that modify state
@@ -120,6 +122,13 @@ export async function execCommand(args: {
 
   const cwd = currentRepoPath || process.cwd();
 
+  // Augment PATH for child processes (homebrew tools, semgrep, rg, etc.)
+  const env = { ...process.env };
+  const currentPath = env.PATH || "";
+  if (!currentPath.includes("/opt/homebrew/bin")) {
+    env.PATH = `/opt/homebrew/bin:/usr/local/bin:${currentPath}`;
+  }
+
   try {
     const output = execSync(command, {
       cwd,
@@ -127,6 +136,7 @@ export async function execCommand(args: {
       maxBuffer: 1024 * 1024, // 1MB
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
+      env,
     });
 
     // Truncate large outputs
