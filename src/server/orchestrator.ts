@@ -4,6 +4,7 @@ import { repoDiff } from "./tools/repo";
 import { runArchitectureAgent } from "./agents/architecture";
 import { runSecurityAgent } from "./agents/security";
 import { runValidatorChallenge } from "./agents/validator";
+import { runExplainerAgent, type Explanation } from "./agents/explainer";
 import type {
   Store,
 } from "./store";
@@ -18,6 +19,7 @@ import type {
 
 export interface ReviewResult {
   runId: string;
+  explanations?: Explanation[];
   findings: Finding[];
   events: AuditEvent[];
   status: "complete" | "error";
@@ -356,6 +358,54 @@ export async function runReview(
       }
     }
 
+    // ── Step 8: Explainer Agent — Generate Human-Readable Explanations ──
+    // The explainer transforms technical findings into clear, actionable
+    // explanations for developers and stakeholders.
+    let explanations: Explanation[] = [];
+    if (allFindings.length > 0 && !signal.aborted) {
+      emitEvent("agent_started", "explainer", {
+        kind: "agent_lifecycle",
+        message: `Explainer Agent generating explanations for ${allFindings.length} finding(s)...`,
+      });
+
+      try {
+        explanations = await runExplainerAgent(
+          allFindings,
+          runId,
+          {
+            onEvent: (event) => callbacks.onEvent(event),
+            onExplanation: (explanation) => {
+              emitEvent("finding_explained", "explainer", {
+                findingId: explanation.findingId,
+                summary: explanation.summary,
+                impact: explanation.whyItMatters.impact,
+              });
+            },
+            onThinking: (text) => {
+              callbacks.onText("explainer", text, false);
+            },
+            onToolCall: (name, input) => {
+              callbacks.onToolCall("explainer", name, input as Record<string, unknown>);
+            },
+          },
+          signal
+        );
+
+        emitEvent("agent_completed", "explainer", {
+          kind: "agent_lifecycle",
+          message: `Explainer completed — generated ${explanations.length} explanation(s)`,
+        });
+      } catch (err: any) {
+        if (!signal.aborted) {
+          emitEvent("evidence_collected", "explainer", {
+            kind: "agent_lifecycle",
+            event: "error",
+            error: `Explainer agent failed: ${err.message}`,
+          });
+        }
+      }
+    }
+
     // ── Complete ──
     activeReviewAbort = null;
     store.completeRun(runId, "complete");
@@ -364,6 +414,7 @@ export async function runReview(
     return {
       runId,
       findings: allFindings,
+      explanations,
       events,
       status: "complete",
     };
