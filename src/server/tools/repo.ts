@@ -1,12 +1,35 @@
 import * as fs from "fs";
 import * as path from "path";
-import { execFile } from "child_process";
+import { execFile, execSync } from "child_process";
 import { promisify } from "util";
 import simpleGit from "simple-git";
 import { redactSecrets } from "./redact";
 import { setExecRepoPath } from "./exec";
 
 const execFileAsync = promisify(execFile);
+
+/** Find the ripgrep (rg) binary, checking common paths and homebrew */
+function findRgBinary(): string | null {
+  const candidates = [
+    "/opt/homebrew/bin/rg",
+    "/usr/local/bin/rg",
+    path.join(process.env.HOME || "", ".cargo/bin/rg"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  // Last resort: check PATH (may not work inside VS Code extension host)
+  try {
+    const result = execSync("which rg", { encoding: "utf-8", timeout: 3000 }).trim();
+    if (result && fs.existsSync(result)) return result;
+  } catch {
+    // Not on PATH
+  }
+
+  return null;
+}
 
 let activeRepoPath: string | null = null;
 
@@ -153,22 +176,41 @@ export async function repoSearch(args: {
   const repoPath = getActiveRepoPath();
   const maxResults = args.maxResults ?? 50;
 
+  // Resolve the rg binary — it may not be on PATH inside VS Code extension host
+  const rgBin = findRgBinary();
+
+  if (rgBin) {
+    return _searchWithRg(rgBin, args.pattern, repoPath, maxResults, args.glob);
+  }
+
+  // Fallback: use grep -r if rg is not installed
+  return _searchWithGrep(args.pattern, repoPath, maxResults, args.glob);
+}
+
+/** Search using ripgrep (preferred — fast, JSON output) */
+async function _searchWithRg(
+  rgBin: string,
+  pattern: string,
+  repoPath: string,
+  maxResults: number,
+  glob?: string
+): Promise<{ matches: { file: string; line: number; text: string }[]; totalMatches: number }> {
   const rgArgs = [
     "--json",
-    "--max-count",
-    String(maxResults),
+    "--max-count", String(maxResults),
     "--no-heading",
   ];
 
-  if (args.glob) {
-    rgArgs.push("--glob", args.glob);
+  if (glob) {
+    rgArgs.push("--glob", glob);
   }
 
-  rgArgs.push(args.pattern, repoPath);
+  rgArgs.push(pattern, repoPath);
 
   try {
-    const { stdout } = await execFileAsync("rg", rgArgs, {
+    const { stdout } = await execFileAsync(rgBin, rgArgs, {
       maxBuffer: 10 * 1024 * 1024,
+      timeout: 15000,
     });
 
     const matches: { file: string; line: number; text: string }[] = [];
@@ -192,14 +234,74 @@ export async function repoSearch(args: {
     return { matches, totalMatches: matches.length };
   } catch (err: any) {
     // rg returns exit code 1 when no matches found
-    if (err.code === 1) {
-      return { matches: [], totalMatches: 0 };
-    }
-    // If rg is not installed, fall back to basic grep
-    if (err.code === "ENOENT") {
+    if (err.code === 1 || err.status === 1) {
       return { matches: [], totalMatches: 0 };
     }
     throw err;
+  }
+}
+
+/** Fallback search using grep -rn (slower but universally available) */
+async function _searchWithGrep(
+  pattern: string,
+  repoPath: string,
+  maxResults: number,
+  glob?: string
+): Promise<{ matches: { file: string; line: number; text: string }[]; totalMatches: number }> {
+  try {
+    // Note: grep --max-count is per-file, not global total. We enforce
+    // the global limit in the result-parsing loop below.
+    const grepArgs = ["-rn"];
+
+    // Convert glob to grep --include patterns
+    if (glob) {
+      grepArgs.push("--include=" + glob);
+    } else {
+      // Default to TS/JS files
+      grepArgs.push("--include=*.ts", "--include=*.tsx", "--include=*.js", "--include=*.jsx");
+    }
+
+    // Exclude common non-source dirs
+    grepArgs.push("--exclude-dir=node_modules", "--exclude-dir=dist", "--exclude-dir=.git", "--exclude-dir=coverage");
+    grepArgs.push(pattern, repoPath);
+
+    const { stdout } = await execFileAsync("grep", grepArgs, {
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 15000,
+    });
+
+    const matches: { file: string; line: number; text: string }[] = [];
+
+    for (const line of stdout.split("\n")) {
+      if (!line.trim()) continue;
+      // grep -rn output: /path/to/file:linenum:matched text
+      const colonIdx = line.indexOf(":");
+      if (colonIdx < 0) continue;
+      const filePart = line.substring(0, colonIdx);
+      const rest = line.substring(colonIdx + 1);
+      const colonIdx2 = rest.indexOf(":");
+      if (colonIdx2 < 0) continue;
+      const lineNum = parseInt(rest.substring(0, colonIdx2), 10);
+      const text = rest.substring(colonIdx2 + 1).trim();
+
+      if (!isNaN(lineNum)) {
+        matches.push({
+          file: path.relative(repoPath, filePart),
+          line: lineNum,
+          text: redactSecrets(text),
+        });
+      }
+
+      if (matches.length >= maxResults) break;
+    }
+
+    return { matches, totalMatches: matches.length };
+  } catch (err: any) {
+    // grep returns exit code 1 when no matches found
+    if (err.code === 1 || err.status === 1) {
+      return { matches: [], totalMatches: 0 };
+    }
+    return { matches: [], totalMatches: 0 };
   }
 }
 
