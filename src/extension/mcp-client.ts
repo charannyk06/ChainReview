@@ -113,7 +113,25 @@ export class CrpClient {
           this._onStreamEvent(parsed);
         }
       } catch {
-        // Not JSON or not our event — ignore (normal stderr output)
+        // Non-JSON stderr output — forward ChainReview errors as stream events
+        // so they're visible in the webview. This catches API errors, model errors,
+        // and other server-side failures that would otherwise be silently dropped.
+        if (trimmed.includes("ChainReview") && this._onStreamEvent) {
+          this._onStreamEvent({
+            __crp_stream: true,
+            type: "event",
+            event: {
+              id: `stderr-${Date.now()}`,
+              type: "evidence_collected",
+              agent: "system",
+              timestamp: new Date().toISOString(),
+              data: {
+                kind: "agent_text",
+                text: `⚠ Server: ${trimmed}`,
+              },
+            },
+          });
+        }
       }
     }
   }

@@ -335,6 +335,21 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
           break;
         }
 
+        // Agent text output (analysis, reasoning, findings text)
+        if (kind === "agent_text") {
+          const text = data?.text as string;
+          if (text && text.trim().length > 0) {
+            this._emitBlock({
+              kind: "text",
+              id: `atx-${++this._blockCounter}`,
+              text,
+              format: "markdown",
+              timestamp: auditEvent.timestamp || new Date().toISOString(),
+            }, eventAgent);
+          }
+          break;
+        }
+
         // Agent thinking (extended thinking)
         if (kind === "agent_thinking") {
           const text = data?.text as string;
@@ -350,14 +365,23 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
           break;
         }
 
-        // Pipeline step progress — suppress [step] noise, only emit warnings
+        // Pipeline step progress — show status messages, not just warnings
         if (kind === "pipeline_step") {
           const warning = data?.warning as string;
+          const message = data?.message as string;
           if (warning) {
             this._emitBlock({
               kind: "text",
               id: `ps-${++this._blockCounter}`,
               text: `⚠ ${warning}`,
+              format: "plain",
+              timestamp: auditEvent.timestamp || new Date().toISOString(),
+            }, eventAgent);
+          } else if (message) {
+            this._emitBlock({
+              kind: "text",
+              id: `ps-${++this._blockCounter}`,
+              text: `📋 ${message}`,
               format: "plain",
               timestamp: auditEvent.timestamp || new Date().toISOString(),
             }, eventAgent);

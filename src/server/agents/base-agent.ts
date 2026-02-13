@@ -160,7 +160,11 @@ export async function runAgentLoop(
         // events via emitEvent(). Emitting here would create DUPLICATE events
         // in the timeline and duplicate tool_call blocks in the UI.
 
-        // Execute the tool
+        // Execute the tool via the agent's onToolCall wrapper.
+        // The wrapper in architecture.ts/security.ts already calls both
+        // callbacks.onToolCall (tool_call_start) and callbacks.onToolResult
+        // (tool_call_end), so we do NOT call opts.onToolResult here to avoid
+        // duplicate events in the UI timeline.
         try {
           const result = await opts.onToolCall(
             toolBlock.name,
@@ -169,17 +173,12 @@ export async function runAgentLoop(
           const resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
 
-          // Emit tool result event
-          opts.onToolResult?.(toolBlock.name, resultStr.slice(0, 300));
-
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolBlock.id,
             content: resultStr,
           });
         } catch (err: any) {
-          opts.onToolResult?.(toolBlock.name, `Error: ${err.message}`);
-
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolBlock.id,

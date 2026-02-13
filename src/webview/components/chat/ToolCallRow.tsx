@@ -41,7 +41,11 @@ const ICON_MAP: Record<ToolIcon, React.FC<{ className?: string }>> = {
   web: GlobeIcon,
 };
 
-const FILE_TOOLS = new Set(["crp.repo.file", "crp.repo.read_file", "read_file"]);
+// Both dot-names (MCP tools) and underscore-names (agent tools) for file reading
+const FILE_TOOLS = new Set([
+  "crp.repo.file", "crp.repo.read_file", "read_file",
+  "crp_repo_file", "crp_repo_read_file",
+]);
 
 function getFilePathFromArgs(args: Record<string, unknown>): string | null {
   if (typeof args.path === "string") return args.path;
