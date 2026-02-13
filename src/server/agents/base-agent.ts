@@ -25,6 +25,8 @@ export interface AgentLoopOptions {
   onEvent: (event: Omit<AuditEvent, "id" | "timestamp">) => void;
   maxTurns?: number;
   enableThinking?: boolean;
+  /** Override the model for this agent (default: claude-haiku-4-5-20251001) */
+  model?: string;
   /** AbortSignal for cancellation — when aborted, the agent loop stops immediately */
   signal?: AbortSignal;
 }
@@ -79,6 +81,9 @@ export async function runAgentLoop(
   // A safety ceiling of 200 prevents infinite loops but never constrains real analysis
   const maxTurns = opts.maxTurns ?? 200;
   const enableThinking = opts.enableThinking ?? true;
+  // Agents default to Haiku 4.5 for cost efficiency.
+  // Validator/orchestrator can override with Opus 4.6 for critical reasoning.
+  const model = opts.model ?? "claude-haiku-4-5-20251001";
 
   const messages: MessageParam[] = [
     {
@@ -103,7 +108,7 @@ export async function runAgentLoop(
 
     // Build request params with optional extended thinking
     const requestParams: Record<string, unknown> = {
-      model: "claude-sonnet-4-20250514",
+      model,
       max_tokens: enableThinking ? 16000 : 8192,
       system: opts.systemPrompt,
       tools: opts.tools,

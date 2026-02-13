@@ -297,6 +297,12 @@ server.tool(
   },
   async (args) => {
     const result = await chatQuery(args.query, args.runId, store, {
+      onTextDelta: (delta) => {
+        streamEvent({ type: "chatTextDelta", delta });
+      },
+      onThinkingDelta: (delta) => {
+        streamEvent({ type: "chatThinkingDelta", delta });
+      },
       onThinking: (text) => {
         streamEvent({ type: "chatThinking", text });
       },
@@ -324,6 +330,12 @@ server.tool(
   },
   async (args) => {
     const result = await validateFinding(args.findingJson, {
+      onTextDelta: (delta) => {
+        streamEvent({ type: "validateTextDelta", delta });
+      },
+      onThinkingDelta: (delta) => {
+        streamEvent({ type: "validateThinkingDelta", delta });
+      },
       onThinking: (text) => {
         streamEvent({ type: "validateThinking", text });
       },

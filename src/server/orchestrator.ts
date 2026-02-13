@@ -175,15 +175,23 @@ export async function runReview(
     // ── Shared agent callback factory ──
     const agentCallbacks = (agentName: "architecture" | "security" | "validator") => ({
       onText: (text: string) => {
+        // Strip the raw <findings> JSON block from displayed text — that data
+        // is already captured as structured findings and shown in the Findings
+        // tab.  Showing raw JSON inside the collapsible agent card is noisy.
+        let displayText = text
+          .replace(/<findings>[\s\S]*?<\/findings>/g, "")
+          .trim();
+        if (!displayText || displayText.length < 5) return; // skip empty leftovers
         emitEvent("evidence_collected", agentName, {
           kind: "agent_text",
-          text: text.slice(0, 500),
+          text: displayText.slice(0, 4000),
         });
       },
       onThinking: (text: string) => {
+        // Stream thinking with generous limit for meaningful context
         emitEvent("evidence_collected", agentName, {
           kind: "agent_thinking",
-          text: text.slice(0, 1000),
+          text: text.slice(0, 4000),
         });
       },
       onEvent: (event: Omit<AuditEvent, "id" | "timestamp">) => {
@@ -200,7 +208,7 @@ export async function runReview(
         emitEvent("evidence_collected", agentName, {
           kind: "tool_call_end",
           tool,
-          resultSummary: result.slice(0, 200),
+          resultSummary: result.slice(0, 500),
         });
       },
     });

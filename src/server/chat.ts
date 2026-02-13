@@ -5,6 +5,7 @@ import type {
   TextBlock,
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
+import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
 import { repoTree, repoFile, repoSearch } from "./tools/repo";
 import { execCommand } from "./tools/exec";
 import { webSearch } from "./tools/web";
@@ -12,7 +13,7 @@ import type { Store } from "./store";
 
 // ── Chat Query Agent ──
 // Agentic loop for answering user questions — streams text, thinking,
-// and tool calls in real-time via callbacks.
+// and tool calls in real-time via the Anthropic SDK streaming API.
 
 interface ChatToolCall {
   tool: string;
@@ -141,16 +142,93 @@ function buildContextPrompt(store: Store, runId: string): string {
 }
 
 // ── Streaming Chat Callbacks ──
-// Real-time callbacks for streaming text, thinking, and tool events
+// Real-time callbacks fired incrementally as tokens stream in via the SDK.
+// onTextDelta fires per-token for true real-time streaming.
+// onText fires once per text block with the complete text (for compatibility).
 
 export interface ChatCallbacks {
+  /** Fires per token/chunk as text streams in (true real-time) */
+  onTextDelta?: (delta: string) => void;
+  /** Fires once per complete text block after all deltas */
   onText?: (text: string) => void;
+  /** Fires per token/chunk as thinking streams in (true real-time) */
+  onThinkingDelta?: (delta: string) => void;
+  /** Fires once per complete thinking block */
   onThinking?: (text: string) => void;
+  /** Fires when a tool call starts (with tool name and args) */
   onToolCall?: (tool: string, args: Record<string, unknown>) => void;
+  /** Fires when a tool call finishes with its result */
   onToolResult?: (tool: string, result: string) => void;
 }
 
-// ── Main Chat Query (Streaming) ──
+// ── Helper: run a streaming API call and wire up SDK events to callbacks ──
+
+async function runStreamingTurn(
+  client: Anthropic,
+  requestParams: Record<string, unknown>,
+  callbacks?: ChatCallbacks,
+): Promise<{ assistantContent: any[]; stopReason: string | null }> {
+  const stream: MessageStream = client.messages.stream(requestParams as any);
+
+  // Track accumulated text per-block for the final onText callback
+  let currentTextContent = "";
+  let currentThinkingContent = "";
+  let inThinking = false;
+  let inText = false;
+
+  // Listen to SDK streaming events for true real-time delivery
+  stream.on("contentBlockStart", (event: any) => {
+    const block = event.contentBlock;
+    if (block?.type === "thinking") {
+      inThinking = true;
+      inText = false;
+      currentThinkingContent = "";
+    } else if (block?.type === "text") {
+      inText = true;
+      inThinking = false;
+      currentTextContent = "";
+    } else {
+      inText = false;
+      inThinking = false;
+    }
+  });
+
+  stream.on("contentBlockDelta", (event: any) => {
+    const delta = event.delta;
+    if (!delta) return;
+
+    if (delta.type === "thinking_delta" && delta.thinking) {
+      currentThinkingContent += delta.thinking;
+      callbacks?.onThinkingDelta?.(delta.thinking);
+    } else if (delta.type === "text_delta" && delta.text) {
+      currentTextContent += delta.text;
+      callbacks?.onTextDelta?.(delta.text);
+    }
+  });
+
+  stream.on("contentBlockStop", () => {
+    if (inThinking && currentThinkingContent) {
+      callbacks?.onThinking?.(currentThinkingContent);
+      currentThinkingContent = "";
+      inThinking = false;
+    }
+    if (inText && currentTextContent) {
+      callbacks?.onText?.(currentTextContent);
+      currentTextContent = "";
+      inText = false;
+    }
+  });
+
+  // Wait for the complete message to process tool_use blocks
+  const finalMessage = await stream.finalMessage();
+
+  return {
+    assistantContent: finalMessage.content as any[],
+    stopReason: finalMessage.stop_reason,
+  };
+}
+
+// ── Main Chat Query (True SDK Streaming) ──
 
 export async function chatQuery(
   query: string,
@@ -180,10 +258,9 @@ export async function chatQuery(
   while (turn < maxTurns) {
     turn++;
 
-    // Use streaming API for real-time text output
-    // Enable extended thinking for deeper reasoning
+    // Use the SDK streaming API for true real-time token delivery
     const requestParams: Record<string, unknown> = {
-      model: "claude-sonnet-4-20250514",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 16000,
       system: systemPrompt,
       tools: TOOLS,
@@ -194,14 +271,13 @@ export async function chatQuery(
       },
     };
 
-    let response;
+    let assistantContent: any[];
+    let stopReason: string | null;
+
     try {
-      // Use the standard create (non-streaming at Anthropic SDK level) but
-      // stream events to the extension via callbacks in real-time.
-      // The Anthropic SDK's stream() API returns events but we need the full
-      // response to continue the tool loop. So we use create() and emit
-      // content blocks as they arrive in the response.
-      response = await client.messages.create(requestParams as any);
+      const result = await runStreamingTurn(client, requestParams, callbacks);
+      assistantContent = result.assistantContent;
+      stopReason = result.stopReason;
     } catch (err: any) {
       console.error(`ChainReview [chat]: Anthropic API error on turn ${turn}: ${err.message}`);
       if (err.status) console.error(`  Status: ${err.status}`);
@@ -209,26 +285,17 @@ export async function chatQuery(
       throw err;
     }
 
-    const assistantContent = response.content;
     const toolResults: ToolResultBlockParam[] = [];
 
-    // Process each content block and stream events in real-time
+    // Process tool_use blocks (text/thinking already streamed via events)
     for (const block of assistantContent) {
-      if (block.type === "thinking") {
-        // Extended thinking block — stream to UI
-        const thinkingText = (block as any).thinking || "";
-        if (thinkingText) {
-          callbacks?.onThinking?.(thinkingText);
-        }
-      } else if (block.type === "text") {
-        const textBlock = block as TextBlock;
-        // Stream text to UI in real-time
-        callbacks?.onText?.(textBlock.text);
-        answer += textBlock.text;
+      if (block.type === "text") {
+        // Accumulate answer from final content (already streamed via deltas)
+        answer += (block as TextBlock).text;
       } else if (block.type === "tool_use") {
         const toolBlock = block as ToolUseBlock;
 
-        // Stream tool call start
+        // Emit tool call start
         callbacks?.onToolCall?.(toolBlock.name, toolBlock.input as Record<string, unknown>);
 
         try {
@@ -239,13 +306,13 @@ export async function chatQuery(
           const resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
 
-          // Stream tool result
-          callbacks?.onToolResult?.(toolBlock.name, resultStr.slice(0, 300));
+          // Emit tool result
+          callbacks?.onToolResult?.(toolBlock.name, resultStr.slice(0, 500));
 
           toolCalls.push({
             tool: toolBlock.name,
             args: toolBlock.input as Record<string, unknown>,
-            result: resultStr.slice(0, 500),
+            result: resultStr.slice(0, 1000),
           });
 
           toolResults.push({
@@ -254,7 +321,6 @@ export async function chatQuery(
             content: resultStr,
           });
         } catch (err: any) {
-          // Stream error result
           callbacks?.onToolResult?.(toolBlock.name, `Error: ${err.message}`);
 
           toolResults.push({
@@ -273,8 +339,8 @@ export async function chatQuery(
       }
     }
 
-    // If no tool use, we're done — the model has finished answering
-    if (response.stop_reason !== "tool_use") {
+    // If no tool use, we're done
+    if (stopReason !== "tool_use") {
       break;
     }
 
@@ -286,7 +352,7 @@ export async function chatQuery(
   return { answer, toolCalls };
 }
 
-// ── Validate Finding (Phase 6) ──
+// ── Validate Finding (True SDK Streaming) ──
 
 export async function validateFinding(
   findingJson: string,
@@ -327,7 +393,7 @@ Output your verdict in this format:
     turn++;
 
     const requestParams: Record<string, unknown> = {
-      model: "claude-sonnet-4-20250514",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 16000,
       system: systemPrompt,
       tools: validatorTools,
@@ -338,21 +404,24 @@ Output your verdict in this format:
       },
     };
 
-    const response = await client.messages.create(requestParams as any);
+    let assistantContent: any[];
+    let stopReason: string | null;
 
-    const assistantContent = response.content;
+    try {
+      const result = await runStreamingTurn(client, requestParams, callbacks);
+      assistantContent = result.assistantContent;
+      stopReason = result.stopReason;
+    } catch (err: any) {
+      console.error(`ChainReview [validate]: Anthropic API error on turn ${turn}: ${err.message}`);
+      throw err;
+    }
+
     const toolResults: ToolResultBlockParam[] = [];
 
+    // Process tool_use blocks (text/thinking already streamed via SDK events)
     for (const block of assistantContent) {
-      if (block.type === "thinking") {
-        const thinkingText = (block as any).thinking || "";
-        if (thinkingText) {
-          callbacks?.onThinking?.(thinkingText);
-        }
-      } else if (block.type === "text") {
-        const textBlock = block as TextBlock;
-        callbacks?.onText?.(textBlock.text);
-        answer += textBlock.text;
+      if (block.type === "text") {
+        answer += (block as TextBlock).text;
       } else if (block.type === "tool_use") {
         const toolBlock = block as ToolUseBlock;
 
@@ -366,12 +435,12 @@ Output your verdict in this format:
           const resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
 
-          callbacks?.onToolResult?.(toolBlock.name, resultStr.slice(0, 300));
+          callbacks?.onToolResult?.(toolBlock.name, resultStr.slice(0, 500));
 
           toolCalls.push({
             tool: toolBlock.name,
             args: toolBlock.input as Record<string, unknown>,
-            result: resultStr.slice(0, 500),
+            result: resultStr.slice(0, 1000),
           });
 
           toolResults.push({
@@ -398,7 +467,7 @@ Output your verdict in this format:
       }
     }
 
-    if (response.stop_reason !== "tool_use") {
+    if (stopReason !== "tool_use") {
       break;
     }
 
@@ -427,7 +496,7 @@ export async function generatePatchFix(args: {
   const client = new Anthropic();
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-haiku-4-5-20251001", // Haiku for fast patch generation
     max_tokens: 4096,
     system: `You are a code fix generator. Given a code snippet and a description of an issue, produce the fixed version of the code. Output ONLY the fixed code wrapped in <fixed_code> tags, followed by a brief explanation in <explanation> tags. Do not change anything unrelated to the fix.`,
     messages: [

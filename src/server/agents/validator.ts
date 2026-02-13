@@ -270,6 +270,7 @@ Set confidence to 0 for false positives. Add explanation for any changes.`;
     onThinking: callbacks.onThinking,
     onEvent: callbacks.onEvent,
     maxTurns: 50,
+    model: "claude-haiku-4-5-20251001", // Haiku 4.5 for all agents
     signal,
   });
 }
@@ -322,6 +323,7 @@ Use the crp_patch_validate tool with patchId "${patchId}" to validate.`;
     onText: callbacks.onText,
     onEvent: callbacks.onEvent,
     maxTurns: 20,
+    model: "claude-haiku-4-5-20251001", // Haiku 4.5 for all agents
   });
 
   // Check the patch validation status from the store
