@@ -80,7 +80,7 @@ export function PatchPreview({
             <div className="px-4 py-3 border-t border-[var(--cr-border)] flex gap-2 justify-end">
               <button
                 onClick={onDismiss}
-                className="btn btn-sm btn-secondary"
+                className="cr-btn cr-btn-secondary"
               >
                 Dismiss
               </button>
@@ -88,10 +88,10 @@ export function PatchPreview({
                 onClick={() => onApply?.(patch.id)}
                 disabled={!patch.validated}
                 className={cn(
-                  "btn btn-sm font-medium",
+                  "cr-btn",
                   patch.validated
-                    ? "bg-emerald-600 text-white hover:bg-emerald-500 border border-emerald-500/30"
-                    : "bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-muted)] cursor-not-allowed border border-[var(--cr-border-subtle)]"
+                    ? "cr-btn-emerald"
+                    : "bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-muted)] cursor-not-allowed border-[var(--cr-border-subtle)]"
                 )}
               >
                 Apply Patch

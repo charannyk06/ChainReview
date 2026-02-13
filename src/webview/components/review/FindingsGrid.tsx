@@ -16,12 +16,14 @@ import { cn } from "@/lib/utils";
 import { CODING_AGENTS } from "@/lib/constants";
 import { CategoryFilter } from "./CategoryFilter";
 import { FindingCard } from "./FindingCard";
-import type { Finding, FindingCategory } from "@/lib/types";
+import type { Finding, FindingCategory, ValidationResult } from "@/lib/types";
 
 type FilterOption = "all" | FindingCategory;
 
 interface FindingsGridProps {
   findings: Finding[];
+  validationVerdicts?: Record<string, ValidationResult>;
+  validatingFindings?: Set<string>;
   onProposePatch?: (findingId: string) => void;
   onMarkFalsePositive?: (findingId: string) => void;
   onSendToValidator?: (findingId: string) => void;
@@ -33,6 +35,8 @@ interface FindingsGridProps {
 
 export function FindingsGrid({
   findings,
+  validationVerdicts,
+  validatingFindings,
   onProposePatch,
   onMarkFalsePositive,
   onSendToValidator,
@@ -191,11 +195,12 @@ export function FindingsGrid({
                 }
               }}
               className={cn(
-                "inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg transition-all duration-150 cursor-pointer",
+                "cr-btn",
                 selectionMode
-                  ? "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
-                  : "text-[var(--cr-text-tertiary)] hover:text-[var(--cr-text-secondary)] hover:bg-[var(--cr-bg-hover)] border border-transparent"
+                  ? "cr-btn-indigo"
+                  : "cr-btn-ghost"
               )}
+              style={{ padding: "5px 10px" }}
             >
               <ListChecksIcon className="size-3.5" />
               {selectionMode ? "Exit" : "Select"}
@@ -204,7 +209,8 @@ export function FindingsGrid({
             {onReReview && (
               <button
                 onClick={onReReview}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg text-[var(--cr-text-tertiary)] hover:text-[var(--cr-text-secondary)] hover:bg-[var(--cr-bg-hover)] border border-transparent transition-all duration-150 cursor-pointer"
+                className="cr-btn cr-btn-ghost"
+                style={{ padding: "5px 10px" }}
               >
                 <RefreshCwIcon className="size-3.5" />
                 Re-Review
@@ -240,13 +246,15 @@ export function FindingsGrid({
 
               <button
                 onClick={selectAll}
-                className="text-[10px] px-2 py-1 rounded-md bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 transition-colors font-medium cursor-pointer"
+                className="cr-btn cr-btn-indigo"
+                style={{ padding: "3px 8px", fontSize: "10px" }}
               >
                 All
               </button>
               <button
                 onClick={deselectAll}
-                className="text-[10px] px-2 py-1 rounded-md bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-muted)] hover:bg-[var(--cr-bg-hover)] transition-colors font-medium cursor-pointer"
+                className="cr-btn cr-btn-ghost"
+                style={{ padding: "3px 8px", fontSize: "10px" }}
               >
                 None
               </button>
@@ -255,13 +263,8 @@ export function FindingsGrid({
                 <div className="relative ml-auto" ref={batchHandoffRef}>
                   <button
                     onClick={() => setBatchHandoffOpen((p) => !p)}
-                    className={cn(
-                      "inline-flex items-center gap-2 text-[11px] font-semibold px-3 py-1.5 rounded-lg",
-                      "bg-orange-500/15 text-orange-300",
-                      "border border-orange-500/25",
-                      "hover:bg-orange-500/25 hover:border-orange-400/40",
-                      "transition-all duration-150 cursor-pointer"
-                    )}
+                    className="cr-btn cr-btn-orange"
+                    style={{ padding: "5px 12px" }}
                   >
                     <SendIcon className="size-3" />
                     Send {selectedIds.size} to
@@ -322,8 +325,8 @@ export function FindingsGrid({
       </AnimatePresence>
 
       {/* ═══ Findings List ═══ */}
-      <div className="flex-1 overflow-y-auto px-3 pb-3 mt-2">
-        <div className="flex flex-col gap-2.5">
+      <div className="flex-1 overflow-y-auto px-3.5 pb-4 mt-2">
+        <div className="flex flex-col gap-3">
           {filtered.map((finding, i) => (
             <motion.div
               key={finding.id}
@@ -335,6 +338,8 @@ export function FindingsGrid({
                 finding={finding}
                 selected={selectedIds.has(finding.id)}
                 selectionMode={selectionMode}
+                validationResult={validationVerdicts?.[finding.id]}
+                isValidating={validatingFindings?.has(finding.id) ?? false}
                 onToggleSelect={toggleSelect}
                 onProposePatch={onProposePatch}
                 onMarkFalsePositive={onMarkFalsePositive}

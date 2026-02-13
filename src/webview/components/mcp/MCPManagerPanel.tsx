@@ -95,11 +95,8 @@ export function MCPManagerPanel({
               </div>
               <button
                 onClick={handleAddNew}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-lg transition-colors",
-                  "bg-indigo-500/15 text-indigo-300 border border-indigo-500/20",
-                  "hover:bg-indigo-500/25"
-                )}
+                className="cr-btn cr-btn-indigo"
+                style={{ padding: "4px 10px", fontSize: "10px" }}
               >
                 <PlusIcon className="size-3" />
                 Add
@@ -141,7 +138,7 @@ export function MCPManagerPanel({
                   </p>
                   <button
                     onClick={handleAddNew}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-lg hover:bg-indigo-500/30 transition-colors"
+                    className="cr-btn cr-btn-indigo"
                   >
                     <PlusIcon className="size-3" />
                     Add MCP Server

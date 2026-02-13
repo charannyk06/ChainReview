@@ -77,10 +77,11 @@ export function ChatInput({
             {onCancelReview && (
               <button
                 onClick={onCancelReview}
-                className="btn btn-xs btn-danger"
+                className="cr-btn cr-btn-red"
+                style={{ padding: "4px 10px", fontSize: "10px" }}
               >
                 <SquareIcon className="size-2.5 fill-current" />
-                <span>Stop</span>
+                Stop
               </button>
             )}
           </div>
@@ -136,20 +137,22 @@ export function ChatInput({
               <button
                 onClick={onStartRepoReview}
                 disabled={disabled}
-                className="btn btn-xs btn-ghost"
+                className="cr-btn cr-btn-ghost"
+                style={{ padding: "4px 10px", fontSize: "10px" }}
               >
                 <FolderSearchIcon className="size-3" />
-                <span>Review Repo</span>
+                Review Repo
               </button>
             )}
             {onStartDiffReview && !isReviewing && (
               <button
                 onClick={onStartDiffReview}
                 disabled={disabled}
-                className="btn btn-xs btn-ghost"
+                className="cr-btn cr-btn-ghost"
+                style={{ padding: "4px 10px", fontSize: "10px" }}
               >
                 <GitCompareArrowsIcon className="size-3" />
-                <span>Review Diff</span>
+                Review Diff
               </button>
             )}
           </div>

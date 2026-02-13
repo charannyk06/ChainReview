@@ -303,19 +303,14 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
       <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-[var(--cr-border)] shrink-0">
         <button
           onClick={onCancel}
-          className="px-3 py-1.5 text-[11px] text-[var(--cr-text-secondary)] hover:text-[var(--cr-text-primary)] bg-[var(--cr-bg-tertiary)] hover:bg-[var(--cr-bg-hover)] rounded-lg transition-colors"
+          className="cr-btn cr-btn-secondary"
         >
           Cancel
         </button>
         <button
           onClick={handleSave}
           disabled={!canSave}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-lg transition-colors",
-            canSave
-              ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/30"
-              : "bg-neutral-500/10 text-neutral-500 border border-neutral-500/20 cursor-not-allowed"
-          )}
+          className="cr-btn cr-btn-indigo"
         >
           <SaveIcon className="size-3" />
           {isEditing ? "Update" : "Add Server"}
