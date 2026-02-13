@@ -146,12 +146,22 @@ export interface FindingCardBlock {
   timestamp: string;
 }
 
+export interface StatusBlock {
+  kind: "status";
+  id: string;
+  text: string;
+  level: "info" | "warning" | "error" | "success";
+  step?: string;
+  timestamp: string;
+}
+
 export type ContentBlock =
   | TextBlock
   | ThinkingBlock
   | ToolCallBlock
   | SubAgentEventBlock
-  | FindingCardBlock;
+  | FindingCardBlock
+  | StatusBlock;
 
 // ── Conversation Messages (blocks-based) ──
 
@@ -188,6 +198,8 @@ export type WebviewMessage =
   | { type: "mcpRefreshServer"; serverId: string };
 
 // Extension → Webview
+export type ValidatorVerdict = "confirmed" | "likely_valid" | "uncertain" | "likely_false_positive" | "false_positive";
+
 export type ExtensionMessage =
   | { type: "reviewStarted"; mode: ReviewMode }
   | { type: "reviewCancelled" }
@@ -201,6 +213,8 @@ export type ExtensionMessage =
   | { type: "patchReady"; patch: Patch }
   | { type: "reviewComplete"; findings: Finding[]; events: AuditEvent[] }
   | { type: "reviewError"; error: string }
+  | { type: "findingValidated"; findingId: string; verdict: ValidatorVerdict; reasoning: string }
+  | { type: "switchTab"; tab: "chat" | "findings" | "timeline" }
   | { type: "mcpManagerOpen" }
   | { type: "mcpServers"; servers: MCPServerInfo[] }
   | { type: "mcpServerUpdated"; server: MCPServerInfo }
@@ -209,6 +223,11 @@ export type ExtensionMessage =
 // ── Review State ──
 
 export type ReviewStatus = "idle" | "running" | "complete" | "error";
+
+export interface ValidationResult {
+  verdict: ValidatorVerdict;
+  reasoning: string;
+}
 
 export interface ReviewState {
   status: ReviewStatus;
@@ -220,4 +239,8 @@ export interface ReviewState {
   error?: string;
   mcpManagerOpen?: boolean;
   mcpServers?: MCPServerInfo[];
+  /** Maps findingId → validation result from the validator agent */
+  validationVerdicts: Record<string, ValidationResult>;
+  /** Set of findingIds currently being validated */
+  validatingFindings: Set<string>;
 }

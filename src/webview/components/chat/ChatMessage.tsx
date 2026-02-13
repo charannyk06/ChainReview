@@ -6,12 +6,14 @@ import { SubAgentTile } from "./SubAgentTile";
 import { ToolCallRow } from "./ToolCallRow";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { MarkdownBlock } from "./MarkdownBlock";
+import { StatusRow } from "./StatusRow";
 import { TextShimmer } from "./TextShimmer";
 import type {
   ConversationMessage,
   ContentBlock,
   ToolCallBlock,
   SubAgentEventBlock,
+  StatusBlock,
 } from "@/lib/types";
 
 export interface FindingActions {
@@ -41,6 +43,8 @@ function renderInnerBlock(block: ContentBlock) {
     case "finding_card":
       // Findings only appear in the Findings tab — not rendered in chat
       return null;
+    case "status":
+      return <StatusRow key={block.id} block={block as StatusBlock} />;
     default:
       return null;
   }

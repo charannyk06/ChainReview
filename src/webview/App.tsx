@@ -20,18 +20,23 @@ export default function App() {
     addUserMessage,
     startReview,
     reset,
+    markFindingValidating,
     openMCPManager,
     closeMCPManager,
   } = useReviewState();
   const [activeTab, setActiveTab] = useState<TabId>("chat");
   const [activePatch, setActivePatch] = useState<Patch | null>(null);
 
-  // Handle patchReady messages to open the patch preview
+  // Handle patchReady messages to open the patch preview + tab switching
   const handleMessage = useCallback(
     (msg: ExtensionMessage) => {
       handleExtensionMessage(msg);
       if (msg.type === "patchReady") {
         setActivePatch(msg.patch);
+      }
+      // Server can request tab switch (e.g., when validator starts)
+      if (msg.type === "switchTab") {
+        setActiveTab(msg.tab);
       }
     },
     [handleExtensionMessage]
@@ -118,6 +123,7 @@ export default function App() {
   };
 
   const handleSendToValidator = (findingId: string) => {
+    markFindingValidating(findingId);
     postMessage({ type: "sendToValidator", findingId });
   };
 
@@ -217,6 +223,8 @@ export default function App() {
           {activeTab === "findings" && (
             <FindingsGrid
               findings={state.findings}
+              validationVerdicts={state.validationVerdicts}
+              validatingFindings={state.validatingFindings}
               onProposePatch={handleProposePatch}
               onMarkFalsePositive={handleMarkFalsePositive}
               onSendToValidator={handleSendToValidator}

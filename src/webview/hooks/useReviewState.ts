@@ -8,6 +8,8 @@ import type {
   AuditEvent,
   Patch,
   MCPServerInfo,
+  ValidatorVerdict,
+  ValidationResult,
 } from "../lib/types";
 
 const initialState: ReviewState = {
@@ -18,6 +20,8 @@ const initialState: ReviewState = {
   events: [],
   mcpManagerOpen: false,
   mcpServers: [],
+  validationVerdicts: {},
+  validatingFindings: new Set(),
 };
 
 type Action =
@@ -34,6 +38,8 @@ type Action =
   | { type: "REVIEW_COMPLETE"; findings: Finding[]; events: AuditEvent[] }
   | { type: "REVIEW_ERROR"; error: string }
   | { type: "RESET" }
+  | { type: "FINDING_VALIDATING"; findingId: string }
+  | { type: "FINDING_VALIDATED"; findingId: string; verdict: ValidatorVerdict; reasoning: string }
   | { type: "MCP_MANAGER_OPEN" }
   | { type: "MCP_MANAGER_CLOSE" }
   | { type: "MCP_SERVERS_SET"; servers: MCPServerInfo[] }
@@ -213,7 +219,27 @@ function reducer(state: ReviewState, action: Action): ReviewState {
       return { ...state, status: "error", error: action.error };
 
     case "RESET":
-      return { ...initialState, mcpServers: state.mcpServers };
+      return { ...initialState, mcpServers: state.mcpServers, validationVerdicts: {}, validatingFindings: new Set() };
+
+    // ── Finding Validation ──
+    case "FINDING_VALIDATING": {
+      const next = new Set(state.validatingFindings);
+      next.add(action.findingId);
+      return { ...state, validatingFindings: next };
+    }
+
+    case "FINDING_VALIDATED": {
+      const next = new Set(state.validatingFindings);
+      next.delete(action.findingId);
+      return {
+        ...state,
+        validatingFindings: next,
+        validationVerdicts: {
+          ...state.validationVerdicts,
+          [action.findingId]: { verdict: action.verdict, reasoning: action.reasoning },
+        },
+      };
+    }
 
     // ── MCP Manager ──
     case "MCP_MANAGER_OPEN":
@@ -296,6 +322,11 @@ export function useReviewState() {
       case "reviewCancelled":
         dispatch({ type: "REVIEW_COMPLETE", findings: [], events: [] });
         break;
+      // Validation messages
+      case "findingValidated":
+        dispatch({ type: "FINDING_VALIDATED", findingId: msg.findingId, verdict: msg.verdict, reasoning: msg.reasoning });
+        break;
+
       // MCP Manager messages
       case "mcpManagerOpen":
         dispatch({ type: "MCP_MANAGER_OPEN" });
@@ -324,6 +355,10 @@ export function useReviewState() {
     dispatch({ type: "RESET" });
   }, []);
 
+  const markFindingValidating = useCallback((findingId: string) => {
+    dispatch({ type: "FINDING_VALIDATING", findingId });
+  }, []);
+
   const openMCPManager = useCallback(() => {
     dispatch({ type: "MCP_MANAGER_OPEN" });
   }, []);
@@ -338,6 +373,7 @@ export function useReviewState() {
     addUserMessage,
     startReview,
     reset,
+    markFindingValidating,
     openMCPManager,
     closeMCPManager,
   };
