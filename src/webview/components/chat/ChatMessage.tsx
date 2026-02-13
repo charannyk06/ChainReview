@@ -94,10 +94,10 @@ export function ChatMessage({
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className="px-4 py-1.5"
+        className="px-4 py-2"
       >
         <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-xl bg-[var(--cr-accent-muted)] border border-[var(--cr-accent)]/15 px-3.5 py-2">
+          <div className="max-w-[85%] rounded-xl bg-[var(--cr-accent-muted)] border border-[var(--cr-accent)]/15 px-4 py-2.5">
             {hasMarkdown ? (
               <div className="text-[12px] text-[var(--cr-text-primary)] leading-relaxed [&_h1]:text-[13px] [&_h2]:text-[12.5px] [&_h3]:text-[12px] [&_p]:text-[12px] [&_li]:text-[12px] [&_code]:text-[11px]">
                 <MarkdownBlock text={userText} />
@@ -148,7 +148,7 @@ export function ChatMessage({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
-        className="px-3 py-1.5"
+        className="px-4 py-2"
       >
         <button
           className="w-full text-left"
@@ -184,7 +184,7 @@ export function ChatMessage({
               transition={{ duration: 0.15 }}
               className="overflow-hidden"
             >
-              <div className="flex flex-col gap-0.5 mt-1.5 ml-3 pl-3 border-l border-[var(--cr-border-subtle)]">
+              <div className="flex flex-col gap-1.5 mt-2 ml-3 pl-3 border-l border-[var(--cr-border-subtle)]">
                 {innerBlocks.map((block) => renderInnerBlock(block))}
               </div>
             </motion.div>
@@ -206,9 +206,9 @@ export function ChatMessage({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="px-4 py-1.5"
+      className="px-4 py-2"
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1.5">
         {message.blocks.map((block) => renderInnerBlock(block))}
         {message.status === "streaming" && <TextShimmer />}
       </div>

@@ -120,7 +120,7 @@ export function ChatContainer({
         className="flex-1 overflow-y-auto"
         onScroll={handleScroll}
       >
-        <div className="flex flex-col gap-0.5 pb-4 pt-1">
+        <div className="flex flex-col gap-2 pb-4 pt-2">
           {messages.map((msg) => (
             <ChatMessage
               key={msg.id}

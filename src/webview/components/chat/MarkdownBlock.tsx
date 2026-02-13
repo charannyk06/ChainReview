@@ -63,7 +63,7 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
     // Bullet lists
     if (line.match(/^[-*]\s/)) {
       elements.push(
-        <div key={elements.length} className="flex gap-1.5 ml-1">
+        <div key={elements.length} className="flex gap-2 ml-2">
           <span className="text-[var(--cr-text-ghost)] text-xs select-none">•</span>
           <span className="text-xs text-[var(--cr-text-secondary)] leading-relaxed">
             {renderInline(line.slice(2))}
@@ -76,7 +76,7 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
 
     // Empty lines
     if (line.trim() === "") {
-      elements.push(<div key={elements.length} className="h-1" />);
+      elements.push(<div key={elements.length} className="h-2" />);
       i++;
       continue;
     }
@@ -90,7 +90,7 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
     i++;
   }
 
-  return <div className={cn("space-y-0.5", className)}>{elements}</div>;
+  return <div className={cn("space-y-1.5", className)}>{elements}</div>;
 }
 
 function renderInline(text: string): (string | JSX.Element)[] {
