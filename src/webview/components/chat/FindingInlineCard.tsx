@@ -10,9 +10,9 @@ import {
   ChevronRightIcon,
   BugIcon,
   ClipboardCopyIcon,
+  ExternalLinkIcon,
   WrenchIcon,
   SendIcon,
-  ZapIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SEVERITY_CONFIG, AGENT_CONFIG, CATEGORY_CONFIG, CODING_AGENTS } from "@/lib/constants";
@@ -284,42 +284,49 @@ export function FindingInlineCard({
                                 Send to
                               </span>
                             </div>
-                            {CODING_AGENTS.map((agent) => (
-                              <button
-                                key={agent.id}
-                                onClick={() => {
-                                  onSendToCodingAgent(finding.id, agent.id);
-                                  setHandoffOpen(false);
-                                }}
-                                className="flex items-center gap-2.5 w-full px-3 py-2 text-left hover:bg-neutral-800/60 transition-colors"
-                              >
-                                {agent.icon ? (
-                                  <img
-                                    src={agent.icon}
-                                    alt=""
-                                    className="size-4 rounded"
-                                    onError={(e) => {
-                                      (e.target as HTMLImageElement).style.display = "none";
-                                    }}
+                            {CODING_AGENTS.map((agent) => {
+                              if (agent.separator) {
+                                return (
+                                  <div
+                                    key={agent.id}
+                                    className="border-t border-neutral-800/60 my-0.5"
                                   />
-                                ) : (
-                                  <ClipboardCopyIcon className="size-4 text-neutral-400" />
-                                )}
-                                <div className="flex flex-col">
-                                  <span className={cn("text-[11px] font-medium", agent.color)}>
+                                );
+                              }
+                              return (
+                                <button
+                                  key={agent.id}
+                                  onClick={() => {
+                                    onSendToCodingAgent(finding.id, agent.id);
+                                    setHandoffOpen(false);
+                                  }}
+                                  className="flex items-center gap-2.5 w-full px-3 py-2 text-left hover:bg-neutral-800/60 transition-colors cursor-pointer"
+                                >
+                                  {agent.icon ? (
+                                    <img
+                                      src={agent.icon}
+                                      alt=""
+                                      className="size-4 rounded"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = "none";
+                                      }}
+                                    />
+                                  ) : agent.id === "clipboard" ? (
+                                    <ClipboardCopyIcon className="size-4 text-neutral-400" />
+                                  ) : agent.id === "export-markdown" ? (
+                                    <ExternalLinkIcon className="size-4 text-neutral-400" />
+                                  ) : null}
+                                  <span className={cn("text-[11px] font-medium flex-1", agent.color)}>
                                     {agent.label}
                                   </span>
-                                  {agent.id === "claude-code" && (
-                                    <span className="text-[9px] text-neutral-600">
-                                      Opens in terminal
+                                  {agent.suffix && (
+                                    <span className="text-[9px] text-neutral-600 font-mono">
+                                      {agent.suffix}
                                     </span>
                                   )}
-                                </div>
-                                {agent.id !== "clipboard" && (
-                                  <ZapIcon className="size-3 text-neutral-700 ml-auto" />
-                                )}
-                              </button>
-                            ))}
+                                </button>
+                              );
+                            })}
                           </motion.div>
                         )}
                       </AnimatePresence>

@@ -174,6 +174,21 @@ export interface ConversationMessage {
   timestamp: string;
 }
 
+// ── Review History ──
+
+export interface ReviewRunSummary {
+  id: string;
+  repoPath: string;
+  repoName: string;
+  mode: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  findingsCount: number;
+  criticalCount: number;
+  highCount: number;
+}
+
 // ── postMessage Protocol ──
 
 // Webview → Extension
@@ -195,7 +210,10 @@ export type WebviewMessage =
   | { type: "mcpUpdateServer"; config: MCPServerConfig }
   | { type: "mcpRemoveServer"; serverId: string }
   | { type: "mcpToggleServer"; serverId: string; enabled: boolean }
-  | { type: "mcpRefreshServer"; serverId: string };
+  | { type: "mcpRefreshServer"; serverId: string }
+  | { type: "getReviewHistory" }
+  | { type: "deleteReviewRun"; runId: string }
+  | { type: "loadReviewRun"; runId: string };
 
 // Extension → Webview
 export type ValidatorVerdict = "confirmed" | "likely_valid" | "uncertain" | "likely_false_positive" | "false_positive";
@@ -218,7 +236,9 @@ export type ExtensionMessage =
   | { type: "mcpManagerOpen" }
   | { type: "mcpServers"; servers: MCPServerInfo[] }
   | { type: "mcpServerUpdated"; server: MCPServerInfo }
-  | { type: "mcpServerRemoved"; serverId: string };
+  | { type: "mcpServerRemoved"; serverId: string }
+  | { type: "reviewHistory"; runs: ReviewRunSummary[] }
+  | { type: "injectUserMessage"; text: string };
 
 // ── Review State ──
 
@@ -243,4 +263,7 @@ export interface ReviewState {
   validationVerdicts: Record<string, ValidationResult>;
   /** Set of findingIds currently being validated */
   validatingFindings: Set<string>;
+  /** Task history overlay state */
+  historyOpen?: boolean;
+  reviewHistory?: ReviewRunSummary[];
 }

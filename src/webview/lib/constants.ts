@@ -92,13 +92,41 @@ export const CATEGORY_CONFIG: Record<
   },
 };
 
-// Coding agents for "Handoff To" dropdown
-export const CODING_AGENTS = [
+// Coding agents for "Send to Agent" dropdown
+export const CODING_AGENTS: Array<{
+  id: string;
+  label: string;
+  icon: string;
+  color: string;
+  suffix?: string;
+  separator?: boolean;
+}> = [
+  {
+    id: "kilo-code",
+    label: "Kilo Code",
+    icon: "https://cdn.simpleicons.org/visualstudiocode/white",
+    color: "text-purple-300",
+  },
+  {
+    id: "gemini-cli",
+    label: "Gemini CLI",
+    icon: "https://cdn.simpleicons.org/google/white",
+    color: "text-blue-300",
+    suffix: ".sh",
+  },
+  {
+    id: "codex-cli",
+    label: "Codex CLI",
+    icon: "https://cdn.simpleicons.org/openai/white",
+    color: "text-emerald-300",
+    suffix: ".sh",
+  },
   {
     id: "claude-code",
     label: "Claude Code",
     icon: "https://cdn.simpleicons.org/anthropic/white",
     color: "text-orange-300",
+    suffix: ".sh",
   },
   {
     id: "cursor",
@@ -106,21 +134,23 @@ export const CODING_AGENTS = [
     icon: "https://cursor.sh/brand/icon.svg",
     color: "text-blue-300",
   },
+  // ── Separator ──
   {
-    id: "windsurf",
-    label: "Windsurf",
-    icon: "https://codeium.com/favicon.ico",
-    color: "text-teal-300",
-  },
-  {
-    id: "copilot",
-    label: "GitHub Copilot",
-    icon: "https://cdn.simpleicons.org/githubcopilot/white",
-    color: "text-neutral-300",
+    id: "__sep__",
+    label: "",
+    icon: "",
+    color: "",
+    separator: true,
   },
   {
     id: "clipboard",
-    label: "Copy to Clipboard",
+    label: "Copy",
+    icon: "",
+    color: "text-neutral-400",
+  },
+  {
+    id: "export-markdown",
+    label: "Export as Markdown",
     icon: "",
     color: "text-neutral-400",
   },

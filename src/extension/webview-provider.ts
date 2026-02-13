@@ -194,6 +194,16 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       case "mcpRefreshServer":
         this._mcpRefreshServer(message.serverId as string);
         break;
+      // ── Task History ──
+      case "getReviewHistory":
+        this._getReviewHistory();
+        break;
+      case "deleteReviewRun":
+        this._deleteReviewRun(message.runId as string);
+        break;
+      case "loadReviewRun":
+        await this._loadReviewRun(message.runId as string);
+        break;
     }
   }
 
@@ -1151,6 +1161,24 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     // Switch to chat tab so user can see validation in real-time
     this.postMessage({ type: "switchTab", tab: "chat" });
 
+    // Inject a user message showing the finding ticket being verified
+    const evidenceList = finding.evidence
+      .map((ev) => `- \`${ev.filePath}\` (lines ${ev.startLine}–${ev.endLine})`)
+      .join("\n");
+    const userTicket = [
+      `🔍 **Verify Finding**`,
+      ``,
+      `**${finding.title}**`,
+      `**Severity:** ${finding.severity.toUpperCase()} · **Category:** ${finding.category} · **Confidence:** ${Math.round(finding.confidence * 100)}%`,
+      ``,
+      `${finding.description}`,
+      ``,
+      `**Evidence:**`,
+      evidenceList,
+    ].join("\n");
+
+    this.postMessage({ type: "injectUserMessage", text: userTicket });
+
     this.postMessage({ type: "chatResponseStart", messageId });
 
     // Emit validator started sub-agent tile
@@ -1374,6 +1402,34 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
     const prompt = commentLines.join("\n");
 
+    if (agentId === "export-markdown") {
+      // Save finding as a markdown file in .chainreview/
+      try {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceFolder) {
+          await vscode.env.clipboard.writeText(prompt);
+          vscode.window.showInformationMessage("ChainReview: No workspace — finding copied to clipboard instead");
+          return;
+        }
+        const fs = await import("fs");
+        const path = await import("path");
+        const chainReviewDir = path.join(workspaceFolder, ".chainreview");
+        if (!fs.existsSync(chainReviewDir)) {
+          fs.mkdirSync(chainReviewDir, { recursive: true });
+        }
+        const fileName = `finding-${findingId.replace(/[^a-zA-Z0-9]/g, "-")}.md`;
+        const filePath = path.join(chainReviewDir, fileName);
+        fs.writeFileSync(filePath, prompt, "utf-8");
+        const uri = vscode.Uri.file(filePath);
+        await vscode.workspace.openTextDocument(uri).then((doc) => vscode.window.showTextDocument(doc));
+        vscode.window.showInformationMessage(`ChainReview: Finding exported to .chainreview/${fileName}`);
+      } catch (err: any) {
+        await vscode.env.clipboard.writeText(prompt);
+        vscode.window.showInformationMessage("ChainReview: Export failed — finding copied to clipboard");
+      }
+      return;
+    }
+
     if (agentId === "clipboard" || !agentId) {
       await vscode.env.clipboard.writeText(prompt);
       vscode.window.showInformationMessage("ChainReview: Finding copied to clipboard — paste into your coding agent");
@@ -1441,8 +1497,83 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       }
     }
 
+    // kilo-code, gemini-cli, codex-cli — launch in terminal (similar to claude-code)
+    if (agentId === "gemini-cli" || agentId === "codex-cli" || agentId === "kilo-code") {
+      try {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceFolder) {
+          await vscode.env.clipboard.writeText(prompt);
+          vscode.window.showInformationMessage("ChainReview: No workspace — finding copied to clipboard instead");
+          return;
+        }
+
+        const fs = await import("fs");
+        const path = await import("path");
+        const chainReviewDir = path.join(workspaceFolder, ".chainreview");
+        if (!fs.existsSync(chainReviewDir)) {
+          fs.mkdirSync(chainReviewDir, { recursive: true });
+        }
+
+        const promptFileName = `fix-${findingId.replace(/[^a-zA-Z0-9]/g, "-")}.md`;
+        const promptFilePath = path.join(chainReviewDir, promptFileName);
+        fs.writeFileSync(promptFilePath, prompt, "utf-8");
+
+        const cliCommands: Record<string, string> = {
+          "gemini-cli": "gemini",
+          "codex-cli": "codex",
+          "kilo-code": "kilo",
+        };
+        const cliLabels: Record<string, string> = {
+          "gemini-cli": "Gemini CLI",
+          "codex-cli": "Codex CLI",
+          "kilo-code": "Kilo Code",
+        };
+
+        const cliCmd = cliCommands[agentId] || agentId;
+        const cliLabel = cliLabels[agentId] || agentId;
+
+        const terminal = vscode.window.createTerminal({
+          name: `ChainReview → ${cliLabel}`,
+          cwd: workspaceFolder,
+          iconPath: new vscode.ThemeIcon("sparkle"),
+        });
+        terminal.show();
+        terminal.sendText(`cat "${promptFilePath}" | ${cliCmd}`, false);
+        terminal.sendText("", true);
+
+        const messageId = `agent-${Date.now()}`;
+        this.postMessage({ type: "chatResponseStart", messageId });
+        this.postMessage({
+          type: "chatResponseBlock", messageId,
+          block: {
+            kind: "text",
+            id: `sca-${++this._blockCounter}`,
+            text: [
+              `**Sent to ${cliLabel}** 🚀`, ``,
+              `Finding **${finding.title}** has been sent to ${cliLabel} in a new terminal.`, ``,
+              `The prompt file is saved at \`.chainreview/${promptFileName}\``,
+            ].join("\n"),
+            format: "markdown",
+            timestamp: new Date().toISOString(),
+          },
+        });
+        this.postMessage({ type: "chatResponseEnd", messageId });
+
+        if (this._currentRunId && this._crpClient?.isConnected()) {
+          await this._crpClient.recordEvent(this._currentRunId, "evidence_collected", undefined, {
+            action: "sent_to_coding_agent", agent: agentId, findingId, findingTitle: finding.title,
+          }).catch(() => {});
+        }
+        return;
+      } catch (err: any) {
+        await vscode.env.clipboard.writeText(prompt);
+        vscode.window.showWarningMessage(`ChainReview: Could not launch terminal — finding copied to clipboard. Error: ${err.message}`);
+        return;
+      }
+    }
+
     await vscode.env.clipboard.writeText(prompt);
-    const agentLabels: Record<string, string> = { "cursor": "Cursor", "windsurf": "Windsurf", "copilot": "GitHub Copilot" };
+    const agentLabels: Record<string, string> = { "cursor": "Cursor" };
     const label = agentLabels[agentId] || "your coding agent";
     vscode.window.showInformationMessage(
       `ChainReview: Finding copied — paste into ${label}'s chat (Cmd+L or Ctrl+L)`,
@@ -1451,11 +1582,76 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       if (choice === "Open Chat") {
         if (agentId === "cursor") {
           Promise.resolve(vscode.commands.executeCommand("aipopup.action.modal.generate")).catch(() => {});
-        } else if (agentId === "copilot") {
-          Promise.resolve(vscode.commands.executeCommand("workbench.panel.chat.view.copilot.focus")).catch(() => {});
         }
       }
     });
+  }
+
+  // ── Task History ──
+
+  private async _getReviewHistory() {
+    if (!this._crpClient?.isConnected()) {
+      this.postMessage({ type: "reviewHistory", runs: [] });
+      return;
+    }
+
+    try {
+      const runs = await this._crpClient.listRuns(50);
+      this.postMessage({ type: "reviewHistory", runs });
+    } catch (err: any) {
+      console.error("ChainReview: Failed to get review history:", err.message);
+      this.postMessage({ type: "reviewHistory", runs: [] });
+    }
+  }
+
+  private async _deleteReviewRun(runId: string) {
+    if (!this._crpClient?.isConnected()) return;
+
+    try {
+      await this._crpClient.deleteRun(runId);
+      vscode.window.showInformationMessage("ChainReview: Review deleted");
+    } catch (err: any) {
+      console.error("ChainReview: Failed to delete review run:", err.message);
+      vscode.window.showErrorMessage(`ChainReview: Failed to delete review — ${err.message}`);
+    }
+  }
+
+  private async _loadReviewRun(runId: string) {
+    if (!this._crpClient?.isConnected()) return;
+
+    try {
+      // Get findings and events for this run
+      const [findings, events] = await Promise.all([
+        this._crpClient.getFindings(runId),
+        this._crpClient.getEvents(runId),
+      ]);
+
+      this._currentRunId = runId;
+      this._findings = findings;
+
+      // Start the review state in the webview
+      this.postMessage({ type: "reviewStarted", mode: "repo" as const });
+
+      // Send all findings
+      for (const finding of findings) {
+        this.postMessage({ type: "finding", finding });
+      }
+
+      // Send all events
+      for (const event of events) {
+        this.postMessage({ type: "addEvent", event });
+      }
+
+      // Mark complete
+      this.postMessage({ type: "reviewComplete", findings, events });
+
+      vscode.window.showInformationMessage(
+        `ChainReview: Loaded review with ${findings.length} finding${findings.length !== 1 ? "s" : ""}`
+      );
+    } catch (err: any) {
+      console.error("ChainReview: Failed to load review run:", err.message);
+      vscode.window.showErrorMessage(`ChainReview: Failed to load review — ${err.message}`);
+    }
   }
 
   // ── MCP Server Management ──

@@ -10,6 +10,7 @@ import type {
   MCPServerInfo,
   ValidatorVerdict,
   ValidationResult,
+  ReviewRunSummary,
 } from "../lib/types";
 
 const initialState: ReviewState = {
@@ -44,7 +45,11 @@ type Action =
   | { type: "MCP_MANAGER_CLOSE" }
   | { type: "MCP_SERVERS_SET"; servers: MCPServerInfo[] }
   | { type: "MCP_SERVER_UPDATED"; server: MCPServerInfo }
-  | { type: "MCP_SERVER_REMOVED"; serverId: string };
+  | { type: "MCP_SERVER_REMOVED"; serverId: string }
+  | { type: "HISTORY_OPEN" }
+  | { type: "HISTORY_CLOSE" }
+  | { type: "HISTORY_SET"; runs: ReviewRunSummary[] }
+  | { type: "HISTORY_DELETE_RUN"; runId: string };
 
 function reducer(state: ReviewState, action: Action): ReviewState {
   switch (action.type) {
@@ -211,8 +216,12 @@ function reducer(state: ReviewState, action: Action): ReviewState {
       return {
         ...state,
         status: "complete",
-        findings: action.findings.length > 0 ? action.findings : state.findings,
-        events: action.events.length > 0 ? action.events : state.events,
+        // Keep findings streamed in real-time; only use batch if no streamed findings exist
+        findings: state.findings.length > 0 ? state.findings :
+                  action.findings.length > 0 ? action.findings : state.findings,
+        // Keep events streamed in real-time; only use batch if no streamed events exist
+        events: state.events.length > 0 ? state.events :
+                action.events.length > 0 ? action.events : state.events,
       };
 
     case "REVIEW_ERROR":
@@ -266,6 +275,22 @@ function reducer(state: ReviewState, action: Action): ReviewState {
       return {
         ...state,
         mcpServers: (state.mcpServers || []).filter((s) => s.id !== action.serverId),
+      };
+
+    // ── Task History ──
+    case "HISTORY_OPEN":
+      return { ...state, historyOpen: true };
+
+    case "HISTORY_CLOSE":
+      return { ...state, historyOpen: false };
+
+    case "HISTORY_SET":
+      return { ...state, reviewHistory: action.runs };
+
+    case "HISTORY_DELETE_RUN":
+      return {
+        ...state,
+        reviewHistory: (state.reviewHistory || []).filter((r) => r.id !== action.runId),
       };
 
     default:
@@ -340,6 +365,16 @@ export function useReviewState() {
       case "mcpServerRemoved":
         dispatch({ type: "MCP_SERVER_REMOVED", serverId: msg.serverId });
         break;
+
+      // Task History
+      case "reviewHistory":
+        dispatch({ type: "HISTORY_SET", runs: msg.runs });
+        break;
+
+      // Injected user message (e.g. from Verify button)
+      case "injectUserMessage":
+        dispatch({ type: "ADD_USER_MESSAGE", query: msg.text });
+        break;
     }
   }, []);
 
@@ -367,6 +402,18 @@ export function useReviewState() {
     dispatch({ type: "MCP_MANAGER_CLOSE" });
   }, []);
 
+  const openHistory = useCallback(() => {
+    dispatch({ type: "HISTORY_OPEN" });
+  }, []);
+
+  const closeHistory = useCallback(() => {
+    dispatch({ type: "HISTORY_CLOSE" });
+  }, []);
+
+  const deleteHistoryRun = useCallback((runId: string) => {
+    dispatch({ type: "HISTORY_DELETE_RUN", runId });
+  }, []);
+
   return {
     state,
     handleExtensionMessage,
@@ -376,5 +423,8 @@ export function useReviewState() {
     markFindingValidating,
     openMCPManager,
     closeMCPManager,
+    openHistory,
+    closeHistory,
+    deleteHistoryRun,
   };
 }

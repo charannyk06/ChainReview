@@ -6,10 +6,9 @@ import {
   RefreshCwIcon,
   XIcon,
   ClipboardCopyIcon,
+  ExternalLinkIcon,
   CheckCircleIcon,
-  AlertTriangleIcon,
   SendIcon,
-  ZapIcon,
   ShieldAlertIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -284,29 +283,46 @@ export function FindingsGrid({
                             Hand off to
                           </span>
                         </div>
-                        {CODING_AGENTS.map((agent) => (
-                          <button
-                            key={agent.id}
-                            onClick={() => handleBatchHandoff(agent.id)}
-                            className="flex items-center gap-3 w-full px-3 py-2.5 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
-                          >
-                            {agent.icon ? (
-                              <img
-                                src={agent.icon}
-                                alt=""
-                                className="size-4 rounded"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = "none";
-                                }}
+                        {CODING_AGENTS.map((agent) => {
+                          if (agent.separator) {
+                            return (
+                              <div
+                                key={agent.id}
+                                className="border-t border-[var(--cr-border-subtle)] my-0.5"
                               />
-                            ) : (
-                              <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
-                            )}
-                            <span className={cn("text-[11px] font-medium", agent.color)}>
-                              {agent.label}
-                            </span>
-                          </button>
-                        ))}
+                            );
+                          }
+                          return (
+                            <button
+                              key={agent.id}
+                              onClick={() => handleBatchHandoff(agent.id)}
+                              className="flex items-center gap-2.5 w-full px-3 py-2 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
+                            >
+                              {agent.icon ? (
+                                <img
+                                  src={agent.icon}
+                                  alt=""
+                                  className="size-4 rounded"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = "none";
+                                  }}
+                                />
+                              ) : agent.id === "clipboard" ? (
+                                <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
+                              ) : agent.id === "export-markdown" ? (
+                                <ExternalLinkIcon className="size-4 text-[var(--cr-text-muted)]" />
+                              ) : null}
+                              <span className={cn("text-[11px] font-medium flex-1", agent.color)}>
+                                {agent.label}
+                              </span>
+                              {agent.suffix && (
+                                <span className="text-[9px] text-[var(--cr-text-ghost)] font-mono">
+                                  {agent.suffix}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
                       </motion.div>
                     )}
                   </AnimatePresence>

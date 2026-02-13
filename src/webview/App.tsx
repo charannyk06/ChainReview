@@ -10,6 +10,7 @@ import { FindingsGrid } from "./components/review/FindingsGrid";
 import { PatchPreview } from "./components/review/PatchPreview";
 import { AuditTimeline } from "./components/timeline/AuditTimeline";
 import { MCPManagerPanel } from "./components/mcp/MCPManagerPanel";
+import { TaskHistory } from "./components/history/TaskHistory";
 import type { FindingActions } from "./components/chat/ChatMessage";
 import type { Patch, ExtensionMessage, MCPServerConfig } from "./lib/types";
 
@@ -23,6 +24,9 @@ export default function App() {
     markFindingValidating,
     openMCPManager,
     closeMCPManager,
+    openHistory,
+    closeHistory,
+    deleteHistoryRun,
   } = useReviewState();
   const [activeTab, setActiveTab] = useState<TabId>("chat");
   const [activePatch, setActivePatch] = useState<Patch | null>(null);
@@ -72,6 +76,32 @@ export default function App() {
   const handleCloseMCPManager = useCallback(() => {
     closeMCPManager();
   }, [closeMCPManager]);
+
+  // ── History handlers ──
+  const handleOpenHistory = useCallback(() => {
+    openHistory();
+    postMessage({ type: "getReviewHistory" });
+  }, [openHistory, postMessage]);
+
+  const handleCloseHistory = useCallback(() => {
+    closeHistory();
+  }, [closeHistory]);
+
+  const handleDeleteHistoryRun = useCallback(
+    (runId: string) => {
+      deleteHistoryRun(runId);
+      postMessage({ type: "deleteReviewRun", runId });
+    },
+    [deleteHistoryRun, postMessage]
+  );
+
+  const handleLoadHistoryRun = useCallback(
+    (runId: string) => {
+      closeHistory();
+      postMessage({ type: "loadReviewRun", runId });
+    },
+    [closeHistory, postMessage]
+  );
 
   // ── MCP Manager actions ──
   const handleMCPAddServer = useCallback(
@@ -164,6 +194,21 @@ export default function App() {
     [postMessage]
   );
 
+  // ── Task History Panel (full-screen overlay) ──
+  if (state.historyOpen) {
+    return (
+      <OpenFileProvider postMessage={postMessage}>
+        <TaskHistory
+          runs={state.reviewHistory || []}
+          onClose={handleCloseHistory}
+          onLoadRun={handleLoadHistoryRun}
+          onDeleteRun={handleDeleteHistoryRun}
+          className="h-screen"
+        />
+      </OpenFileProvider>
+    );
+  }
+
   // ── MCP Manager Panel (full-screen overlay) ──
   if (state.mcpManagerOpen) {
     return (
@@ -188,6 +233,7 @@ export default function App() {
         <EmptyState
           onStartRepoReview={() => handleStartReview("repo")}
           onStartDiffReview={() => handleStartReview("diff")}
+          onOpenHistory={handleOpenHistory}
         />
       </OpenFileProvider>
     );
@@ -199,6 +245,7 @@ export default function App() {
         <Header
           onNewThread={handleNewThread}
           onOpenMCPManager={handleOpenMCPManager}
+          onOpenHistory={handleOpenHistory}
         />
         <TabNav
           activeTab={activeTab}
