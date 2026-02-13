@@ -102,30 +102,30 @@ export const CODING_AGENTS: Array<{
   separator?: boolean;
 }> = [
   {
-    id: "config-more",
-    label: "Config more...",
-    icon: "",
-    color: "text-neutral-400",
-  },
-  {
     id: "kilo-code",
     label: "Kilo Code",
     icon: "https://cdn.simpleicons.org/visualstudiocode/white",
-    color: "text-purple-300",
+    color: "text-orange-200",
   },
   {
     id: "gemini-cli",
     label: "Gemini CLI",
     icon: "https://cdn.simpleicons.org/google/white",
-    color: "text-blue-300",
+    color: "text-orange-200",
     suffix: ".sh",
   },
   {
     id: "codex-cli",
     label: "Codex CLI",
     icon: "https://cdn.simpleicons.org/openai/white",
-    color: "text-emerald-300",
+    color: "text-orange-200",
     suffix: ".sh",
+  },
+  {
+    id: "cursor",
+    label: "Cursor",
+    icon: "https://cursor.sh/brand/icon.svg",
+    color: "text-orange-200",
   },
   // ── Separator ──
   {
@@ -137,7 +137,7 @@ export const CODING_AGENTS: Array<{
   },
   {
     id: "clipboard",
-    label: "Copy",
+    label: "Copy to Clipboard",
     icon: "",
     color: "text-neutral-400",
   },
@@ -148,10 +148,10 @@ export const CODING_AGENTS: Array<{
     color: "text-neutral-400",
   },
   {
-    id: "cursor",
-    label: "Cursor",
-    icon: "https://cursor.sh/brand/icon.svg",
-    color: "text-blue-300",
+    id: "config-more",
+    label: "Configure Agents…",
+    icon: "",
+    color: "text-neutral-500",
   },
 ];
 

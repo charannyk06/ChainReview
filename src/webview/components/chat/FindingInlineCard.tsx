@@ -277,58 +277,55 @@ export function FindingInlineCard({
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: -4, scale: 0.95 }}
                             transition={{ duration: 0.15 }}
-                            className="absolute bottom-full left-0 mb-1 w-52 rounded-lg border border-neutral-700/60 bg-neutral-900 shadow-2xl z-50 overflow-hidden"
+                            className="absolute bottom-full left-0 mb-2 w-60 rounded-xl border border-orange-500/20 bg-neutral-900 shadow-2xl shadow-black/50 z-50 overflow-hidden"
                           >
-                            <div className="px-2 py-1.5 border-b border-neutral-800/60">
-                              <span className="text-[9px] font-semibold text-neutral-500 uppercase tracking-wider">
-                                Send to
-                              </span>
-                            </div>
-                            {CODING_AGENTS.map((agent) => {
-                              if (agent.separator) {
-                                return (
-                                  <div
-                                    key={agent.id}
-                                    className="border-t border-neutral-800/60 my-0.5"
-                                  />
-                                );
-                              }
-                              return (
-                                <button
-                                  key={agent.id}
-                                  onClick={() => {
-                                    onSendToCodingAgent(finding.id, agent.id);
-                                    setHandoffOpen(false);
-                                  }}
-                                  className="flex items-center gap-2.5 w-full px-3 py-2 text-left hover:bg-neutral-800/60 transition-colors cursor-pointer"
-                                >
-                                  {agent.icon ? (
-                                    <img
-                                      src={agent.icon}
-                                      alt=""
-                                      className="size-4 rounded"
-                                      onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = "none";
-                                      }}
+                            <div className="py-1.5">
+                              {CODING_AGENTS.map((agent) => {
+                                if (agent.separator) {
+                                  return (
+                                    <div
+                                      key={agent.id}
+                                      className="border-t border-neutral-800/60 my-1.5"
                                     />
-                                  ) : agent.id === "config-more" ? (
-                                    <SettingsIcon className="size-4 text-neutral-400" />
-                                  ) : agent.id === "clipboard" ? (
-                                    <ClipboardCopyIcon className="size-4 text-neutral-400" />
-                                  ) : agent.id === "export-markdown" ? (
-                                    <ExternalLinkIcon className="size-4 text-neutral-400" />
-                                  ) : null}
-                                  <span className={cn("text-[11px] font-medium flex-1", agent.color)}>
-                                    {agent.label}
-                                  </span>
-                                  {agent.suffix && (
-                                    <span className="text-[9px] text-neutral-600 font-mono">
-                                      {agent.suffix}
+                                  );
+                                }
+                                return (
+                                  <button
+                                    key={agent.id}
+                                    onClick={() => {
+                                      onSendToCodingAgent(finding.id, agent.id);
+                                      setHandoffOpen(false);
+                                    }}
+                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-orange-500/8 transition-colors cursor-pointer"
+                                  >
+                                    {agent.icon ? (
+                                      <img
+                                        src={agent.icon}
+                                        alt=""
+                                        className="size-5 rounded"
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).style.display = "none";
+                                        }}
+                                      />
+                                    ) : agent.id === "clipboard" ? (
+                                      <ClipboardCopyIcon className="size-4 text-neutral-500" />
+                                    ) : agent.id === "export-markdown" ? (
+                                      <ExternalLinkIcon className="size-4 text-neutral-500" />
+                                    ) : agent.id === "config-more" ? (
+                                      <SettingsIcon className="size-4 text-neutral-500" />
+                                    ) : null}
+                                    <span className={cn("text-[12px] font-medium flex-1", agent.color)}>
+                                      {agent.label}
                                     </span>
-                                  )}
-                                </button>
-                              );
-                            })}
+                                    {agent.suffix && (
+                                      <span className="text-[10px] text-neutral-600 font-mono">
+                                        {agent.suffix}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </motion.div>
                         )}
                       </AnimatePresence>

@@ -43,20 +43,20 @@ export function TabNav({
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              "relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-medium transition-all duration-150",
+              "relative flex-1 flex items-center justify-center gap-2 px-4 py-3 text-[13px] font-medium transition-all duration-150",
               isActive
                 ? "text-[var(--cr-text-primary)]"
                 : "text-[var(--cr-text-muted)] hover:text-[var(--cr-text-tertiary)]"
             )}
           >
             <tab.Icon className={cn(
-              "size-3.5 transition-colors",
+              "size-4 transition-colors",
               isActive ? "text-[var(--cr-accent)]" : "text-current"
             )} />
             <span>{tab.label}</span>
             {badge !== null && (
               <span className={cn(
-                "text-[9px] font-semibold min-w-[16px] text-center px-1 py-0 rounded-full leading-snug",
+                "text-[10px] font-semibold min-w-[18px] text-center px-1.5 py-0.5 rounded-full leading-snug",
                 isActive
                   ? "bg-[var(--cr-accent-muted)] text-[var(--cr-accent-hover)]"
                   : "bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-muted)]"

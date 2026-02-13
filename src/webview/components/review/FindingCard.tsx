@@ -402,53 +402,55 @@ export function FindingCard({
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: -4, scale: 0.95 }}
                             transition={{ duration: 0.15 }}
-                            className="absolute bottom-full left-0 mb-1.5 w-52 rounded-xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] shadow-2xl shadow-black/40 z-50 overflow-hidden backdrop-blur-sm"
+                            className="absolute bottom-full left-0 mb-2 w-60 rounded-xl border border-orange-500/20 bg-[var(--cr-bg-secondary)] shadow-2xl shadow-black/50 z-50 overflow-hidden backdrop-blur-sm"
                           >
-                            {CODING_AGENTS.map((agent) => {
-                              if (agent.separator) {
-                                return (
-                                  <div
-                                    key={agent.id}
-                                    className="border-t border-[var(--cr-border-subtle)] my-0.5"
-                                  />
-                                );
-                              }
-                              return (
-                                <button
-                                  key={agent.id}
-                                  onClick={() => {
-                                    onSendToCodingAgent(finding.id, agent.id);
-                                    setHandoffOpen(false);
-                                  }}
-                                  className="flex items-center gap-2.5 w-full px-3 py-2 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
-                                >
-                                  {agent.icon ? (
-                                    <img
-                                      src={agent.icon}
-                                      alt=""
-                                      className="size-4 rounded"
-                                      onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = "none";
-                                      }}
+                            <div className="py-1.5">
+                              {CODING_AGENTS.map((agent) => {
+                                if (agent.separator) {
+                                  return (
+                                    <div
+                                      key={agent.id}
+                                      className="border-t border-[var(--cr-border-subtle)] my-1.5"
                                     />
-                                  ) : agent.id === "config-more" ? (
-                                    <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                  ) : agent.id === "clipboard" ? (
-                                    <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                  ) : agent.id === "export-markdown" ? (
-                                    <ExternalLinkIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                  ) : null}
-                                  <span className={cn("text-[11px] font-medium flex-1", agent.color)}>
-                                    {agent.label}
-                                  </span>
-                                  {agent.suffix && (
-                                    <span className="text-[9px] text-[var(--cr-text-ghost)] font-mono">
-                                      {agent.suffix}
+                                  );
+                                }
+                                return (
+                                  <button
+                                    key={agent.id}
+                                    onClick={() => {
+                                      onSendToCodingAgent(finding.id, agent.id);
+                                      setHandoffOpen(false);
+                                    }}
+                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-orange-500/8 transition-colors cursor-pointer"
+                                  >
+                                    {agent.icon ? (
+                                      <img
+                                        src={agent.icon}
+                                        alt=""
+                                        className="size-5 rounded"
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).style.display = "none";
+                                        }}
+                                      />
+                                    ) : agent.id === "clipboard" ? (
+                                      <ClipboardCopyIcon className="size-4 text-neutral-500" />
+                                    ) : agent.id === "export-markdown" ? (
+                                      <ExternalLinkIcon className="size-4 text-neutral-500" />
+                                    ) : agent.id === "config-more" ? (
+                                      <SettingsIcon className="size-4 text-neutral-500" />
+                                    ) : null}
+                                    <span className={cn("text-[12px] font-medium flex-1", agent.color)}>
+                                      {agent.label}
                                     </span>
-                                  )}
-                                </button>
-                              );
-                            })}
+                                    {agent.suffix && (
+                                      <span className="text-[10px] text-neutral-600 font-mono">
+                                        {agent.suffix}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </motion.div>
                         )}
                       </AnimatePresence>
