@@ -29,10 +29,10 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
       elements.push(
         <pre
           key={elements.length}
-          className="my-1.5 px-3 py-2 rounded-lg bg-[var(--cr-bg-tertiary)] border border-[var(--cr-border-subtle)] text-[11px] font-mono text-[var(--cr-text-secondary)] overflow-x-auto"
+          className="my-2.5 px-4 py-3 rounded-xl bg-[var(--cr-bg-tertiary)] border border-[var(--cr-border-subtle)] text-[11.5px] font-mono text-[var(--cr-text-secondary)] overflow-x-auto leading-relaxed"
         >
           {lang && (
-            <span className="text-[9px] text-[var(--cr-text-ghost)] block mb-1 uppercase tracking-wider font-semibold">{lang}</span>
+            <span className="text-[9px] text-[var(--cr-text-ghost)] block mb-1.5 uppercase tracking-wider font-semibold">{lang}</span>
           )}
           {codeLines.join("\n")}
         </pre>
@@ -43,7 +43,7 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
     // Headers
     if (line.startsWith("### ")) {
       elements.push(
-        <h3 key={elements.length} className="text-xs font-semibold text-[var(--cr-text-primary)] mt-2 mb-0.5">
+        <h3 key={elements.length} className="text-[13px] font-semibold text-[var(--cr-text-primary)] mt-4 mb-1">
           {renderInline(line.slice(4))}
         </h3>
       );
@@ -52,7 +52,7 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
     }
     if (line.startsWith("## ")) {
       elements.push(
-        <h2 key={elements.length} className="text-xs font-bold text-[var(--cr-text-primary)] mt-2 mb-0.5">
+        <h2 key={elements.length} className="text-[13.5px] font-bold text-[var(--cr-text-primary)] mt-4 mb-1">
           {renderInline(line.slice(3))}
         </h2>
       );
@@ -63,9 +63,9 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
     // Bullet lists
     if (line.match(/^[-*]\s/)) {
       elements.push(
-        <div key={elements.length} className="flex gap-2 ml-2">
-          <span className="text-[var(--cr-text-ghost)] text-xs select-none">•</span>
-          <span className="text-xs text-[var(--cr-text-secondary)] leading-relaxed">
+        <div key={elements.length} className="flex gap-2.5 ml-1 py-0.5">
+          <span className="text-[var(--cr-text-ghost)] text-[13px] select-none leading-[1.65]">•</span>
+          <span className="text-[13px] text-[var(--cr-text-secondary)] leading-[1.65]">
             {renderInline(line.slice(2))}
           </span>
         </div>
@@ -74,23 +74,23 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
       continue;
     }
 
-    // Empty lines
+    // Empty lines — paragraph break
     if (line.trim() === "") {
-      elements.push(<div key={elements.length} className="h-2" />);
+      elements.push(<div key={elements.length} className="h-3" />);
       i++;
       continue;
     }
 
     // Regular paragraph
     elements.push(
-      <p key={elements.length} className="text-xs text-[var(--cr-text-secondary)] leading-relaxed">
+      <p key={elements.length} className="text-[13px] text-[var(--cr-text-secondary)] leading-[1.7]">
         {renderInline(line)}
       </p>
     );
     i++;
   }
 
-  return <div className={cn("space-y-1.5", className)}>{elements}</div>;
+  return <div className={cn("space-y-1", className)}>{elements}</div>;
 }
 
 function renderInline(text: string): (string | JSX.Element)[] {
@@ -118,7 +118,7 @@ function renderInline(text: string): (string | JSX.Element)[] {
       result.push(
         <code
           key={key++}
-          className="px-1 py-0.5 rounded bg-[var(--cr-bg-tertiary)] text-[11px] font-mono text-amber-300/90 border border-[var(--cr-border-subtle)]"
+          className="px-1.5 py-0.5 rounded-md bg-[var(--cr-bg-tertiary)] text-[12px] font-mono text-amber-300/90 border border-[var(--cr-border-subtle)]"
         >
           {match[3]}
         </code>

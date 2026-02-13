@@ -83,7 +83,7 @@ export function ChatMessage({
     }
   }, [isComplete, shouldCollapse]);
 
-  // User messages — clean bubble aligned right
+  // User messages — clean right-aligned bubble with generous spacing
   if (message.role === "user") {
     const userText =
       message.blocks[0]?.kind === "text" ? message.blocks[0].text : "";
@@ -94,16 +94,16 @@ export function ChatMessage({
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className="px-4 py-2"
+        className="px-3 py-1.5"
       >
         <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-xl bg-[var(--cr-accent-muted)] border border-[var(--cr-accent)]/15 px-4 py-2.5">
+          <div className="max-w-[85%] rounded-2xl bg-[var(--cr-accent-muted)] border border-[var(--cr-accent)]/15 px-4 py-3">
             {hasMarkdown ? (
-              <div className="text-[12px] text-[var(--cr-text-primary)] leading-relaxed [&_h1]:text-[13px] [&_h2]:text-[12.5px] [&_h3]:text-[12px] [&_p]:text-[12px] [&_li]:text-[12px] [&_code]:text-[11px]">
+              <div className="text-[13px] text-[var(--cr-text-primary)] leading-[1.65] [&_h1]:text-[14px] [&_h2]:text-[13.5px] [&_h3]:text-[13px] [&_p]:text-[13px] [&_li]:text-[13px] [&_code]:text-[12px]">
                 <MarkdownBlock text={userText} />
               </div>
             ) : (
-              <p className="text-[12px] text-[var(--cr-text-primary)] leading-relaxed">
+              <p className="text-[13px] text-[var(--cr-text-primary)] leading-[1.65]">
                 {userText}
               </p>
             )}
@@ -148,7 +148,7 @@ export function ChatMessage({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
-        className="px-4 py-2"
+        className="px-3 py-1.5"
       >
         <button
           className="w-full text-left"
@@ -184,7 +184,7 @@ export function ChatMessage({
               transition={{ duration: 0.15 }}
               className="overflow-hidden"
             >
-              <div className="flex flex-col gap-1.5 mt-2 ml-3 pl-3 border-l border-[var(--cr-border-subtle)]">
+              <div className="flex flex-col gap-2.5 mt-3 ml-3 pl-4 border-l border-[var(--cr-border-subtle)]">
                 {innerBlocks.map((block) => renderInnerBlock(block))}
               </div>
             </motion.div>
@@ -192,7 +192,7 @@ export function ChatMessage({
         </AnimatePresence>
 
         {message.status === "streaming" && (
-          <div className="ml-3 pl-3 border-l border-[var(--cr-border-subtle)] mt-1">
+          <div className="ml-3 pl-4 border-l border-[var(--cr-border-subtle)] mt-2">
             <TextShimmer />
           </div>
         )}
@@ -206,9 +206,9 @@ export function ChatMessage({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="px-4 py-2"
+      className="px-3 py-1.5"
     >
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2.5">
         {message.blocks.map((block) => renderInnerBlock(block))}
         {message.status === "streaming" && <TextShimmer />}
       </div>
