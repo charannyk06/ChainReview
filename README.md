@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="media/icon.svg" width="64" height="64" alt="ChainReview" />
+  <img src="media/icon.png" width="64" height="64" alt="ChainReview" />
 </p>
 
 <h1 align="center">ChainReview</h1>

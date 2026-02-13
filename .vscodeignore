@@ -1,0 +1,78 @@
+# ── Source (already bundled into dist/) ──
+src/**
+docs/**
+.github/**
+.claude/**
+.vscode/**
+tsconfig.json
+vite.config.ts
+.gitignore
+.env
+*.md
+*.vsix
+
+# ── Dev-only node_modules (webview is bundled by Vite, extension by esbuild) ──
+node_modules/@types/**
+node_modules/typescript/**
+node_modules/vite/**
+node_modules/@vitejs/**
+node_modules/esbuild/**
+node_modules/@esbuild/**
+node_modules/concurrently/**
+node_modules/tailwindcss/**
+node_modules/@tailwindcss/**
+node_modules/lightningcss*/**
+node_modules/postcss*/**
+node_modules/autoprefixer/**
+node_modules/rollup/**
+node_modules/@rollup/**
+node_modules/caniuse-lite/**
+
+# Webview-only (bundled by Vite)
+node_modules/react/**
+node_modules/react-dom/**
+node_modules/motion/**
+node_modules/motion-dom/**
+node_modules/motion-utils/**
+node_modules/framer-motion/**
+node_modules/lucide-react/**
+node_modules/@tabler/**
+node_modules/clsx/**
+node_modules/tailwind-merge/**
+node_modules/scheduler/**
+
+# Babel (dev tooling only)
+node_modules/@babel/**
+
+# ── Trim large runtime deps ──
+# better-sqlite3: keep only lib/ + build/Release/better_sqlite3.node + bindings
+node_modules/better-sqlite3/deps/**
+node_modules/better-sqlite3/src/**
+node_modules/better-sqlite3/build/Release/obj/**
+node_modules/better-sqlite3/build/Release/obj.target/**
+node_modules/better-sqlite3/build/Release/sqlite3.a
+node_modules/better-sqlite3/build/Release/test_extension.node
+node_modules/better-sqlite3/build/config.gypi
+node_modules/better-sqlite3/build/Makefile
+node_modules/better-sqlite3/build/*.mk
+node_modules/better-sqlite3/build/binding.Makefile
+
+# ts-morph: only needs runtime JS, not the code-block-writer sources
+node_modules/@ts-morph/common/dist/typescript.js.map
+
+# rxjs — used by ts-morph transitive? Keep it but strip docs
+node_modules/rxjs/src/**
+
+# Remove source maps from all dependencies
+node_modules/**/*.map
+node_modules/**/*.d.ts
+node_modules/**/*.d.mts
+node_modules/**/CHANGELOG*
+node_modules/**/LICENSE*
+node_modules/**/README*
+node_modules/**/.github/**
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/__tests__/**
+node_modules/**/examples/**
+node_modules/**/docs/**

@@ -5,6 +5,10 @@
   "version": "0.1.0",
   "license": "Apache-2.0",
   "publisher": "chainreview",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/charannyk06/ChainReview"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
