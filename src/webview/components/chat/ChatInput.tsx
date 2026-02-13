@@ -63,30 +63,31 @@ export function ChatInput({
   const hasContent = value.trim().length > 0;
 
   return (
-    <div className={cn("flex-shrink-0", className)}>
-      <div className="border-t border-[var(--cr-border)] bg-[var(--cr-bg-primary)]">
-        {/* Review progress indicator */}
-        {isReviewing && (
-          <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--cr-accent-subtle)] border-b border-[var(--cr-border-subtle)]">
-            <div className="flex items-center gap-2">
-              <LoaderCircleIcon className="size-3 text-[var(--cr-accent)] animate-spin" />
-              <span className="text-[11px] text-[var(--cr-accent-hover)] font-medium">
-                Agents are reviewing...
-              </span>
-            </div>
-            {onCancelReview && (
-              <button
-                onClick={onCancelReview}
-                className="cr-btn cr-btn-red"
-                style={{ padding: "4px 10px", fontSize: "10px" }}
-              >
-                <SquareIcon className="size-2.5 fill-current" />
-                Stop
-              </button>
-            )}
+    <div className={cn("flex-shrink-0 px-3 pb-3 pt-2", className)}>
+      {/* Review progress indicator — above the input card */}
+      {isReviewing && (
+        <div className="flex items-center justify-between px-3 py-1.5 mb-2 rounded-lg bg-[var(--cr-accent-subtle)] border border-[var(--cr-border-subtle)]">
+          <div className="flex items-center gap-2">
+            <LoaderCircleIcon className="size-3 text-[var(--cr-accent)] animate-spin" />
+            <span className="text-[11px] text-[var(--cr-accent-hover)] font-medium">
+              Agents are reviewing...
+            </span>
           </div>
-        )}
+          {onCancelReview && (
+            <button
+              onClick={onCancelReview}
+              className="cr-btn cr-btn-red"
+              style={{ padding: "4px 10px", fontSize: "10px" }}
+            >
+              <SquareIcon className="size-2.5 fill-current" />
+              Stop
+            </button>
+          )}
+        </div>
+      )}
 
+      {/* Input card — rounded with border and spacing on all sides */}
+      <div className="rounded-xl border border-[var(--cr-border)] bg-[var(--cr-bg-secondary)] overflow-hidden">
         {/* Input area */}
         <div className="relative">
           <textarea
@@ -98,7 +99,7 @@ export function ChatInput({
             placeholder={
               isReviewing
                 ? "Review in progress..."
-                : "Ask about this codebase..."
+                : "Describe your task (@mention for context)"
             }
             rows={1}
             className={cn(
@@ -130,7 +131,7 @@ export function ChatInput({
           </div>
         </div>
 
-        {/* Bottom bar */}
+        {/* Bottom bar — inside the card */}
         <div className="flex items-center justify-between px-3 pb-2 pt-0">
           <div className="flex items-center gap-0.5">
             {onStartRepoReview && !isReviewing && (
@@ -158,7 +159,7 @@ export function ChatInput({
           </div>
 
           <span className="text-[10px] text-[var(--cr-text-ghost)] select-none">
-            {isReviewing ? "Click Stop to cancel" : hasContent ? "↵ Send" : "Shift+↵ newline"}
+            {isReviewing ? "Click Stop to cancel" : hasContent ? "Send (\u2318 + \u21B5)" : "Shift+\u21B5 newline"}
           </span>
         </div>
       </div>
