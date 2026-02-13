@@ -786,7 +786,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   private async _startReview(mode: "repo" | "diff", path?: string) {
     if (!this._crpClient?.isConnected()) {
-      this.postMessage({ type: "reviewError", error: "CRP server is not connected. Please restart VS Code." });
+      this.postMessage({ type: "reviewError", error: "CRP server is not connected. Check that your Anthropic API key is set in Settings (chainreview.anthropicApiKey) and restart VS Code." });
       return;
     }
 
@@ -1041,7 +1041,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   private async _handleChatQuery(query: string) {
     if (!this._crpClient?.isConnected()) {
-      this.postMessage({ type: "reviewError", error: "CRP server is not connected." });
+      this.postMessage({ type: "reviewError", error: "CRP server is not connected. Check that your Anthropic API key is set in Settings (chainreview.anthropicApiKey) and restart VS Code." });
       return;
     }
 

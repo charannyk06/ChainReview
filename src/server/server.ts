@@ -210,6 +210,7 @@ server.tool(
     mode: z.enum(["repo", "diff"]).describe("Review mode"),
   },
   async (args) => {
+    requireApiKey("crp.review.run");
     const result = await runReview(args.repoPath, args.mode, store, {
       onEvent: (event) => {
         streamEvent({ type: "event", event });
@@ -310,6 +311,19 @@ server.tool(
   }
 );
 
+// ── API Key Guard ──
+// Gives a clear error for LLM-dependent tools instead of cryptic SDK failures
+
+function requireApiKey(toolName: string): void {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error(
+      `${toolName} requires ANTHROPIC_API_KEY. ` +
+      `Set it in VS Code settings (chainreview.anthropicApiKey), ` +
+      `environment variable, .env file, or ~/.anthropic/api_key, then restart VS Code.`
+    );
+  }
+}
+
 // ── Chat Query Tool (with real-time streaming) ──
 // Streams thinking, text, tool calls, and tool results via stderr
 // so the extension can push them to the webview incrementally.
@@ -322,6 +336,7 @@ server.tool(
     runId: z.string().optional().describe("Optional review run ID for context"),
   },
   async (args) => {
+    requireApiKey("crp.chat.query");
     const result = await chatQuery(args.query, args.runId, store, {
       onTextDelta: (delta) => {
         streamEvent({ type: "chatTextDelta", delta });
@@ -355,6 +370,7 @@ server.tool(
     findingJson: z.string().describe("JSON-serialized finding to validate"),
   },
   async (args) => {
+    requireApiKey("crp.review.validate_finding");
     const result = await validateFinding(args.findingJson, {
       onTextDelta: (delta) => {
         streamEvent({ type: "validateTextDelta", delta });
@@ -391,6 +407,7 @@ server.tool(
     findingDescription: z.string().describe("Description of the issue"),
   },
   async (args) => {
+    requireApiKey("crp.patch.generate");
     const result = await generatePatchFix(args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -431,7 +448,16 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("ChainReview CRP server started");
+
+  // Log API key status so the extension can see it in stderr
+  if (process.env.ANTHROPIC_API_KEY) {
+    console.error("ChainReview CRP server started (API key: present)");
+  } else {
+    console.error("ChainReview CRP server started (WARNING: ANTHROPIC_API_KEY not set — LLM features will fail)");
+  }
+  if (process.env.BRAVE_SEARCH_API_KEY) {
+    console.error("ChainReview: Brave Search API key: present");
+  }
 }
 
 main().catch((err) => {

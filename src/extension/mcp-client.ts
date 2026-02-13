@@ -1,12 +1,74 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import * as path from "path";
+import * as fs from "fs";
 import type { Finding, Patch, AuditEvent } from "./types";
 
 // Re-export types for convenience
 export type { Finding, Patch, AuditEvent };
 
 export type StreamEventHandler = (event: Record<string, unknown>) => void;
+
+/**
+ * Resolve the Anthropic API key from multiple sources (priority order):
+ * 1. VS Code setting: chainreview.anthropicApiKey
+ * 2. Environment variable: ANTHROPIC_API_KEY
+ * 3. .env file in workspace root
+ * 4. ~/.anthropic/api_key file
+ */
+function resolveApiKey(keyName: string, settingName: string): string | undefined {
+  // 1. VS Code settings
+  try {
+    // Dynamic import to avoid hard dependency — vscode API may not be available in all contexts
+    const vscode = require("vscode");
+    const config = vscode.workspace.getConfiguration("chainreview");
+    const settingValue = config.get<string>(settingName);
+    if (settingValue && settingValue.trim()) {
+      return settingValue.trim();
+    }
+  } catch {
+    // Not in VS Code context
+  }
+
+  // 2. Environment variable
+  if (process.env[keyName]) {
+    return process.env[keyName];
+  }
+
+  // 3. .env file in workspace root
+  try {
+    const vscode = require("vscode");
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (workspaceRoot) {
+      const envPath = path.join(workspaceRoot, ".env");
+      if (fs.existsSync(envPath)) {
+        const envContent = fs.readFileSync(envPath, "utf-8");
+        const match = envContent.match(new RegExp(`^${keyName}=(.+)$`, "m"));
+        if (match?.[1]) {
+          return match[1].trim().replace(/^["']|["']$/g, "");
+        }
+      }
+    }
+  } catch {
+    // Not available
+  }
+
+  // 4. ~/.anthropic/api_key (for ANTHROPIC_API_KEY only)
+  if (keyName === "ANTHROPIC_API_KEY") {
+    try {
+      const home = process.env.HOME || process.env.USERPROFILE || "";
+      const keyFile = path.join(home, ".anthropic", "api_key");
+      if (fs.existsSync(keyFile)) {
+        const key = fs.readFileSync(keyFile, "utf-8").trim();
+        if (key) return key;
+      }
+    } catch {
+      // Not available
+    }
+  }
+
+  return undefined;
+}
 
 export class CrpClient {
   private client: Client;
@@ -43,14 +105,22 @@ export class CrpClient {
       HOME: process.env.HOME || process.env.USERPROFILE || "",
     };
 
-    // Pass ANTHROPIC_API_KEY to the server process
-    if (process.env.ANTHROPIC_API_KEY) {
-      env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+    // Resolve API keys from multiple sources (VS Code settings → env → .env → key file)
+    const anthropicKey = resolveApiKey("ANTHROPIC_API_KEY", "anthropicApiKey");
+    if (anthropicKey) {
+      env.ANTHROPIC_API_KEY = anthropicKey;
+    } else {
+      console.error(
+        "ChainReview: WARNING — ANTHROPIC_API_KEY not found. " +
+        "Set it in VS Code settings (chainreview.anthropicApiKey), " +
+        "environment variable, .env file, or ~/.anthropic/api_key. " +
+        "LLM-powered features (review, chat, validation) will not work."
+      );
     }
 
-    // Also pass BRAVE_SEARCH_API_KEY if available
-    if (process.env.BRAVE_SEARCH_API_KEY) {
-      env.BRAVE_SEARCH_API_KEY = process.env.BRAVE_SEARCH_API_KEY;
+    const braveKey = resolveApiKey("BRAVE_SEARCH_API_KEY", "braveSearchApiKey");
+    if (braveKey) {
+      env.BRAVE_SEARCH_API_KEY = braveKey;
     }
 
     this.transport = new StdioClientTransport({

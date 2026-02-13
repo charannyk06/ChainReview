@@ -47,6 +47,18 @@
     "configuration": {
       "title": "ChainReview",
       "properties": {
+        "chainreview.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Anthropic API key for LLM-powered features (review agents, chat, validation). Required for CRP tools to function.",
+          "order": 0
+        },
+        "chainreview.braveSearchApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Brave Search API key for web search capabilities. Optional — get a free key at https://api.search.brave.com/",
+          "order": 1
+        },
         "chainreview.mcpServers": {
           "type": "array",
           "default": [],
