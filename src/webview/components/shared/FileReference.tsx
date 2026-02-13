@@ -8,38 +8,41 @@ interface ExtConfig {
   textColor: string;
 }
 
+const MUTED_BG = "bg-[var(--cr-bg-tertiary)]";
+const MUTED_TEXT = "text-[var(--cr-text-muted)]";
+
 const EXT_CONFIG: Record<string, ExtConfig> = {
   // JavaScript/TypeScript
-  js:   { label: "JS",   bgColor: "bg-yellow-500/20", textColor: "text-yellow-400" },
-  jsx:  { label: "JSX",  bgColor: "bg-yellow-500/20", textColor: "text-yellow-400" },
-  ts:   { label: "TS",   bgColor: "bg-blue-500/20",   textColor: "text-blue-400" },
-  tsx:  { label: "TSX",  bgColor: "bg-blue-500/20",   textColor: "text-blue-400" },
+  js:   { label: "JS",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  jsx:  { label: "JSX",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  ts:   { label: "TS",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  tsx:  { label: "TSX",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
   // Data/Config
-  json: { label: "JSON", bgColor: "bg-amber-500/20",  textColor: "text-amber-400" },
-  yaml: { label: "YAML", bgColor: "bg-pink-500/20",   textColor: "text-pink-400" },
-  yml:  { label: "YML",  bgColor: "bg-pink-500/20",   textColor: "text-pink-400" },
-  toml: { label: "TOML", bgColor: "bg-gray-500/20",   textColor: "text-gray-400" },
+  json: { label: "JSON", bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  yaml: { label: "YAML", bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  yml:  { label: "YML",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  toml: { label: "TOML", bgColor: MUTED_BG, textColor: MUTED_TEXT },
   // Web
-  html: { label: "HTML", bgColor: "bg-orange-500/20", textColor: "text-orange-400" },
-  css:  { label: "CSS",  bgColor: "bg-purple-500/20", textColor: "text-purple-400" },
-  scss: { label: "SCSS", bgColor: "bg-pink-500/20",   textColor: "text-pink-400" },
+  html: { label: "HTML", bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  css:  { label: "CSS",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  scss: { label: "SCSS", bgColor: MUTED_BG, textColor: MUTED_TEXT },
   // Markdown/Text
-  md:   { label: "MD",   bgColor: "bg-neutral-500/20", textColor: "text-neutral-400" },
-  txt:  { label: "TXT",  bgColor: "bg-neutral-500/20", textColor: "text-neutral-400" },
+  md:   { label: "MD",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  txt:  { label: "TXT",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
   // Python/Other
-  py:   { label: "PY",   bgColor: "bg-green-500/20",  textColor: "text-green-400" },
-  rs:   { label: "RS",   bgColor: "bg-orange-500/20", textColor: "text-orange-400" },
-  go:   { label: "GO",   bgColor: "bg-cyan-500/20",   textColor: "text-cyan-400" },
-  sh:   { label: "SH",   bgColor: "bg-emerald-500/20", textColor: "text-emerald-400" },
-  sql:  { label: "SQL",  bgColor: "bg-indigo-500/20", textColor: "text-indigo-400" },
+  py:   { label: "PY",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  rs:   { label: "RS",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  go:   { label: "GO",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  sh:   { label: "SH",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  sql:  { label: "SQL",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
   // Config
-  env:  { label: "ENV",  bgColor: "bg-yellow-600/20", textColor: "text-yellow-500" },
-  lock: { label: "LOCK", bgColor: "bg-gray-500/20",   textColor: "text-gray-500" },
+  env:  { label: "ENV",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  lock: { label: "LOCK", bgColor: MUTED_BG, textColor: MUTED_TEXT },
 };
 
 function getExtConfig(filePath: string): ExtConfig {
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
-  return EXT_CONFIG[ext] || { label: ext.toUpperCase().slice(0, 4) || "FILE", bgColor: "bg-neutral-500/20", textColor: "text-neutral-400" };
+  return EXT_CONFIG[ext] || { label: ext.toUpperCase().slice(0, 4) || "FILE", bgColor: MUTED_BG, textColor: MUTED_TEXT };
 }
 
 function getFileName(filePath: string): string {
@@ -121,7 +124,7 @@ export function FileRow({ filePath, line, endLine, onClick, className }: FileRow
       )}
     >
       <ExtBadge filePath={filePath} />
-      <span className="text-[11px] text-[var(--cr-text-secondary)] group-hover:text-indigo-400 font-mono truncate flex-1 min-w-0 transition-colors">
+      <span className="text-[11px] text-[var(--cr-text-secondary)] group-hover:text-[var(--cr-text-primary)] font-mono truncate flex-1 min-w-0 transition-colors">
         {filePath}
       </span>
       {line != null && (
@@ -157,7 +160,7 @@ export function FileHeader({ filePath, startLine, endLine, onClick, className }:
       )}
     >
       <ExtBadge filePath={filePath} />
-      <span className="text-[10px] text-indigo-400 group-hover:text-indigo-300 font-mono truncate flex-1 transition-colors">
+      <span className="text-[10px] text-[var(--cr-text-secondary)] group-hover:text-[var(--cr-text-primary)] font-mono truncate flex-1 transition-colors">
         {filePath}
       </span>
       <span className="text-[9px] text-[var(--cr-text-ghost)] shrink-0 font-mono">

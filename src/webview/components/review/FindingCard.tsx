@@ -30,13 +30,13 @@ const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
   system: SettingsIcon,
 };
 
-/** Severity dot color classes */
+/** Severity dot color classes — subtle, muted tones */
 const SEVERITY_DOT: Record<string, string> = {
-  critical: "text-red-500",
-  high: "text-orange-500",
-  medium: "text-yellow-500",
-  low: "text-blue-500",
-  info: "text-gray-400",
+  critical: "text-red-500/60",
+  high: "text-orange-500/50",
+  medium: "text-yellow-500/40",
+  low: "text-[var(--cr-text-muted)]",
+  info: "text-[var(--cr-text-ghost)]",
 };
 
 /** Get the category icon component */
@@ -71,7 +71,7 @@ interface FindingCardProps {
 /** Verdict badge config */
 const VERDICT_BADGE: Record<ValidatorVerdict, { label: string; color: string; bgColor: string; borderColor: string; icon: "shield" | "bug" | "help" }> = {
   confirmed: { label: "Confirmed Bug", color: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/20", icon: "bug" },
-  likely_valid: { label: "Likely Bug", color: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-orange-500/20", icon: "bug" },
+  likely_valid: { label: "Likely Bug", color: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-[var(--cr-border-strong)]", icon: "bug" },
   uncertain: { label: "Uncertain", color: "text-yellow-400", bgColor: "bg-yellow-500/10", borderColor: "border-yellow-500/20", icon: "help" },
   likely_false_positive: { label: "Likely OK", color: "text-emerald-400", bgColor: "bg-emerald-500/10", borderColor: "border-emerald-500/20", icon: "shield" },
   false_positive: { label: "No Bug — Verified", color: "text-emerald-400", bgColor: "bg-emerald-500/10", borderColor: "border-emerald-500/20", icon: "shield" },
@@ -167,7 +167,7 @@ export function FindingCard({
 
       {/* Header — always visible */}
       <div
-        className="px-5 pt-5 pb-4 cursor-pointer select-none"
+        className="px-4 pt-3 pb-3 cursor-pointer select-none"
         onClick={() => {
           if (selectionMode && onToggleSelect) {
             onToggleSelect(finding.id);
@@ -222,57 +222,33 @@ export function FindingCard({
           )}
         </div>
 
-        {/* Meta row: badges + confidence — aligned with title (past severity dot + gap) */}
-        <div className="flex items-center gap-2 mt-3" style={{ marginLeft: 'calc(10px + 0.75rem)' }}>
-          {/* Category pill */}
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border",
-              categoryConfig.bgColor,
-              categoryConfig.color,
-              categoryConfig.borderColor
-            )}
-          >
+        {/* Meta row: plain text labels — aligned with title (past severity dot + gap) */}
+        <div className="flex items-center gap-3 mt-2.5" style={{ marginLeft: 'calc(10px + 0.75rem)' }}>
+          {/* Category — plain text */}
+          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--cr-text-muted)]">
             <CategoryIcon className="size-2.5" />
             {categoryConfig.label}
           </span>
 
-          {/* Severity pill */}
-          <span
-            className={cn(
-              "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border",
-              severity.bgColor,
-              severity.color,
-              finding.severity === "critical" ? "border-red-500/30" :
-              finding.severity === "high" ? "border-orange-500/30" :
-              finding.severity === "medium" ? "border-yellow-500/30" :
-              finding.severity === "low" ? "border-blue-500/30" : "border-gray-500/30"
-            )}
-          >
+          <span className="text-[var(--cr-text-ghost)]">&middot;</span>
+
+          {/* Severity — plain text */}
+          <span className="text-[10px] text-[var(--cr-text-muted)]">
             {severity.label}
           </span>
 
-          {/* Confidence meter */}
-          <div className="flex items-center gap-1.5 ml-auto">
-            <div className="w-8 h-1.5 rounded-full bg-[var(--cr-bg-tertiary)] overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  finding.confidence >= 0.8 ? "bg-emerald-500" :
-                  finding.confidence >= 0.5 ? "bg-yellow-500" : "bg-red-500"
-                )}
-                style={{ width: `${Math.round(finding.confidence * 100)}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-mono text-[var(--cr-text-muted)] tabular-nums">
-              {Math.round(finding.confidence * 100)}%
-            </span>
-          </div>
+          <span className="text-[var(--cr-text-ghost)]">&middot;</span>
 
-          {/* Agent icon */}
-          <div className={cn("flex items-center gap-1", agentConfig.color)}>
-            <AgentIcon className="size-3.5" />
-          </div>
+          {/* Confidence — plain mono number */}
+          <span className="text-[10px] font-mono text-[var(--cr-text-ghost)] tabular-nums">
+            {Math.round(finding.confidence * 100)}%
+          </span>
+
+          {/* Agent — right-aligned, ghost */}
+          <span className="inline-flex items-center gap-1 ml-auto text-[10px] text-[var(--cr-text-ghost)]">
+            <AgentIcon className="size-2.5" />
+            {agentConfig.shortLabel}
+          </span>
         </div>
 
         {/* Referenced files — compact chips, aligned with title */}
@@ -300,7 +276,7 @@ export function FindingCard({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-5 pb-5 space-y-4" style={{ paddingLeft: 'calc(20px + 10px + 0.75rem)' }}>
+            <div className="px-4 pb-4 space-y-3" style={{ paddingLeft: 'calc(16px + 10px + 0.75rem)' }}>
               {/* Evidence snippets with proper file headers */}
               {finding.evidence.map((ev, i) => (
                 <div
@@ -402,7 +378,7 @@ export function FindingCard({
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: -4, scale: 0.95 }}
                             transition={{ duration: 0.15 }}
-                            className="absolute bottom-full left-0 mb-2 w-60 rounded-xl border border-orange-500/20 bg-[var(--cr-bg-secondary)] shadow-2xl shadow-black/50 z-50 overflow-hidden backdrop-blur-sm"
+                            className="absolute bottom-full left-0 mb-2 w-60 rounded-xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] shadow-2xl shadow-black/50 z-50 overflow-hidden backdrop-blur-sm"
                           >
                             <div className="py-1.5">
                               {CODING_AGENTS.map((agent) => {
@@ -421,7 +397,7 @@ export function FindingCard({
                                       onSendToCodingAgent(finding.id, agent.id);
                                       setHandoffOpen(false);
                                     }}
-                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-orange-500/8 transition-colors cursor-pointer"
+                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
                                   >
                                     {agent.icon ? (
                                       <img
@@ -433,17 +409,17 @@ export function FindingCard({
                                         }}
                                       />
                                     ) : agent.id === "clipboard" ? (
-                                      <ClipboardCopyIcon className="size-4 text-neutral-500" />
+                                      <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
                                     ) : agent.id === "export-markdown" ? (
-                                      <ExternalLinkIcon className="size-4 text-neutral-500" />
+                                      <ExternalLinkIcon className="size-4 text-[var(--cr-text-muted)]" />
                                     ) : agent.id === "config-more" ? (
-                                      <SettingsIcon className="size-4 text-neutral-500" />
+                                      <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
                                     ) : null}
                                     <span className={cn("text-[12px] font-medium flex-1", agent.color)}>
                                       {agent.label}
                                     </span>
                                     {agent.suffix && (
-                                      <span className="text-[10px] text-neutral-600 font-mono">
+                                      <span className="text-[10px] text-[var(--cr-text-ghost)] font-mono">
                                         {agent.suffix}
                                       </span>
                                     )}

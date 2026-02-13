@@ -17,7 +17,7 @@ import type { MCPServerInfo } from "@/lib/types";
 
 const STATUS_CONFIG: Record<string, { icon: React.ElementType; color: string; label: string }> = {
   connected: { icon: CheckCircle2Icon, color: "text-emerald-400", label: "Connected" },
-  disconnected: { icon: CircleXIcon, color: "text-neutral-500", label: "Disconnected" },
+  disconnected: { icon: CircleXIcon, color: "text-[var(--cr-text-muted)]", label: "Disconnected" },
   error: { icon: CircleAlertIcon, color: "text-red-400", label: "Error" },
   connecting: { icon: LoaderIcon, color: "text-amber-400", label: "Connecting" },
 };
@@ -108,7 +108,7 @@ export function MCPServerCard({
               "size-6 flex items-center justify-center rounded-md transition-colors",
               server.config.enabled
                 ? "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
-                : "text-neutral-500 hover:text-neutral-400 hover:bg-neutral-500/10"
+                : "text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] hover:bg-[var(--cr-bg-hover)]"
             )}
           >
             <PowerIcon className="size-3" />

@@ -6,31 +6,31 @@ export const AGENT_CONFIG: Record<
 > = {
   architecture: {
     label: "Architecture Agent",
-    shortLabel: "Architecture",
-    color: "text-blue-400",
-    bgColor: "bg-blue-500/10",
-    borderColor: "border-blue-500/20",
+    shortLabel: "Arch",
+    color: "text-[var(--cr-text-muted)]",
+    bgColor: "bg-transparent",
+    borderColor: "border-transparent",
   },
   security: {
     label: "Security Agent",
-    shortLabel: "Security",
-    color: "text-red-400",
-    bgColor: "bg-red-500/10",
-    borderColor: "border-red-500/20",
+    shortLabel: "Sec",
+    color: "text-[var(--cr-text-muted)]",
+    bgColor: "bg-transparent",
+    borderColor: "border-transparent",
   },
   validator: {
     label: "Validator Agent",
-    shortLabel: "Validator",
-    color: "text-green-400",
-    bgColor: "bg-green-500/10",
-    borderColor: "border-green-500/20",
+    shortLabel: "Val",
+    color: "text-[var(--cr-text-muted)]",
+    bgColor: "bg-transparent",
+    borderColor: "border-transparent",
   },
   system: {
     label: "System",
-    shortLabel: "System",
-    color: "text-neutral-400",
-    bgColor: "bg-neutral-500/10",
-    borderColor: "border-neutral-500/20",
+    shortLabel: "Sys",
+    color: "text-[var(--cr-text-ghost)]",
+    bgColor: "bg-transparent",
+    borderColor: "border-transparent",
   },
 };
 
@@ -39,29 +39,29 @@ export const SEVERITY_CONFIG: Record<
   { label: string; color: string; bgColor: string }
 > = {
   critical: {
-    label: "CRITICAL",
-    color: "text-red-300",
-    bgColor: "bg-red-500/20",
+    label: "Critical",
+    color: "text-[var(--cr-text-secondary)]",
+    bgColor: "bg-transparent",
   },
   high: {
-    label: "HIGH",
-    color: "text-orange-300",
-    bgColor: "bg-orange-500/20",
+    label: "High",
+    color: "text-[var(--cr-text-secondary)]",
+    bgColor: "bg-transparent",
   },
   medium: {
-    label: "MEDIUM",
-    color: "text-yellow-300",
-    bgColor: "bg-yellow-500/20",
+    label: "Medium",
+    color: "text-[var(--cr-text-muted)]",
+    bgColor: "bg-transparent",
   },
   low: {
-    label: "LOW",
-    color: "text-blue-300",
-    bgColor: "bg-blue-500/20",
+    label: "Low",
+    color: "text-[var(--cr-text-muted)]",
+    bgColor: "bg-transparent",
   },
   info: {
-    label: "INFO",
-    color: "text-gray-300",
-    bgColor: "bg-gray-500/20",
+    label: "Info",
+    color: "text-[var(--cr-text-ghost)]",
+    bgColor: "bg-transparent",
   },
 };
 
@@ -71,23 +71,23 @@ export const CATEGORY_CONFIG: Record<
 > = {
   bugs: {
     label: "Bug",
-    color: "text-red-400",
-    bgColor: "bg-red-500/15",
-    borderColor: "border-red-500/30",
+    color: "text-[var(--cr-text-muted)]",
+    bgColor: "bg-[var(--cr-bg-tertiary)]",
+    borderColor: "border-[var(--cr-border-subtle)]",
     icon: "bug",
   },
   security: {
     label: "Security",
-    color: "text-blue-400",
-    bgColor: "bg-blue-500/15",
-    borderColor: "border-blue-500/30",
+    color: "text-[var(--cr-text-muted)]",
+    bgColor: "bg-[var(--cr-bg-tertiary)]",
+    borderColor: "border-[var(--cr-border-subtle)]",
     icon: "shield",
   },
   architecture: {
     label: "Architecture",
-    color: "text-purple-400",
-    bgColor: "bg-purple-500/15",
-    borderColor: "border-purple-500/30",
+    color: "text-[var(--cr-text-muted)]",
+    bgColor: "bg-[var(--cr-bg-tertiary)]",
+    borderColor: "border-[var(--cr-border-subtle)]",
     icon: "landmark",
   },
 };
@@ -139,19 +139,19 @@ export const CODING_AGENTS: Array<{
     id: "clipboard",
     label: "Copy to Clipboard",
     icon: "",
-    color: "text-neutral-400",
+    color: "text-[var(--cr-text-muted)]",
   },
   {
     id: "export-markdown",
     label: "Export as Markdown",
     icon: "",
-    color: "text-neutral-400",
+    color: "text-[var(--cr-text-muted)]",
   },
   {
     id: "config-more",
     label: "Configure Agents…",
     icon: "",
-    color: "text-neutral-500",
+    color: "text-[var(--cr-text-ghost)]",
   },
 ];
 

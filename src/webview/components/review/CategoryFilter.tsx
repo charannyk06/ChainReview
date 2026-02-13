@@ -34,22 +34,22 @@ const CATEGORIES: {
   {
     id: "bugs",
     label: "Bugs",
-    dotColor: "bg-red-400",
-    activeColor: "bg-red-500/10 text-red-300 border-red-500/25",
+    dotColor: "bg-[var(--cr-text-muted)]",
+    activeColor: "bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-primary)] border-[var(--cr-border-strong)]",
     Icon: BugIcon,
   },
   {
     id: "security",
     label: "Security",
-    dotColor: "bg-blue-400",
-    activeColor: "bg-blue-500/10 text-blue-300 border-blue-500/25",
+    dotColor: "bg-[var(--cr-text-muted)]",
+    activeColor: "bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-primary)] border-[var(--cr-border-strong)]",
     Icon: ShieldAlertIcon,
   },
   {
     id: "architecture",
     label: "Architecture",
-    dotColor: "bg-purple-400",
-    activeColor: "bg-purple-500/10 text-purple-300 border-purple-500/25",
+    dotColor: "bg-[var(--cr-text-muted)]",
+    activeColor: "bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-primary)] border-[var(--cr-border-strong)]",
     Icon: LandmarkIcon,
   },
 ];

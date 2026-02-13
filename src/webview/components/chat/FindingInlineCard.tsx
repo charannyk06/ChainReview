@@ -27,13 +27,13 @@ const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
   system: SettingsIcon,
 };
 
-/** Severity left-bar color classes */
+/** Severity left-bar color classes — muted tones */
 const SEVERITY_BAR: Record<string, string> = {
-  critical: "bg-red-500",
-  high: "bg-orange-500",
-  medium: "bg-yellow-500",
-  low: "bg-blue-500",
-  info: "bg-neutral-500",
+  critical: "bg-red-500/50",
+  high: "bg-orange-500/40",
+  medium: "bg-yellow-500/30",
+  low: "bg-[var(--cr-text-ghost)]",
+  info: "bg-[var(--cr-text-ghost)]",
 };
 
 function getCategoryIcon(icon: string) {
@@ -75,7 +75,7 @@ export function FindingInlineCard({
   const categoryConfig = CATEGORY_CONFIG[finding.category];
   const AgentIcon = AGENT_ICONS[finding.agent] || SettingsIcon;
   const CategoryIcon = getCategoryIcon(categoryConfig.icon);
-  const severityBar = SEVERITY_BAR[finding.severity] || "bg-neutral-500";
+  const severityBar = SEVERITY_BAR[finding.severity] || "bg-[var(--cr-text-ghost)]";
 
   // Close handoff dropdown on outside click
   useEffect(() => {
@@ -94,7 +94,7 @@ export function FindingInlineCard({
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="my-1.5 relative rounded-lg border border-neutral-800 bg-neutral-900/80 hover:border-neutral-700 overflow-hidden transition-all duration-200"
+      className="my-2 relative rounded-xl border border-[var(--cr-border)] bg-[var(--cr-bg-secondary)] hover:border-[var(--cr-border-strong)] overflow-hidden transition-all duration-200"
     >
       {/* Severity color bar — left edge indicator */}
       <div className={cn("absolute left-0 top-0 bottom-0 w-[3px] rounded-l-lg", severityBar)} />
@@ -104,61 +104,26 @@ export function FindingInlineCard({
         {/* Header — always visible, clickable */}
         <button
           onClick={() => setExpanded((p) => !p)}
-          className="w-full text-left px-3 pt-2.5 pb-2 hover:bg-neutral-800/20 transition-colors"
+          className="w-full text-left px-3.5 pt-3 pb-2.5 hover:bg-[var(--cr-bg-hover)] transition-colors"
         >
-          {/* Top row: badges and meta */}
-          <div className="flex items-center gap-1.5 mb-1.5">
-            {/* Category pill */}
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full",
-                categoryConfig.bgColor,
-                categoryConfig.color
-              )}
-            >
-              <CategoryIcon className="size-2.5" />
+          {/* Top row: plain text meta */}
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center gap-1 text-[9px] text-[var(--cr-text-muted)]">
+              <CategoryIcon className="size-2" />
               {categoryConfig.label}
             </span>
+            <span className="text-[var(--cr-text-ghost)]">&middot;</span>
+            <span className="text-[9px] text-[var(--cr-text-muted)]">{severity.label}</span>
+            <span className="text-[var(--cr-text-ghost)]">&middot;</span>
+            <span className="text-[9px] font-mono text-[var(--cr-text-ghost)]">{Math.round(finding.confidence * 100)}%</span>
 
-            {/* Severity pill */}
-            <span
-              className={cn(
-                "text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide",
-                severity.bgColor,
-                severity.color
-              )}
-            >
-              {severity.label}
-            </span>
-
-            {/* Right-aligned: agent + confidence + chevron */}
             <div className="flex items-center gap-1.5 ml-auto">
-              {/* Confidence meter */}
-              <div className="flex items-center gap-1">
-                <div className="w-6 h-1 rounded-full bg-neutral-800 overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full rounded-full",
-                      finding.confidence >= 0.8 ? "bg-green-500" :
-                      finding.confidence >= 0.5 ? "bg-yellow-500" : "bg-red-500"
-                    )}
-                    style={{ width: `${Math.round(finding.confidence * 100)}%` }}
-                  />
-                </div>
-                <span className="text-[9px] font-mono text-neutral-500">
-                  {Math.round(finding.confidence * 100)}%
-                </span>
-              </div>
-
-              {/* Agent icon */}
-              <div className={cn("flex items-center gap-0.5", agentConfig.color)}>
-                <AgentIcon className="size-2.5" />
-              </div>
-
-              {/* Expand chevron */}
+              <span className="inline-flex items-center gap-0.5 text-[var(--cr-text-ghost)]">
+                <AgentIcon className="size-2" />
+              </span>
               <ChevronRightIcon
                 className={cn(
-                  "size-3 text-neutral-600 transition-transform duration-200",
+                  "size-3 text-[var(--cr-text-ghost)] transition-transform duration-200",
                   expanded && "rotate-90"
                 )}
               />
@@ -166,13 +131,13 @@ export function FindingInlineCard({
           </div>
 
           {/* Title */}
-          <h4 className="text-[12px] font-semibold text-neutral-100 leading-snug mb-1">
+          <h4 className="text-[12px] font-semibold text-[var(--cr-text-primary)] leading-snug mb-1.5">
             {finding.title}
           </h4>
 
           {/* Description preview */}
           <p className={cn(
-            "text-[10px] text-neutral-400 leading-relaxed",
+            "text-[11px] text-[var(--cr-text-secondary)] leading-relaxed",
             !expanded && "line-clamp-2"
           )}>
             {finding.description}
@@ -203,12 +168,12 @@ export function FindingInlineCard({
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <div className="px-3 pb-3 space-y-2.5 border-t border-neutral-800/50 pt-2.5">
+              <div className="px-3.5 pb-3.5 space-y-3 border-t border-[var(--cr-border-subtle)] pt-3">
                 {/* Evidence snippets with proper file headers */}
                 {finding.evidence.map((ev, i) => (
                   <div
                     key={i}
-                    className="rounded-md border border-neutral-800/60 bg-neutral-950/60 overflow-hidden"
+                    className="rounded-lg border border-[var(--cr-border-subtle)] bg-[var(--cr-bg-primary)] overflow-hidden"
                   >
                     {/* Clickable file header with colored extension badge */}
                     <FileHeader
@@ -217,7 +182,7 @@ export function FindingInlineCard({
                       endLine={ev.endLine}
                       onClick={() => openFile(ev.filePath, ev.startLine)}
                     />
-                    <pre className="px-2.5 py-2 text-[10px] text-neutral-300 font-mono overflow-x-auto max-h-28 leading-relaxed">
+                    <pre className="px-3 py-2.5 text-[10.5px] text-[var(--cr-text-secondary)] font-mono overflow-x-auto max-h-28 leading-relaxed">
                       {ev.snippet}
                     </pre>
                   </div>
@@ -231,7 +196,8 @@ export function FindingInlineCard({
                   {onExplain && (
                     <button
                       onClick={() => onExplain(finding.id)}
-                      className="inline-flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1.5 rounded-md bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border border-purple-500/20 transition-all hover:border-purple-500/30"
+                      className="cr-btn cr-btn-purple"
+                      style={{ fontSize: '10px', padding: '5px 10px' }}
                     >
                       <SparklesIcon className="size-3" />
                       Explain
@@ -240,7 +206,8 @@ export function FindingInlineCard({
                   {onProposePatch && (
                     <button
                       onClick={() => onProposePatch(finding.id)}
-                      className="inline-flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1.5 rounded-md bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 border border-blue-500/20 transition-all hover:border-blue-500/30"
+                      className="cr-btn cr-btn-blue"
+                      style={{ fontSize: '10px', padding: '5px 10px' }}
                     >
                       <WrenchIcon className="size-3" />
                       Fix
@@ -249,7 +216,8 @@ export function FindingInlineCard({
                   {onSendToValidator && (
                     <button
                       onClick={() => onSendToValidator(finding.id)}
-                      className="inline-flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1.5 rounded-md bg-green-500/10 text-green-300 hover:bg-green-500/20 border border-green-500/20 transition-all hover:border-green-500/30"
+                      className="cr-btn cr-btn-emerald"
+                      style={{ fontSize: '10px', padding: '5px 10px' }}
                     >
                       <ShieldCheckIcon className="size-3" />
                       Validate
@@ -261,7 +229,8 @@ export function FindingInlineCard({
                     <div className="relative" ref={handoffRef}>
                       <button
                         onClick={() => setHandoffOpen((p) => !p)}
-                        className="inline-flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1.5 rounded-md bg-orange-500/15 text-orange-300 hover:bg-orange-500/25 border border-orange-500/25 transition-all hover:border-orange-500/40"
+                        className="cr-btn cr-btn-orange"
+                        style={{ fontSize: '10px', padding: '5px 10px' }}
                       >
                         <SendIcon className="size-3" />
                         Send to Agent
@@ -277,7 +246,7 @@ export function FindingInlineCard({
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: -4, scale: 0.95 }}
                             transition={{ duration: 0.15 }}
-                            className="absolute bottom-full left-0 mb-2 w-60 rounded-xl border border-orange-500/20 bg-neutral-900 shadow-2xl shadow-black/50 z-50 overflow-hidden"
+                            className="absolute bottom-full left-0 mb-2 w-60 rounded-xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] shadow-2xl shadow-black/50 z-50 overflow-hidden"
                           >
                             <div className="py-1.5">
                               {CODING_AGENTS.map((agent) => {
@@ -285,7 +254,7 @@ export function FindingInlineCard({
                                   return (
                                     <div
                                       key={agent.id}
-                                      className="border-t border-neutral-800/60 my-1.5"
+                                      className="border-t border-[var(--cr-border-subtle)] my-1.5"
                                     />
                                   );
                                 }
@@ -296,7 +265,7 @@ export function FindingInlineCard({
                                       onSendToCodingAgent(finding.id, agent.id);
                                       setHandoffOpen(false);
                                     }}
-                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-orange-500/8 transition-colors cursor-pointer"
+                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
                                   >
                                     {agent.icon ? (
                                       <img
@@ -308,17 +277,17 @@ export function FindingInlineCard({
                                         }}
                                       />
                                     ) : agent.id === "clipboard" ? (
-                                      <ClipboardCopyIcon className="size-4 text-neutral-500" />
+                                      <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
                                     ) : agent.id === "export-markdown" ? (
-                                      <ExternalLinkIcon className="size-4 text-neutral-500" />
+                                      <ExternalLinkIcon className="size-4 text-[var(--cr-text-muted)]" />
                                     ) : agent.id === "config-more" ? (
-                                      <SettingsIcon className="size-4 text-neutral-500" />
+                                      <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
                                     ) : null}
                                     <span className={cn("text-[12px] font-medium flex-1", agent.color)}>
                                       {agent.label}
                                     </span>
                                     {agent.suffix && (
-                                      <span className="text-[10px] text-neutral-600 font-mono">
+                                      <span className="text-[10px] text-[var(--cr-text-ghost)] font-mono">
                                         {agent.suffix}
                                       </span>
                                     )}
@@ -336,7 +305,7 @@ export function FindingInlineCard({
                   {onMarkFalsePositive && (
                     <button
                       onClick={() => onMarkFalsePositive(finding.id)}
-                      className="inline-flex items-center gap-1 text-[10px] px-2 py-1.5 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-colors ml-auto"
+                      className="inline-flex items-center gap-1 text-[10px] px-2 py-1.5 rounded-md text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] hover:bg-[var(--cr-bg-hover)] transition-colors ml-auto"
                     >
                       <XCircleIcon className="size-3" />
                       False Positive
