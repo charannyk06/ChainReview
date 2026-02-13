@@ -1270,18 +1270,24 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
       vscode.window.showInformationMessage(`ChainReview: Validator verdict — ${result.verdict}`);
     } catch (err: any) {
+      const errMsg = err.message || "Unknown error";
+      const isApiKeyError = errMsg.includes("API key") || errMsg.includes("401") || errMsg.includes("authentication");
+      const errorDisplay = isApiKeyError
+        ? `**Validation failed:** Anthropic API key not configured or invalid. Check your API key in VS Code settings (chainReview.anthropicApiKey) or set the ANTHROPIC_API_KEY environment variable.`
+        : `**Validation failed:** ${errMsg}`;
+
       this.postMessage({
         type: "chatResponseBlock", messageId,
-        block: { kind: "text", id: `val-${++this._blockCounter}`, text: `Validation error: ${err.message}`, format: "plain", timestamp: new Date().toISOString() },
+        block: { kind: "text", id: `val-${++this._blockCounter}`, text: errorDisplay, format: "markdown", timestamp: new Date().toISOString() },
       });
       this.postMessage({ type: "chatResponseEnd", messageId });
 
-      // On error, send uncertain verdict so the card stops showing "verifying"
+      // Clear the validating state so the card reverts to its pre-verify state
+      // Don't send a fake "uncertain" verdict — that's misleading
       this.postMessage({
-        type: "findingValidated",
+        type: "findingValidationError",
         findingId,
-        verdict: "uncertain",
-        reasoning: `Validation failed: ${err.message}`,
+        error: errMsg,
       });
     } finally {
       this._activeValidateMessageId = null;
