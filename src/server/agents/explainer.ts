@@ -338,8 +338,8 @@ Start with Finding 1 and work through all of them. Use your tools to gather cont
     onThinking: callbacks.onThinking,
     maxIterations: findings.length * 5 + 10, // Allow enough iterations for all findings
     signal,
-    // Use claude-sonnet for explanations (good balance of quality/speed)
-    model: "claude-sonnet-4-20250514",
+    // Use claude-haiku-4-5 for fast, cost-effective explanations
+    model: "claude-haiku-4-5-20251001",
   });
 
   // Emit completion event
