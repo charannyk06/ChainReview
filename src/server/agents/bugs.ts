@@ -203,7 +203,8 @@ export async function runBugsAgent(
   targetPath: string | undefined,
   runId: string,
   callbacks: BugsAgentCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  priorFindings?: string
 ): Promise<AgentFinding[]> {
   const findings: AgentFinding[] = [];
 
@@ -223,7 +224,7 @@ Start by searching for common bug patterns:
 5. Search for async issues: await in loops, missing await
 
 For each real bug you find, read the surrounding code to understand context, then emit a finding.
-
+${priorFindings || ""}
 Begin your analysis now.`;
 
   // Tool execution handler

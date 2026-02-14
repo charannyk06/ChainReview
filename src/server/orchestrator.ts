@@ -9,6 +9,7 @@ import { runBugsAgent } from "./agents/bugs";
 import type {
   Store,
 } from "./store";
+import { computeFindingFingerprint } from "./store";
 import type {
   ReviewMode,
   AgentContext,
@@ -183,6 +184,21 @@ export async function runReview(
       }
     }
 
+    // ── Build prior findings context for dedup ──
+    const priorActive = store.getRepoFindings(repoPath);
+    let priorFindings: string | undefined;
+    if (priorActive.length > 0) {
+      const summary = priorActive.slice(0, 30).map(
+        (f) => `- [${f.severity.toUpperCase()}] ${f.title} (${f.agent}, ${f.evidence[0]?.filePath || "unknown"}:${f.evidence[0]?.startLine ?? "?"})`
+      ).join("\n");
+      priorFindings = `\n\n## KNOWN FINDINGS (already reported — DO NOT re-report these)\n${summary}\n\nSkip any issues that match the above. Focus on NEW findings only.`;
+      emitEvent("evidence_collected", undefined, {
+        kind: "pipeline_step",
+        step: "prior_findings",
+        message: `Loaded ${priorActive.length} prior finding(s) for dedup`,
+      });
+    }
+
     // Build agent context
     const context: AgentContext = {
       repoPath,
@@ -192,6 +208,7 @@ export async function runReview(
       importGraph,
       semgrepResults,
       diffContent,
+      priorFindings,
     };
 
     // ── Shared agent callback factory ──
@@ -235,24 +252,37 @@ export async function runReview(
       },
     });
 
-    // Helper to store+emit findings for an agent
+    // Helper to store+emit findings for an agent (with dedup)
     function processFindings(
       agentFindings: AgentFinding[],
       agentName: "architecture" | "security" | "validator"
     ) {
       for (const af of agentFindings) {
+        const evidence = af.evidence || [];
+        const category = af.category || agentName;
+        // Dedup: skip if an active finding with the same fingerprint exists
+        const fp = computeFindingFingerprint(agentName, category, af.title, evidence);
+        if (store.findingExists(fp)) {
+          emitEvent("evidence_collected", agentName, {
+            kind: "dedup_skip",
+            title: af.title,
+            message: `Skipped duplicate finding: ${af.title}`,
+          });
+          continue;
+        }
+
         const findingId = store.insertFinding(runId, {
           ...af,
           agent: agentName,
-          category: af.category || agentName,
-          evidence: af.evidence || [],
+          category,
+          evidence,
         });
         const finding: Finding = {
           id: findingId,
           ...af,
           agent: agentName,
-          category: af.category || agentName,
-          evidence: af.evidence || [],
+          category,
+          evidence,
         };
         allFindings.push(finding);
         callbacks.onFinding(finding);
@@ -327,18 +357,31 @@ export async function runReview(
           emitEvent(event.type, event.agent, event.data);
         },
         onFinding: (finding) => {
+          const evidence = finding.evidence || [];
+          const category = finding.category || "bugs";
+          // Dedup: skip if an active finding with the same fingerprint exists
+          const fp = computeFindingFingerprint("bugs", category, finding.title, evidence);
+          if (store.findingExists(fp)) {
+            emitEvent("evidence_collected", "bugs", {
+              kind: "dedup_skip",
+              title: finding.title,
+              message: `Skipped duplicate finding: ${finding.title}`,
+            });
+            return;
+          }
+
           const findingId = store.insertFinding(runId, {
             ...finding,
             agent: "bugs",
-            category: finding.category || "bugs",
-            evidence: finding.evidence || [],
+            category,
+            evidence,
           });
           const f: Finding = {
             id: findingId,
             ...finding,
             agent: "bugs",
-            category: finding.category || "bugs",
-            evidence: finding.evidence || [],
+            category,
+            evidence,
           };
           allFindings.push(f);
           callbacks.onFinding(f);
@@ -354,7 +397,7 @@ export async function runReview(
         onThinking: bugsCallbacks.onThinking,
         onToolCall: bugsCallbacks.onToolCall,
         onToolResult: bugsCallbacks.onToolResult,
-      }, signal));
+      }, signal, priorFindings));
     }
 
     emitEvent("agent_started", undefined, {
