@@ -213,7 +213,9 @@ export type WebviewMessage =
   | { type: "mcpRefreshServer"; serverId: string }
   | { type: "getReviewHistory" }
   | { type: "deleteReviewRun"; runId: string }
-  | { type: "loadReviewRun"; runId: string };
+  | { type: "loadReviewRun"; runId: string }
+  | { type: "clearChat" }
+  | { type: "persistMessages"; messages: ConversationMessage[] };
 
 // Extension → Webview
 export type ValidatorVerdict = "still_present" | "partially_fixed" | "fixed" | "unable_to_determine";
@@ -239,7 +241,10 @@ export type ExtensionMessage =
   | { type: "mcpServerUpdated"; server: MCPServerInfo }
   | { type: "mcpServerRemoved"; serverId: string }
   | { type: "reviewHistory"; runs: ReviewRunSummary[] }
-  | { type: "injectUserMessage"; text: string };
+  | { type: "injectUserMessage"; text: string }
+  | { type: "restoreMessages"; messages: ConversationMessage[] }
+  | { type: "restoreReviewState"; findings: Finding[]; events: AuditEvent[]; status: string; mode?: string }
+  | { type: "requestPersistMessages" };
 
 // ── Review State ──
 

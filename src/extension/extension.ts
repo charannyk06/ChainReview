@@ -81,7 +81,7 @@ export async function activate(context: vscode.ExtensionContext) {
     crpClient = new CrpClient();
   }
 
-  const provider = new ReviewCockpitProvider(context.extensionUri, crpClient);
+  const provider = new ReviewCockpitProvider(context.extensionUri, crpClient, context);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useVSCodeAPI } from "./hooks/useVSCodeAPI";
 import { useReviewState } from "./hooks/useReviewState";
 import { OpenFileProvider } from "./contexts/OpenFileContext";
@@ -29,9 +29,17 @@ export default function App() {
     openHistory,
     closeHistory,
     deleteHistoryRun,
+    clearChat,
   } = useReviewState();
   const [activeTab, setActiveTab] = useState<TabId>("chat");
   const [activePatch, setActivePatch] = useState<Patch | null>(null);
+
+  // Ref to access latest messages without re-creating the callback
+  const messagesRef = useRef(state.messages);
+  messagesRef.current = state.messages;
+
+  // postMessage ref — filled in after useVSCodeAPI
+  const postMessageRef = useRef<((msg: any) => void) | null>(null);
 
   // Handle patchReady messages to open the patch preview + tab switching
   const handleMessage = useCallback(
@@ -44,11 +52,16 @@ export default function App() {
       if (msg.type === "switchTab") {
         setActiveTab(msg.tab);
       }
+      // Extension requests us to persist current messages
+      if (msg.type === "requestPersistMessages") {
+        postMessageRef.current?.({ type: "persistMessages", messages: messagesRef.current });
+      }
     },
     [handleExtensionMessage]
   );
 
   const { postMessage } = useVSCodeAPI(handleMessage);
+  postMessageRef.current = postMessage;
 
   const handleStartReview = (mode: "repo" | "diff") => {
     startReview(mode);
@@ -79,9 +92,17 @@ export default function App() {
 
   const handleNewThread = useCallback(() => {
     reset();
+    postMessage({ type: "clearChat" });
     setActiveTab("chat");
     setActivePatch(null);
-  }, [reset]);
+  }, [reset, postMessage]);
+
+  const handleClearChat = useCallback(() => {
+    clearChat();
+    postMessage({ type: "clearChat" });
+    setActiveTab("chat");
+    setActivePatch(null);
+  }, [clearChat, postMessage]);
 
   const handleOpenMCPManager = useCallback(() => {
     openMCPManager();

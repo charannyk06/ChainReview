@@ -95,7 +95,8 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _crpClient?: CrpClient
+    private readonly _crpClient?: CrpClient,
+    private readonly _context?: vscode.ExtensionContext
   ) {
     // Register stream event handler for real-time updates
     if (this._crpClient) {
@@ -127,6 +128,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         console.error("ChainReview: message handler error:", err);
       });
     });
+
+    // Restore persisted state when webview becomes visible
+    this._restorePersistedState();
   }
 
   public postMessage(message: unknown) {
@@ -213,6 +217,12 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         break;
       case "loadReviewRun":
         await this._loadReviewRun(message.runId as string);
+        break;
+      case "clearChat":
+        this._clearPersistedChat();
+        break;
+      case "persistMessages":
+        this._persistChatMessages(message.messages as unknown[]);
         break;
     }
   }
@@ -880,6 +890,17 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       this.postMessage({ type: "chatResponseEnd", messageId: summaryMessageId });
 
       this.postMessage({ type: "reviewComplete", findings: result.findings, events: result.events });
+
+      // Persist review state after completion
+      this._persistReviewState({
+        findings: this._findings,
+        events: result.events || [],
+        status: "complete",
+        mode: mode,
+        runId: this._currentRunId,
+      });
+      // Persist chat messages
+      this.postMessage({ type: "requestPersistMessages" });
     } catch (err: any) {
       this.postMessage({ type: "reviewError", error: `Review failed: ${err.message}` });
     }
@@ -1152,6 +1173,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
       // Mark the message as complete
       this.postMessage({ type: "chatResponseEnd", messageId });
+
+      // Persist chat messages after chat completes
+      this.postMessage({ type: "requestPersistMessages" });
     } catch (err: any) {
       // Emit error block
       this.postMessage({
@@ -1979,6 +2003,62 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         this._connectMCPServer(server.id);
       }
     }
+  }
+
+  // ── State Persistence ──
+
+  private _persistChatMessages(messages: unknown[]) {
+    if (!this._context) return;
+    try {
+      this._context.workspaceState.update("chainreview.chatMessages", messages);
+    } catch (err: any) {
+      console.error("ChainReview: Failed to persist chat messages:", err.message);
+    }
+  }
+
+  private _persistReviewState(state: { findings: unknown[]; events: unknown[]; status: string; mode?: string; runId?: string }) {
+    if (!this._context) return;
+    try {
+      this._context.workspaceState.update("chainreview.reviewState", state);
+    } catch (err: any) {
+      console.error("ChainReview: Failed to persist review state:", err.message);
+    }
+  }
+
+  private _restorePersistedState() {
+    if (!this._context) return;
+
+    // Small delay to ensure webview is ready to receive messages
+    setTimeout(() => {
+      try {
+        const messages = this._context!.workspaceState.get<unknown[]>("chainreview.chatMessages");
+        if (messages && messages.length > 0) {
+          this.postMessage({ type: "restoreMessages", messages });
+        }
+
+        const reviewState = this._context!.workspaceState.get<{
+          findings: unknown[];
+          events: unknown[];
+          status: string;
+          mode?: string;
+          runId?: string;
+        }>("chainreview.reviewState");
+        if (reviewState && reviewState.status !== "idle") {
+          if (reviewState.runId) {
+            this._currentRunId = reviewState.runId;
+          }
+          this.postMessage({ type: "restoreReviewState", ...reviewState });
+        }
+      } catch (err: any) {
+        console.error("ChainReview: Failed to restore persisted state:", err.message);
+      }
+    }, 200);
+  }
+
+  private _clearPersistedChat() {
+    if (!this._context) return;
+    this._context.workspaceState.update("chainreview.chatMessages", undefined);
+    this._context.workspaceState.update("chainreview.reviewState", undefined);
   }
 
   // ── Webview HTML ──
