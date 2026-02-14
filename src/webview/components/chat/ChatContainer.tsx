@@ -100,16 +100,14 @@ export function ChatContainer({
           )}
         </div>
         {onSendQuery && (
-          <div className="border-t border-[var(--cr-border-subtle)] bg-[var(--cr-bg-root)]">
-            <ChatInput
-              onSend={onSendQuery}
-              onStartRepoReview={onStartRepoReview}
-              onStartDiffReview={onStartDiffReview}
-              onCancelReview={onCancelReview}
-              disabled={false}
-              isReviewing={isReviewing}
-            />
-          </div>
+          <ChatInput
+            onSend={onSendQuery}
+            onStartRepoReview={onStartRepoReview}
+            onStartDiffReview={onStartDiffReview}
+            onCancelReview={onCancelReview}
+            disabled={false}
+            isReviewing={isReviewing}
+          />
         )}
       </div>
     );
@@ -119,33 +117,34 @@ export function ChatContainer({
     <div className={cn("flex flex-col h-full", className)}>
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto"
+        className="flex-1 overflow-y-auto min-h-0"
         style={{ scrollbarGutter: "stable both-edges" }}
         onScroll={handleScroll}
       >
-        <div className="flex flex-col gap-1 pb-6 pt-4">
-          {messages.map((msg) => (
-            <ChatMessage
-              key={msg.id}
-              message={msg}
-              findingActions={findingActions}
-            />
-          ))}
+        {/* Spacer pushes messages toward the bottom when there are few */}
+        <div className="flex flex-col min-h-full justify-end">
+          <div className="flex flex-col gap-1 pb-4 pt-4">
+            {messages.map((msg) => (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                findingActions={findingActions}
+              />
+            ))}
+          </div>
         </div>
         <div ref={bottomRef} />
       </div>
 
       {onSendQuery && (
-        <div className="border-t border-[var(--cr-border-subtle)] bg-[var(--cr-bg-root)]">
-          <ChatInput
-            onSend={onSendQuery}
-            onStartRepoReview={onStartRepoReview}
-            onStartDiffReview={onStartDiffReview}
-            onCancelReview={onCancelReview}
-            disabled={false}
-            isReviewing={isReviewing}
-          />
-        </div>
+        <ChatInput
+          onSend={onSendQuery}
+          onStartRepoReview={onStartRepoReview}
+          onStartDiffReview={onStartDiffReview}
+          onCancelReview={onCancelReview}
+          disabled={false}
+          isReviewing={isReviewing}
+        />
       )}
     </div>
   );
