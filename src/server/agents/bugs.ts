@@ -1,7 +1,7 @@
 import { runAgentLoop, type AgentTool } from "./base-agent";
 import { repoFile, repoSearch } from "../tools/repo";
 import { codePatternScan } from "../tools/code";
-import type { AgentFinding, AuditEvent } from "../types";
+import type { AgentFinding, AuditEvent, Evidence } from "../types";
 
 /**
  * Bugs Agent
@@ -190,8 +190,10 @@ const TOOLS: AgentTool[] = [
 export interface BugsAgentCallbacks {
   onEvent: (event: AuditEvent) => void;
   onFinding: (finding: AgentFinding) => void;
+  onText: (text: string) => void;
   onThinking?: (text: string) => void;
-  onToolCall?: (name: string, input: unknown) => void;
+  onToolCall: (name: string, input: Record<string, unknown>) => void;
+  onToolResult: (name: string, result: string) => void;
 }
 
 /**
@@ -224,13 +226,11 @@ For each real bug you find, read the surrounding code to understand context, the
 
 Begin your analysis now.`;
 
-  // Tool handler
-  async function handleToolCall(
+  // Tool execution handler
+  async function executeToolCall(
     name: string,
     input: Record<string, unknown>
   ): Promise<string> {
-    callbacks.onToolCall?.(name, input);
-
     switch (name) {
       case "crp_repo_file": {
         try {
@@ -260,10 +260,21 @@ Begin your analysis now.`;
 
       case "crp_code_pattern_scan": {
         try {
-          const result = await codePatternScan({
-            patterns: input.patterns as string[],
-            glob: input.glob as string | undefined,
-          });
+          // codePatternScan accepts a single pattern or config; run for each pattern
+          const patterns = input.patterns as string[] | undefined;
+          if (patterns && patterns.length > 0) {
+            const allResults: any[] = [];
+            for (const pat of patterns.slice(0, 5)) { // limit to 5 patterns
+              try {
+                const result = await codePatternScan({ pattern: pat });
+                allResults.push(...result.results);
+              } catch {
+                // Individual pattern failure is non-fatal
+              }
+            }
+            return JSON.stringify({ results: allResults, totalResults: allResults.length });
+          }
+          const result = await codePatternScan({});
           return JSON.stringify(result);
         } catch (err: any) {
           return JSON.stringify({ error: err.message });
@@ -271,21 +282,24 @@ Begin your analysis now.`;
       }
 
       case "emit_finding": {
+        const findingId = `bugs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const evidenceArr: Evidence[] = [];
+        if (input.evidence) {
+          evidenceArr.push({
+            filePath: (input.filePath as string) || "unknown",
+            startLine: (input.lineStart as number) || 1,
+            endLine: (input.lineEnd as number) || 1,
+            snippet: input.evidence as string,
+          });
+        }
+
         const finding: AgentFinding = {
-          id: `bugs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           title: input.title as string,
-          description: input.description as string,
-          filePath: input.filePath as string,
-          lineStart: input.lineStart as number | undefined,
-          lineEnd: input.lineEnd as number | undefined,
+          description: input.description as string + (input.suggestedFix ? `\n\n**Suggested Fix:** ${input.suggestedFix}` : ""),
           severity: input.severity as "critical" | "high" | "medium" | "low" | "info",
           confidence: input.confidence as number,
           category: "bugs",
-          evidence: input.evidence as string | undefined,
-          suggestedFix: input.suggestedFix as string | undefined,
-          metadata: {
-            bugCategory: input.category as string,
-          },
+          evidence: evidenceArr,
         };
 
         findings.push(finding);
@@ -297,13 +311,13 @@ Begin your analysis now.`;
           type: "finding_emitted",
           agent: "bugs",
           timestamp: new Date().toISOString(),
-          data: { findingId: finding.id, title: finding.title, severity: finding.severity },
+          data: { findingId, title: finding.title, severity: finding.severity },
         });
 
-        return JSON.stringify({ 
-          success: true, 
+        return JSON.stringify({
+          success: true,
           message: `Finding recorded: ${finding.title}`,
-          findingId: finding.id,
+          findingId,
         });
       }
 
@@ -312,23 +326,30 @@ Begin your analysis now.`;
     }
   }
 
-  // Emit start event
-  callbacks.onEvent({
-    id: `event-${Date.now()}`,
-    type: "agent_started",
-    agent: "bugs",
-    timestamp: new Date().toISOString(),
-    data: { targetPath },
-  });
+  // NOTE: The orchestrator already emits agent_started for bugs — don't duplicate it here.
 
-  // Run the agent loop
+  // Run the agent loop — use the correct AgentLoopOptions interface
   await runAgentLoop({
+    name: "bugs",
     systemPrompt: SYSTEM_PROMPT,
-    initialMessage,
+    userPrompt: initialMessage,
     tools: TOOLS,
-    handleToolCall,
+    onToolCall: async (name, args) => {
+      callbacks.onToolCall(name, args);
+      const result = await executeToolCall(name, args);
+      callbacks.onToolResult(name, result);
+      return result;
+    },
+    onText: callbacks.onText,
     onThinking: callbacks.onThinking,
-    maxIterations: 25,
+    onEvent: (event) => {
+      callbacks.onEvent({
+        ...event,
+        id: `event-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+      } as AuditEvent);
+    },
+    maxTurns: 25,
     signal,
     model: "claude-haiku-4-5-20251001",
   });
