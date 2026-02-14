@@ -214,9 +214,11 @@ server.tool(
   {
     repoPath: z.string().describe("Absolute path to the git repository"),
     mode: z.enum(["repo", "diff"]).describe("Review mode"),
+    agents: z.array(z.enum(["security", "architecture", "bugs"])).optional().describe("Which agents to run. If omitted, runs all agents."),
   },
   async (args) => {
     requireApiKey("crp.review.run");
+    const options = args.agents && args.agents.length > 0 ? { agents: args.agents as ("security" | "architecture" | "bugs")[] } : undefined;
     const result = await runReview(args.repoPath, args.mode, store, {
       onEvent: (event) => {
         streamEvent({ type: "event", event });
@@ -230,7 +232,7 @@ server.tool(
       onPatch: (patch) => {
         streamEvent({ type: "patch", patch });
       },
-    });
+    }, options);
     return {
       content: [{ type: "text" as const, text: JSON.stringify(result) }],
     };
@@ -394,7 +396,41 @@ server.tool(
       onToolResult: (tool, resultStr) => {
         streamEvent({ type: "chatToolResult", tool, result: resultStr });
       },
+    }, {
+      // Review callbacks — used when chat agent decides to spawn sub-agents
+      // These stream events through the same stderr pipeline so the extension
+      // can display agent cards, tool calls, and findings in real-time
+      reviewCallbacks: {
+        onEvent: (event) => {
+          streamEvent({ type: "event", event });
+        },
+        onFinding: (finding) => {
+          streamEvent({ type: "finding", finding });
+        },
+        onToolCall: (_agent, _tool, _toolArgs) => {},
+        onToolResult: (_agent, _tool, _toolResult) => {},
+        onText: (_agent, _text, _done) => {},
+        onPatch: (patch) => {
+          streamEvent({ type: "patch", patch });
+        },
+      },
     });
+
+    // If the chat agent spawned a review, include the review result
+    // The extension uses this to transition UI state
+    if (result.spawnedReview) {
+      streamEvent({
+        type: "chatSpawnedReview",
+        ...result.spawnedReview,
+      });
+    }
+
+    // ── Flush sentinel: signal that all streaming events have been emitted ──
+    // This helps the extension know stderr is complete before processing the MCP result.
+    // Without this, stderr events (especially final text deltas) may arrive AFTER
+    // the MCP result due to stdio buffering, causing the answer to be silently dropped.
+    streamEvent({ type: "chatStreamComplete" });
+
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
 );
@@ -430,6 +466,10 @@ server.tool(
         streamEvent({ type: "validateToolResult", tool, result: resultStr });
       },
     });
+
+    // Flush sentinel for validate stream
+    streamEvent({ type: "validateStreamComplete" });
+
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
 );

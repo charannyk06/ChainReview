@@ -338,12 +338,17 @@ export async function repoDiff(args: {
     if (!diff.trim()) {
       diff = await git.diff(["--cached"]);
     }
-    // If still nothing, diff against HEAD~1
+    // If still nothing, diff against HEAD~5 to catch recent committed fixes
     if (!diff.trim()) {
       try {
-        diff = await git.diff(["HEAD~1", "HEAD"]);
+        diff = await git.diff(["HEAD~5", "HEAD"]);
       } catch {
-        diff = "";
+        // Fallback to HEAD~1 if repo has fewer than 5 commits
+        try {
+          diff = await git.diff(["HEAD~1", "HEAD"]);
+        } catch {
+          diff = "";
+        }
       }
     }
   }

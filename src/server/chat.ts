@@ -10,7 +10,9 @@ import { repoTree, repoFile, repoSearch, repoDiff } from "./tools/repo";
 import { codeImportGraph, codePatternScan } from "./tools/code";
 import { execCommand } from "./tools/exec";
 import { webSearch } from "./tools/web";
+import { runReview } from "./orchestrator";
 import type { Store } from "./store";
+import type { ReviewCallbacks } from "./types";
 
 // ── Chat Query Agent ──
 // Agentic loop for answering user questions — streams text, thinking,
@@ -25,10 +27,16 @@ interface ChatToolCall {
 export interface ChatQueryResult {
   answer: string;
   toolCalls: ChatToolCall[];
+  /** If the chat agent spawned sub-agents, this contains the review result */
+  spawnedReview?: {
+    runId: string;
+    findingsCount: number;
+    agents: string[];
+  };
 }
 
 export interface ValidateResult {
-  verdict: "confirmed" | "likely_valid" | "uncertain" | "likely_false_positive" | "false_positive";
+  verdict: "still_present" | "partially_fixed" | "fixed" | "unable_to_determine";
   reasoning: string;
   toolCalls: ChatToolCall[];
 }
@@ -38,11 +46,23 @@ export interface GeneratePatchResult {
   explanation: string;
 }
 
-const BASE_SYSTEM_PROMPT = `You are a code review assistant for ChainReview. Answer questions about the repository the user has opened. You have access to tools for reading files, searching code, viewing the file tree, running shell commands, and searching the web.
+const BASE_SYSTEM_PROMPT = `You are a code review assistant for ChainReview. Answer questions about the repository the user has opened. You have access to a comprehensive set of tools:
+
+- **File tree** (crp_repo_tree): Browse the repository structure
+- **Read files** (crp_repo_file): Read source code with line ranges
+- **Search code** (crp_repo_search): Regex search across the codebase using ripgrep
+- **Git diff** (crp_repo_diff): View git changes (committed, staged, unstaged)
+- **Import graph** (crp_code_import_graph): Trace TypeScript/JS module dependencies via ts-morph
+- **Pattern scan** (crp_code_pattern_scan): Run Semgrep static analysis for anti-patterns and security issues
+- **Shell commands** (crp_exec_command): Execute read-only commands (git log, blame, grep, find, etc.)
+- **Web search** (crp_web_search): Search for security advisories, CVEs, best practices, docs
+- **Spawn review agents** (crp_spawn_review): Launch specialized AI review agents (security, architecture, bugs) to do a deep code review with findings. Use this when the user asks for a code review, security audit, bug hunt, architecture analysis, or any request that warrants a thorough multi-agent review. The agents will run in parallel and produce structured findings.
 
 Be concise and helpful. When referencing code, use specific file paths and line numbers. Format responses with markdown for readability.
 
-IMPORTANT: Always use your tools thoroughly. Read relevant files, search for patterns, and explore the codebase before answering. Do NOT give shallow answers — investigate deeply using all available tools. Continue using tools until you have enough evidence to give a comprehensive answer.`;
+IMPORTANT: Always use your tools thoroughly. Read relevant files, search for patterns, trace imports, run static analysis, and explore the codebase before answering. Do NOT give shallow answers — investigate deeply using all available tools. Continue using tools until you have enough evidence to give a comprehensive answer.
+
+IMPORTANT: When the user asks you to review code, find bugs, check for security issues, audit architecture, or do any thorough code analysis — you MUST use the crp_spawn_review tool to launch the appropriate specialist agents. Do NOT try to do a full code review yourself — the specialist agents (security, architecture, bugs) are far more thorough and produce structured findings. Use crp_spawn_review and let the agents handle it. You can specify which agents to run and optionally a target path to focus on.`;
 
 const TOOLS = [
   {
@@ -83,6 +103,39 @@ const TOOLS = [
     },
   },
   {
+    name: "crp_repo_diff",
+    description: "Get git diff. Use ref1='HEAD~5' ref2='HEAD' to see recent committed changes, or staged=true for staged changes, or no args for unstaged changes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        ref1: { type: "string", description: "First git ref (e.g. HEAD~5, a commit hash, or branch name)" },
+        ref2: { type: "string", description: "Second git ref (e.g. HEAD)" },
+        staged: { type: "boolean", description: "Show staged changes" },
+      },
+    },
+  },
+  {
+    name: "crp_code_import_graph",
+    description: "Trace TypeScript/JavaScript module dependencies using ts-morph to understand how files connect and what imports what",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string", description: "Subdirectory to analyze (relative to repo root)" },
+      },
+    },
+  },
+  {
+    name: "crp_code_pattern_scan",
+    description: "Run Semgrep static analysis to find code patterns, anti-patterns, and security issues",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        config: { type: "string", description: "Semgrep config (e.g. 'auto', 'p/security-audit')" },
+        pattern: { type: "string", description: "Specific Semgrep pattern to scan for" },
+      },
+    },
+  },
+  {
     name: "crp_exec_command",
     description: "Execute a read-only shell command (allowlisted: wc, find, ls, cat, head, tail, grep, git log/show/blame/diff/status, npm ls, tsc --noEmit, etc.)",
     input_schema: {
@@ -106,11 +159,43 @@ const TOOLS = [
       required: ["query"],
     },
   },
+  {
+    name: "crp_spawn_review",
+    description: "Launch specialist review agents to do a deep code review. Use when user asks for code review, security audit, bug hunt, or architecture analysis. Agents run in parallel and produce structured findings. ALWAYS use this for review/audit requests — don't try to do a full review yourself.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        agents: {
+          type: "array",
+          items: { type: "string", enum: ["security", "architecture", "bugs"] },
+          description: "Which agents to run. Options: 'security' (vulnerability scanning), 'architecture' (design patterns, coupling, structure), 'bugs' (logic errors, edge cases, reliability). If omitted, runs all agents.",
+        },
+        targetPath: {
+          type: "string",
+          description: "Optional subdirectory to focus the review on (e.g., 'src/auth/', 'lib/api'). If omitted, reviews the entire repo.",
+        },
+      },
+    },
+  },
 ];
+
+/** Context needed for the spawn_review tool — injected by chatQuery caller */
+interface SpawnReviewContext {
+  store: Store;
+  reviewCallbacks: ReviewCallbacks;
+}
+
+/** Result of a spawned review (stored during the chat loop) */
+interface SpawnedReviewResult {
+  runId: string;
+  findingsCount: number;
+  agents: string[];
+}
 
 async function handleToolCall(
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  spawnCtx?: SpawnReviewContext,
 ): Promise<unknown> {
   switch (name) {
     case "crp_repo_tree":
@@ -119,10 +204,55 @@ async function handleToolCall(
       return repoFile(args as any);
     case "crp_repo_search":
       return repoSearch(args as any);
+    case "crp_repo_diff":
+      return repoDiff(args as any);
+    case "crp_code_import_graph":
+      return codeImportGraph(args as any);
+    case "crp_code_pattern_scan":
+      return codePatternScan(args as any);
     case "crp_exec_command":
       return execCommand(args as any);
     case "crp_web_search":
       return webSearch(args as any);
+    case "crp_spawn_review": {
+      if (!spawnCtx) {
+        return { error: "Review spawning not available — store context not provided" };
+      }
+      const agents = (args.agents as string[] | undefined) || ["security", "architecture", "bugs"];
+      const targetPath = args.targetPath as string | undefined;
+      const { store, reviewCallbacks } = spawnCtx;
+
+      // Get the repo path from the most recent run or active repo
+      const runs = store.getReviewRuns(1);
+      const repoPath = runs[0]?.repoPath;
+      if (!repoPath) {
+        return { error: "No repository path available. Run a review first or open a repo." };
+      }
+
+      const options = {
+        agents: agents as ("security" | "architecture" | "bugs")[],
+        targetPath,
+      };
+
+      const result = await runReview(repoPath, "repo", store, reviewCallbacks, options);
+
+      const spawnResult: SpawnedReviewResult = {
+        runId: result.runId,
+        findingsCount: result.findings.length,
+        agents,
+      };
+
+      return {
+        status: "complete",
+        runId: result.runId,
+        findingsCount: result.findings.length,
+        agents,
+        summary: result.findings.length > 0
+          ? `Review complete: ${result.findings.length} finding(s) from ${agents.join(", ")} agent(s). Findings are now visible in the Findings tab.`
+          : `Review complete: no issues found by ${agents.join(", ")} agent(s). The code looks clean.`,
+        _spawnResult: spawnResult, // Internal: for chatQuery to pick up
+      };
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -231,11 +361,17 @@ async function runStreamingTurn(
 
 // ── Main Chat Query (True SDK Streaming) ──
 
+export interface ChatQueryOptions {
+  /** Review-level callbacks for when the chat agent spawns sub-agents */
+  reviewCallbacks?: ReviewCallbacks;
+}
+
 export async function chatQuery(
   query: string,
   runId?: string,
   store?: Store,
-  callbacks?: ChatCallbacks
+  callbacks?: ChatCallbacks,
+  options?: ChatQueryOptions,
 ): Promise<ChatQueryResult> {
   const client = new Anthropic();
   // Allow up to 50 turns for deep investigation — the agent stops naturally
@@ -255,6 +391,13 @@ export async function chatQuery(
 
   let answer = "";
   let turn = 0;
+  let spawnedReview: SpawnedReviewResult | undefined;
+
+  // Build spawn context if store + review callbacks are available
+  const spawnCtx: SpawnReviewContext | undefined =
+    store && options?.reviewCallbacks
+      ? { store, reviewCallbacks: options.reviewCallbacks }
+      : undefined;
 
   while (turn < maxTurns) {
     turn++;
@@ -302,10 +445,16 @@ export async function chatQuery(
         try {
           const result = await handleToolCall(
             toolBlock.name,
-            toolBlock.input as Record<string, unknown>
+            toolBlock.input as Record<string, unknown>,
+            spawnCtx,
           );
           const resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
+
+          // Check if the result contains a spawned review result
+          if (typeof result === "object" && result && (result as any)._spawnResult) {
+            spawnedReview = (result as any)._spawnResult;
+          }
 
           // Emit tool result
           callbacks?.onToolResult?.(toolBlock.name, resultStr.slice(0, 500));
@@ -350,7 +499,7 @@ export async function chatQuery(
     messages.push({ role: "user", content: toolResults });
   }
 
-  return { answer, toolCalls };
+  return { answer, toolCalls, spawnedReview };
 }
 
 // ── Validate Finding (Full Agent Loop with Forced Investigation) ──
@@ -396,12 +545,12 @@ const VALIDATOR_TOOLS = [
   },
   {
     name: "crp_repo_diff",
-    description: "Get git diff to check if flagged code was recently changed or if there are pending fixes",
+    description: "Get git diff. Use ref1='HEAD~5' ref2='HEAD' to see recent committed changes, or staged=true for staged changes, or no args for unstaged changes. PREFER crp_exec_command with 'git diff HEAD~5 -- <file>' for checking specific files.",
     input_schema: {
       type: "object" as const,
       properties: {
-        ref1: { type: "string", description: "First git ref" },
-        ref2: { type: "string", description: "Second git ref" },
+        ref1: { type: "string", description: "First git ref (e.g. HEAD~5, a commit hash, or branch name)" },
+        ref2: { type: "string", description: "Second git ref (e.g. HEAD)" },
         staged: { type: "boolean", description: "Show staged changes" },
       },
     },
@@ -480,31 +629,55 @@ async function handleValidatorToolCall(
   }
 }
 
-const VALIDATOR_SYSTEM_PROMPT = `You are the Validator Agent in ChainReview. Your job is to INDEPENDENTLY VERIFY whether a code review finding is a real bug or a false positive.
+const VALIDATOR_SYSTEM_PROMPT = `You are the Verification Agent in ChainReview. Your job is to check whether a previously reported bug has been FIXED in the CURRENT code.
 
-CRITICAL: You MUST use your tools to investigate BEFORE giving a verdict. Do NOT guess. Read the actual code, search for mitigating factors, and build real evidence.
+A code review found a bug. The developer may have made changes to fix it. You must read the CURRENT state of the code and determine if the bug is still present or has been resolved.
 
-Investigation checklist (you MUST do at least steps 1-3):
-1. READ the file(s) mentioned in the evidence using crp_repo_file — verify the code actually matches the claim
-2. SEARCH the codebase using crp_repo_search for mitigating factors (input validation, error handlers, sanitization, middleware, type guards)
-3. CHECK context using crp_exec_command (git blame, git log) to understand the history and intent
-4. TRACE dependencies using crp_code_import_graph if the finding relates to architecture or module coupling
-5. SCAN for patterns using crp_code_pattern_scan if the finding relates to a security anti-pattern
-6. CHECK git diff using crp_repo_diff to see if a fix is already in progress
+CRITICAL: You MUST use your tools to investigate the CURRENT code BEFORE giving a verdict. Do NOT guess. Read the actual files, check git history, and compare against the original finding.
 
-After thorough investigation, provide your verdict. You MUST commit to a definitive verdict — "uncertain" is only acceptable if tools genuinely fail to return data.
+## Investigation Steps (MANDATORY — do ALL of these)
+
+Step 1: CHECK GIT FOR CHANGES to the files mentioned in the finding.
+  Use crp_exec_command with EACH of these git commands:
+  - "git log --oneline -10 -- <file_path>" to see recent commits touching the relevant file(s)
+  - "git diff HEAD~5 -- <file_path>" to see what changed in the relevant file(s) over the last 5 commits
+  - "git diff" to check for any unstaged changes
+  - "git diff --cached" to check for any staged changes
+  If any of these show changes to the relevant files, the developer likely attempted a fix.
+
+Step 2: READ THE CURRENT CODE at the exact file paths and line ranges from the finding evidence.
+  Use crp_repo_file to read the CURRENT state of each file mentioned.
+  Compare what you see NOW against what the finding described — is the buggy pattern still there?
+
+Step 3: DETERMINE THE VERDICT by comparing:
+  - The finding's description of the bug pattern
+  - The CURRENT code you just read
+  - The git changes you found (if any)
+  If the code no longer matches the bug pattern described, it is FIXED.
+  If the code still has the exact same issue, it is STILL_PRESENT.
+  If some changes were made but the fix is incomplete, it is PARTIALLY_FIXED.
+
+Step 4 (optional): Use crp_repo_search to check if the fix moved the logic elsewhere.
+
+## KEY RULES
+- If git shows changes to the relevant files AND the current code no longer has the bug pattern → verdict is "fixed"
+- If git shows NO changes to the relevant files AND the code still matches the bug → verdict is "still_present"
+- If git shows changes but the bug pattern partially remains → verdict is "partially_fixed"
+- ONLY use "unable_to_determine" if your tools genuinely failed or returned errors
 
 Verdict options:
-- "confirmed" — the code clearly has this issue, evidence verified
-- "likely_valid" — strong evidence supports the finding, minor caveats
-- "likely_false_positive" — mitigating factors exist that address the concern
-- "false_positive" — the finding is definitively wrong, code is safe
+- "still_present" — the bug described in the finding is still present in the current code, no fix has been applied
+- "partially_fixed" — some changes were made that address part of the issue, but the fix is incomplete
+- "fixed" — the code has been changed and the reported bug is no longer present
+- "unable_to_determine" — tools failed or the code has changed so significantly that the finding can't be evaluated
 
 Output format (you MUST use these exact tags):
-<verdict>confirmed|likely_valid|likely_false_positive|false_positive</verdict>
+<verdict>still_present|partially_fixed|fixed|unable_to_determine</verdict>
 <reasoning>
-Detailed explanation citing specific files, line numbers, and code you found.
-Reference your tool call results as evidence for your conclusion.
+Detailed explanation comparing the original finding against the current state of the code.
+Cite specific git changes you found (or lack thereof).
+Cite the current code at the relevant lines.
+Explain WHY the bug is or is not still present.
 </reasoning>`;
 
 export async function validateFinding(
@@ -530,23 +703,44 @@ export async function validateFinding(
     // If parsing fails, use raw JSON
   }
 
-  const userPrompt = `Validate this code review finding by investigating the actual code. You have 8 powerful tools — USE THEM.
+  // Build file-specific git commands for the prompt
+  const evidenceFilePaths = [...new Set(
+    ((() => { try { return JSON.parse(findingJson)?.evidence || []; } catch { return []; } })())
+      .map((e: any) => e.filePath)
+      .filter(Boolean)
+  )] as string[];
 
-Finding: ${findingTitle}
+  const gitCmdsToRun = evidenceFilePaths.length > 0
+    ? evidenceFilePaths.map(f => `  - git log --oneline -10 -- ${f}\n  - git diff HEAD~5 -- ${f}`).join("\n")
+    : `  - git log --oneline -10\n  - git diff HEAD~5`;
+
+  const userPrompt = `Verify whether this previously reported bug has been FIXED in the current code.
+
+## Finding: ${findingTitle}
 ${findingDesc}
 
-Evidence files to check: ${evidenceFiles.join(", ") || "See finding JSON below"}
+## Evidence files: ${evidenceFiles.join(", ") || "See finding JSON below"}
 
-Full finding JSON:
+## Full finding JSON:
 ${findingJson}
 
-REQUIRED INVESTIGATION STEPS:
-1. First, use crp_repo_file to READ the files mentioned in the evidence
-2. Then use crp_repo_search to search for mitigating factors (validation, sanitization, error handling)
-3. Use crp_exec_command with "git blame" or "git log" on the relevant files for context
-4. Based on what you find, give a DEFINITIVE verdict — confirmed, likely_valid, likely_false_positive, or false_positive
+## YOUR INVESTIGATION PLAN (follow this EXACTLY):
 
-DO NOT skip tools. DO NOT guess. Investigate first, then decide.`;
+STEP 1 — Check git history for changes to the relevant files. Run these commands with crp_exec_command:
+${gitCmdsToRun}
+  - git diff
+  - git diff --cached
+
+STEP 2 — Read the CURRENT code at each evidence location using crp_repo_file.
+${evidenceFilePaths.map(f => `  - Read file: ${f}`).join("\n") || "  - Read the file(s) from the finding evidence"}
+
+STEP 3 — Compare what the finding described vs what the code looks like NOW:
+  - Does the CURRENT code still have the bug pattern described in the finding?
+  - Did git show any changes to the relevant files?
+  - If the code changed AND no longer has the bug → verdict is "fixed"
+  - If the code has NOT changed → verdict is "still_present"
+
+Give your verdict using <verdict> tags.`;
 
   const messages: MessageParam[] = [
     { role: "user", content: userPrompt },
@@ -555,8 +749,9 @@ DO NOT skip tools. DO NOT guess. Investigate first, then decide.`;
   let answer = "";
   let turn = 0;
   let toolCallCount = 0;
-  // Force at least 2 tool turns before allowing text-only response
-  const FORCED_TOOL_TURNS = 2;
+  // Force at least 3 tool turns before allowing text-only response
+  // (must check git log + git diff + read current file at minimum)
+  const FORCED_TOOL_TURNS = 3;
 
   while (turn < maxTurns) {
     turn++;
@@ -670,7 +865,7 @@ DO NOT skip tools. DO NOT guess. Investigate first, then decide.`;
 /** Robustly extract verdict from LLM output — tries multiple patterns */
 function extractVerdict(text: string): ValidateResult["verdict"] {
   const validVerdicts = new Set([
-    "confirmed", "likely_valid", "uncertain", "likely_false_positive", "false_positive",
+    "still_present", "partially_fixed", "fixed", "unable_to_determine",
   ]);
 
   // Try <verdict> tags first
@@ -693,21 +888,22 @@ function extractVerdict(text: string): ValidateResult["verdict"] {
 
   // Inference from strong language in the text
   const lower = text.toLowerCase();
-  if (lower.includes("confirmed") && (lower.includes("the finding is valid") || lower.includes("is a real bug") || lower.includes("is confirmed"))) {
-    return "confirmed";
+  if (lower.includes("fixed") && (lower.includes("has been fixed") || lower.includes("is fixed") || lower.includes("no longer present") || lower.includes("been resolved"))) {
+    return "fixed";
   }
-  if (lower.includes("false positive") && (lower.includes("the finding is a false positive") || lower.includes("not a real"))) {
-    return "false_positive";
+  if (lower.includes("partially") && (lower.includes("partially fixed") || lower.includes("partial fix") || lower.includes("incomplete fix"))) {
+    return "partially_fixed";
   }
-  if (lower.includes("likely valid") || lower.includes("probably valid") || lower.includes("evidence supports")) {
-    return "likely_valid";
+  if (lower.includes("still present") || lower.includes("still exists") || lower.includes("not fixed") || lower.includes("bug remains")) {
+    return "still_present";
   }
-  if (lower.includes("likely false positive") || lower.includes("probably false positive") || lower.includes("mitigated")) {
-    return "likely_false_positive";
+  if (lower.includes("unable to determine") || lower.includes("cannot determine") || lower.includes("inconclusive")) {
+    return "unable_to_determine";
   }
 
-  // Last resort — if the agent investigated but couldn't decide
-  return "likely_valid";
+  // Last resort — if the agent investigated but couldn't decide clearly,
+  // default to "unable_to_determine" instead of biasing toward "still_present"
+  return "unable_to_determine";
 }
 
 /** Extract reasoning from LLM output — tries tags then falls back to full text */
