@@ -224,6 +224,10 @@ ${context.diffContent.length > 5000 ? "\n... (diff truncated)" : ""}
 `;
   }
 
+  if (context.priorFindings) {
+    userPrompt += context.priorFindings;
+  }
+
   userPrompt += `
 
 NOW: Begin your deep investigation using ALL available tools. You have 8 powerful tools:

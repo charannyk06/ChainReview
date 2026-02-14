@@ -62,6 +62,8 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html, body, #root { height: 100%; }
+
 body {
   font-family: var(--cr-font-sans);
   font-size: var(--cr-font-size-base);
@@ -142,6 +144,23 @@ body {
 .cr-btn:active:not(:disabled) { transform: scale(0.97); }
 .cr-btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 
+/* ── Size variants ── */
+.cr-btn-md { font-size: 11px; padding: 7px 14px; gap: 6px; }
+.cr-btn-sm { font-size: 10px; padding: 5px 10px; gap: 5px; }
+.cr-btn-xs { font-size: 9px;  padding: 3px 8px;  gap: 4px; border-radius: 6px; }
+
+/* ── Primary (accent fill) ── */
+.cr-btn-primary {
+  background: var(--cr-accent); color: #fff;
+  border-color: rgba(255,255,255,0.1);
+  box-shadow: 0 1px 3px rgba(99,102,241,0.25);
+}
+.cr-btn-primary:hover:not(:disabled) {
+  background: var(--cr-accent-hover);
+  box-shadow: 0 2px 6px rgba(99,102,241,0.35);
+}
+
+/* ── Color variants ── */
 .cr-btn-purple {
   background: rgba(168, 85, 247, 0.15); color: #d8b4fe;
   border-color: rgba(168, 85, 247, 0.30);
@@ -190,22 +209,24 @@ body {
   background: rgba(99, 102, 241, 0.25); border-color: rgba(99, 102, 241, 0.45);
 }
 
+/* ── Ghost — visible border so it LOOKS like a button ── */
 .cr-btn-ghost {
-  background: transparent; color: var(--cr-text-muted);
-  border-color: var(--cr-border-subtle);
-}
-.cr-btn-ghost:hover:not(:disabled) {
-  color: var(--cr-text-secondary); background: var(--cr-bg-hover);
-  border-color: var(--cr-border-strong);
-}
-
-.cr-btn-secondary {
   background: var(--cr-bg-tertiary); color: var(--cr-text-secondary);
   border-color: var(--cr-border);
 }
-.cr-btn-secondary:hover:not(:disabled) {
-  background: var(--cr-bg-elevated); color: var(--cr-text-primary);
+.cr-btn-ghost:hover:not(:disabled) {
+  color: var(--cr-text-primary); background: var(--cr-bg-elevated);
   border-color: var(--cr-border-strong);
+}
+
+/* ── Secondary — slightly more prominent than ghost ── */
+.cr-btn-secondary {
+  background: var(--cr-bg-elevated); color: var(--cr-text-secondary);
+  border-color: var(--cr-border-strong);
+}
+.cr-btn-secondary:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08); color: var(--cr-text-primary);
+  border-color: rgba(255,255,255,0.14);
 }
 
 /* ═══════ Badge / Card ═══════ */
@@ -274,7 +295,110 @@ pre code { font-family: var(--cr-font-mono); }
 }
 .input-base:focus {
   outline: none; background: var(--cr-bg-input-focus);
-  border-color: var(--cr-border-focus); box-shadow: 0 0 0 3px rgba(99,102,241,0.08);
+  border-color: rgba(255, 255, 255, 0.12); box-shadow: none;
 }
 .input-base::placeholder { color: var(--cr-text-muted); }
 .input-base:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ═══════ Mention Input ═══════ */
+
+.mention-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.mention-editor-content {
+  width: 100%;
+  min-height: 44px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 14px 16px 8px 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--cr-text-primary);
+  outline: none;
+}
+
+.mention-editor-content p {
+  margin: 0;
+}
+
+.mention-editor-content p.is-empty::before {
+  content: attr(data-placeholder);
+  color: var(--cr-text-muted);
+  pointer-events: none;
+  position: absolute;
+  left: 16px;
+  top: 14px;
+}
+
+.mention-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 8px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  color: var(--cr-text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+  vertical-align: baseline;
+}
+
+.mention-suggestion-list {
+  background: var(--cr-bg-elevated);
+  border: 1px solid var(--cr-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24), 0 2px 8px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  min-width: 260px;
+  max-width: 320px;
+  backdrop-filter: blur(12px);
+}
+
+.mention-suggestion-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.mention-suggestion-item:hover,
+.mention-suggestion-item.is-selected {
+  background: var(--cr-bg-hover);
+}
+
+.mention-suggestion-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: var(--cr-text-secondary);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* TipTap editor overrides */
+.ProseMirror {
+  outline: none !important;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--cr-text-muted);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}

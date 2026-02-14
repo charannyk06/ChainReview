@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import type {
   Finding,
   Patch,
@@ -7,6 +7,7 @@ import type {
   AgentName,
   EventType,
   Evidence,
+  FindingStatus,
 } from "./types";
 
 export interface ReviewRunSummary {
@@ -37,7 +38,27 @@ export interface Store {
   getRunRepoPath(runId: string): string | undefined;
   getReviewRuns(limit?: number): ReviewRunSummary[];
   deleteRun(runId: string): void;
+  /** Check if a finding with this fingerprint already exists (active status) */
+  findingExists(fingerprint: string): boolean;
+  /** Get all active findings for a repo path (across all runs) */
+  getRepoFindings(repoPath: string): Finding[];
+  /** Update finding status (active/dismissed/resolved) */
+  updateFindingStatus(findingId: string, status: FindingStatus): void;
   close(): void;
+}
+
+/** Compute a stable fingerprint for deduplication across runs */
+export function computeFindingFingerprint(
+  agent: string,
+  category: string,
+  title: string,
+  evidence: Evidence[]
+): string {
+  const normalizedTitle = title.toLowerCase().trim();
+  const primaryFile = evidence[0]?.filePath || "";
+  const primaryLine = evidence[0]?.startLine ?? 0;
+  const raw = `${agent}:${category}:${normalizedTitle}:${primaryFile}:${primaryLine}`;
+  return createHash("sha256").update(raw).digest("hex").slice(0, 16);
 }
 
 const SCHEMA = `
@@ -60,6 +81,8 @@ CREATE TABLE IF NOT EXISTS findings (
   description TEXT NOT NULL,
   confidence REAL NOT NULL,
   evidence_json TEXT NOT NULL,
+  fingerprint TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL
 );
 
@@ -92,11 +115,26 @@ CREATE TABLE IF NOT EXISTS user_actions (
 );
 `;
 
+/** Migrate existing databases to add fingerprint + status columns */
+function migrateSchema(db: Database.Database): void {
+  // Check if fingerprint column exists
+  const cols = db.pragma("table_info(findings)") as { name: string }[];
+  const colNames = new Set(cols.map((c) => c.name));
+
+  if (!colNames.has("fingerprint")) {
+    db.exec("ALTER TABLE findings ADD COLUMN fingerprint TEXT");
+  }
+  if (!colNames.has("status")) {
+    db.exec("ALTER TABLE findings ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+  }
+}
+
 export function createStore(dbPath: string): Store {
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  migrateSchema(db);
 
   // Prepared statements
   const stmts = {
@@ -107,7 +145,7 @@ export function createStore(dbPath: string): Store {
       "UPDATE review_runs SET status = ?, completed_at = ? WHERE id = ?"
     ),
     insertFinding: db.prepare(
-      "INSERT INTO findings (id, run_id, agent, category, severity, title, description, confidence, evidence_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO findings (id, run_id, agent, category, severity, title, description, confidence, evidence_json, fingerprint, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)"
     ),
     insertEvent: db.prepare(
       "INSERT INTO events (id, run_id, type, agent, data_json, timestamp) VALUES (?, ?, ?, ?, ?, ?)"
@@ -147,6 +185,19 @@ export function createStore(dbPath: string): Store {
     deleteRunPatches: db.prepare("DELETE FROM patches WHERE run_id = ?"),
     deleteRunFindings: db.prepare("DELETE FROM findings WHERE run_id = ?"),
     deleteRunRow: db.prepare("DELETE FROM review_runs WHERE id = ?"),
+    // Dedup + status queries
+    findingExists: db.prepare(
+      "SELECT 1 FROM findings WHERE fingerprint = ? AND status = 'active' LIMIT 1"
+    ),
+    getRepoFindings: db.prepare(`
+      SELECT f.* FROM findings f
+      JOIN review_runs r ON r.id = f.run_id
+      WHERE r.repo_path = ? AND f.status = 'active'
+      ORDER BY f.created_at DESC
+    `),
+    updateFindingStatus: db.prepare(
+      "UPDATE findings SET status = ? WHERE id = ?"
+    ),
   };
 
   function now(): string {
@@ -173,6 +224,8 @@ export function createStore(dbPath: string): Store {
       agent: row.agent,
       confidence: row.confidence,
       evidence: safeJsonParse<Evidence[]>(row.evidence_json, []),
+      fingerprint: row.fingerprint || undefined,
+      status: row.status || "active",
     };
   }
 
@@ -209,6 +262,12 @@ export function createStore(dbPath: string): Store {
 
     insertFinding(runId: string, finding: Omit<Finding, "id" | "patchId">): string {
       const id = `finding-${randomUUID().slice(0, 8)}`;
+      const fingerprint = computeFindingFingerprint(
+        finding.agent,
+        finding.category,
+        finding.title,
+        finding.evidence
+      );
       stmts.insertFinding.run(
         id,
         runId,
@@ -219,6 +278,7 @@ export function createStore(dbPath: string): Store {
         finding.description,
         finding.confidence,
         JSON.stringify(finding.evidence),
+        fingerprint,
         now()
       );
       return id;
@@ -296,8 +356,6 @@ export function createStore(dbPath: string): Store {
     },
 
     deleteRun(runId: string): void {
-      // Delete in order to respect foreign key constraints
-      // (though FK is ON, better-sqlite3 doesn't always enforce cascade)
       const deleteAll = db.transaction(() => {
         stmts.deleteRunEvents.run(runId);
         stmts.deleteRunUserActions.run(runId);
@@ -306,6 +364,18 @@ export function createStore(dbPath: string): Store {
         stmts.deleteRunRow.run(runId);
       });
       deleteAll();
+    },
+
+    findingExists(fingerprint: string): boolean {
+      return stmts.findingExists.get(fingerprint) !== undefined;
+    },
+
+    getRepoFindings(repoPath: string): Finding[] {
+      return (stmts.getRepoFindings.all(repoPath) as any[]).map(rowToFinding);
+    },
+
+    updateFindingStatus(findingId: string, status: FindingStatus): void {
+      stmts.updateFindingStatus.run(status, findingId);
     },
 
     close(): void {

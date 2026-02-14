@@ -4,9 +4,12 @@ import { repoDiff } from "./tools/repo";
 import { runArchitectureAgent } from "./agents/architecture";
 import { runSecurityAgent } from "./agents/security";
 import { runValidatorChallenge } from "./agents/validator";
+import { runExplainerAgent, type Explanation } from "./agents/explainer";
+import { runBugsAgent } from "./agents/bugs";
 import type {
   Store,
 } from "./store";
+import { computeFindingFingerprint } from "./store";
 import type {
   ReviewMode,
   AgentContext,
@@ -18,6 +21,7 @@ import type {
 
 export interface ReviewResult {
   runId: string;
+  explanations?: Explanation[];
   findings: Finding[];
   events: AuditEvent[];
   status: "complete" | "error";
@@ -35,11 +39,19 @@ export function cancelActiveReview(): void {
   }
 }
 
+export interface ReviewOptions {
+  /** Which agents to run. If empty/undefined, runs all agents. */
+  agents?: ("security" | "architecture" | "bugs")[];
+  /** Target path to focus on (e.g., "src/auth/") */
+  targetPath?: string;
+}
+
 export async function runReview(
   repoPath: string,
   mode: ReviewMode,
   store: Store,
-  callbacks: ReviewCallbacks
+  callbacks: ReviewCallbacks,
+  options?: ReviewOptions
 ): Promise<ReviewResult> {
   // Create abort controller for this review run
   const abortController = new AbortController();
@@ -62,6 +74,8 @@ export async function runReview(
       data,
     });
   }
+
+  const allFindings: Finding[] = [];
 
   try {
     // ── Step 1: Open repository ──
@@ -170,6 +184,21 @@ export async function runReview(
       }
     }
 
+    // ── Build prior findings context for dedup ──
+    const priorActive = store.getRepoFindings(repoPath);
+    let priorFindings: string | undefined;
+    if (priorActive.length > 0) {
+      const summary = priorActive.slice(0, 30).map(
+        (f) => `- [${f.severity.toUpperCase()}] ${f.title} (${f.agent}, ${f.evidence[0]?.filePath || "unknown"}:${f.evidence[0]?.startLine ?? "?"})`
+      ).join("\n");
+      priorFindings = `\n\n## KNOWN FINDINGS (already reported — DO NOT re-report these)\n${summary}\n\nSkip any issues that match the above. Focus on NEW findings only.`;
+      emitEvent("evidence_collected", undefined, {
+        kind: "pipeline_step",
+        step: "prior_findings",
+        message: `Loaded ${priorActive.length} prior finding(s) for dedup`,
+      });
+    }
+
     // Build agent context
     const context: AgentContext = {
       repoPath,
@@ -179,12 +208,11 @@ export async function runReview(
       importGraph,
       semgrepResults,
       diffContent,
+      priorFindings,
     };
 
-    const allFindings: Finding[] = [];
-
     // ── Shared agent callback factory ──
-    const agentCallbacks = (agentName: "architecture" | "security" | "validator") => ({
+    const agentCallbacks = (agentName: "architecture" | "security" | "validator" | "bugs") => ({
       onText: (text: string) => {
         // Strip the raw <findings> JSON block from displayed text — that data
         // is already captured as structured findings and shown in the Findings
@@ -224,24 +252,37 @@ export async function runReview(
       },
     });
 
-    // Helper to store+emit findings for an agent
+    // Helper to store+emit findings for an agent (with dedup)
     function processFindings(
       agentFindings: AgentFinding[],
       agentName: "architecture" | "security" | "validator"
     ) {
       for (const af of agentFindings) {
+        const evidence = af.evidence || [];
+        const category = af.category || agentName;
+        // Dedup: skip if an active finding with the same fingerprint exists
+        const fp = computeFindingFingerprint(agentName, category, af.title, evidence);
+        if (store.findingExists(fp)) {
+          emitEvent("evidence_collected", agentName, {
+            kind: "dedup_skip",
+            title: af.title,
+            message: `Skipped duplicate finding: ${af.title}`,
+          });
+          continue;
+        }
+
         const findingId = store.insertFinding(runId, {
           ...af,
           agent: agentName,
-          category: af.category || agentName,
-          evidence: af.evidence || [],
+          category,
+          evidence,
         });
         const finding: Finding = {
           id: findingId,
           ...af,
           agent: agentName,
-          category: af.category || agentName,
-          evidence: af.evidence || [],
+          category,
+          evidence,
         };
         allFindings.push(finding);
         callbacks.onFinding(finding);
@@ -255,17 +296,9 @@ export async function runReview(
       }
     }
 
-    // ── Step 6: Run Architecture + Security Agents IN PARALLEL ──
-    // Both agents start simultaneously and stream their tool calls independently.
+    // ── Step 6: Run Agents IN PARALLEL ──
+    // All agents start simultaneously and stream their tool calls independently.
     // Each agent makes as many tool calls as it needs — no artificial limits.
-    emitEvent("agent_started", "architecture", {
-      kind: "agent_lifecycle",
-      message: "Architecture Agent starting review...",
-    });
-    emitEvent("agent_started", "security", {
-      kind: "agent_lifecycle",
-      message: "Security Agent starting review...",
-    });
 
     // Check for cancellation before starting agents
     if (signal.aborted) {
@@ -280,42 +313,121 @@ export async function runReview(
       };
     }
 
-    const [archResult, secResult] = await Promise.allSettled([
-      runArchitectureAgent(context, agentCallbacks("architecture"), signal),
-      runSecurityAgent(context, agentCallbacks("security"), signal),
-    ]);
+    // Determine which agents to run
+    const agentsToRun = options?.agents ?? ["architecture", "security", "bugs"];
+    const targetPath = options?.targetPath;
 
-    // Process Architecture results
-    if (archResult.status === "fulfilled") {
-      emitEvent("evidence_collected", "architecture", {
+    // Emit agent_started events
+    if (agentsToRun.includes("architecture")) {
+      emitEvent("agent_started", "architecture", {
         kind: "agent_lifecycle",
-        event: "completed",
-        message: "Architecture Agent completed",
+        message: "Architecture Agent starting review...",
       });
-      processFindings(archResult.value, "architecture");
-    } else {
-      emitEvent("evidence_collected", "architecture", {
+    }
+    if (agentsToRun.includes("security")) {
+      emitEvent("agent_started", "security", {
         kind: "agent_lifecycle",
-        event: "error",
-        error: `Architecture agent failed: ${archResult.reason?.message || archResult.reason}`,
+        message: "Security Agent starting review...",
+      });
+    }
+    if (agentsToRun.includes("bugs")) {
+      emitEvent("agent_started", "bugs", {
+        kind: "agent_lifecycle",
+        message: "Bugs Agent starting review...",
       });
     }
 
-    // Process Security results
-    if (secResult.status === "fulfilled") {
-      emitEvent("evidence_collected", "security", {
-        kind: "agent_lifecycle",
-        event: "completed",
-        message: "Security Agent completed",
-      });
-      processFindings(secResult.value, "security");
-    } else {
-      emitEvent("evidence_collected", "security", {
-        kind: "agent_lifecycle",
-        event: "error",
-        error: `Security agent failed: ${secResult.reason?.message || secResult.reason}`,
-      });
+    // Build agent execution promises based on selection
+    const agentPromises: Promise<any>[] = [];
+    const agentNames: string[] = [];
+
+    if (agentsToRun.includes("architecture")) {
+      agentNames.push("architecture");
+      agentPromises.push(runArchitectureAgent(context, agentCallbacks("architecture"), signal));
     }
+    if (agentsToRun.includes("security")) {
+      agentNames.push("security");
+      agentPromises.push(runSecurityAgent(context, agentCallbacks("security"), signal));
+    }
+    if (agentsToRun.includes("bugs")) {
+      agentNames.push("bugs");
+      const bugsCallbacks = agentCallbacks("bugs");
+      agentPromises.push(runBugsAgent(targetPath, runId, {
+        onEvent: (event) => {
+          emitEvent(event.type, event.agent, event.data);
+        },
+        onFinding: (finding) => {
+          const evidence = finding.evidence || [];
+          const category = finding.category || "bugs";
+          // Dedup: skip if an active finding with the same fingerprint exists
+          const fp = computeFindingFingerprint("bugs", category, finding.title, evidence);
+          if (store.findingExists(fp)) {
+            emitEvent("evidence_collected", "bugs", {
+              kind: "dedup_skip",
+              title: finding.title,
+              message: `Skipped duplicate finding: ${finding.title}`,
+            });
+            return;
+          }
+
+          const findingId = store.insertFinding(runId, {
+            ...finding,
+            agent: "bugs",
+            category,
+            evidence,
+          });
+          const f: Finding = {
+            id: findingId,
+            ...finding,
+            agent: "bugs",
+            category,
+            evidence,
+          };
+          allFindings.push(f);
+          callbacks.onFinding(f);
+          emitEvent("finding_emitted", "bugs", {
+            kind: "finding",
+            findingId,
+            title: f.title,
+            severity: f.severity,
+            confidence: f.confidence,
+          });
+        },
+        onText: bugsCallbacks.onText,
+        onThinking: bugsCallbacks.onThinking,
+        onToolCall: bugsCallbacks.onToolCall,
+        onToolResult: bugsCallbacks.onToolResult,
+      }, signal, priorFindings));
+    }
+
+    emitEvent("agent_started", undefined, {
+      kind: "pipeline_step",
+      message: `Running ${agentNames.length} agent(s): ${agentNames.join(", ")}${targetPath ? ` on ${targetPath}` : ""}`,
+    });
+
+    const results = await Promise.allSettled(agentPromises);
+
+    // Process results
+    results.forEach((result, index) => {
+      const agentName = agentNames[index];
+      if (result.status === "fulfilled") {
+        emitEvent("evidence_collected", agentName as any, {
+          kind: "agent_lifecycle",
+          event: "completed",
+          message: `${agentName.charAt(0).toUpperCase() + agentName.slice(1)} Agent completed`,
+        });
+        // For architecture and security, process findings
+        if (agentName !== "bugs" && result.value) {
+          processFindings(result.value, agentName as any);
+        }
+      } else {
+        emitEvent("evidence_collected", agentName as any, {
+          kind: "agent_lifecycle",
+          event: "error",
+          error: `${agentName} agent failed: ${result.reason?.message || result.reason}`,
+        });
+      }
+    });
 
     // ── Step 7: Validator Agent — Challenge + Verify Findings ──
     // The validator independently investigates each finding, reading code,
@@ -356,6 +468,12 @@ export async function runReview(
       }
     }
 
+    // ── Step 8: Explainer Agent — DISABLED during automatic scans ──
+    // The explainer is available on-demand via the "Explain" button on each
+    // finding card but no longer runs automatically during repo/diff reviews
+    // to keep scan times fast and avoid unnecessary LLM calls.
+    const explanations: Explanation[] = [];
+
     // ── Complete ──
     activeReviewAbort = null;
     store.completeRun(runId, "complete");
@@ -364,6 +482,7 @@ export async function runReview(
     return {
       runId,
       findings: allFindings,
+      explanations,
       events,
       status: "complete",
     };

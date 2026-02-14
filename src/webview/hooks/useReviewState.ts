@@ -1,6 +1,8 @@
 import { useReducer, useCallback } from "react";
 import type {
   ReviewState,
+  ReviewStatus,
+  ReviewMode,
   ExtensionMessage,
   ConversationMessage,
   ContentBlock,
@@ -38,6 +40,7 @@ type Action =
   | { type: "ADD_PATCH"; patch: Patch }
   | { type: "REVIEW_COMPLETE"; findings: Finding[]; events: AuditEvent[] }
   | { type: "REVIEW_ERROR"; error: string }
+  | { type: "START_CHAT" }
   | { type: "RESET" }
   | { type: "FINDING_VALIDATING"; findingId: string }
   | { type: "FINDING_VALIDATED"; findingId: string; verdict: ValidatorVerdict; reasoning: string }
@@ -50,12 +53,18 @@ type Action =
   | { type: "HISTORY_OPEN" }
   | { type: "HISTORY_CLOSE" }
   | { type: "HISTORY_SET"; runs: ReviewRunSummary[] }
-  | { type: "HISTORY_DELETE_RUN"; runId: string };
+  | { type: "HISTORY_DELETE_RUN"; runId: string }
+  | { type: "RESTORE_MESSAGES"; messages: ConversationMessage[] }
+  | { type: "RESTORE_REVIEW_STATE"; findings: Finding[]; events: AuditEvent[]; status: ReviewStatus; mode?: ReviewMode }
+  | { type: "CLEAR_CHAT" };
 
 function reducer(state: ReviewState, action: Action): ReviewState {
   switch (action.type) {
     case "REVIEW_STARTED":
       return { ...initialState, status: "running", mode: action.mode, mcpServers: state.mcpServers };
+
+    case "START_CHAT":
+      return { ...initialState, status: "chatting", mcpServers: state.mcpServers };
 
     case "ADD_BLOCK": {
       const block = action.block;
@@ -301,6 +310,31 @@ function reducer(state: ReviewState, action: Action): ReviewState {
         reviewHistory: (state.reviewHistory || []).filter((r) => r.id !== action.runId),
       };
 
+    // ── State Restoration ──
+    case "RESTORE_MESSAGES":
+      // Only restore if currently idle (don't overwrite an active session)
+      if (state.status !== "idle") return state;
+      return {
+        ...state,
+        status: "chatting",
+        messages: action.messages,
+      };
+
+    case "RESTORE_REVIEW_STATE": {
+      if (state.status !== "idle" && state.status !== "chatting") return state;
+      const restoredStatus: ReviewStatus = action.status === "running" ? "complete" : (action.status as ReviewStatus);
+      return {
+        ...state,
+        status: restoredStatus,
+        mode: action.mode,
+        findings: action.findings,
+        events: action.events,
+      };
+    }
+
+    case "CLEAR_CHAT":
+      return { ...initialState, mcpServers: state.mcpServers };
+
     default:
       return state;
   }
@@ -386,6 +420,25 @@ export function useReviewState() {
       case "injectUserMessage":
         dispatch({ type: "ADD_USER_MESSAGE", query: msg.text });
         break;
+
+      // State restoration
+      case "restoreMessages":
+        dispatch({ type: "RESTORE_MESSAGES", messages: msg.messages });
+        break;
+      case "restoreReviewState":
+        dispatch({
+          type: "RESTORE_REVIEW_STATE",
+          findings: msg.findings,
+          events: msg.events,
+          status: msg.status as ReviewStatus,
+          mode: msg.mode as ReviewMode | undefined,
+        });
+        break;
+
+      // Persistence request — webview sends messages back to extension for storage
+      case "requestPersistMessages":
+        // handled in App.tsx via postMessage
+        break;
     }
   }, []);
 
@@ -395,6 +448,10 @@ export function useReviewState() {
 
   const startReview = useCallback((mode: "repo" | "diff") => {
     dispatch({ type: "REVIEW_STARTED", mode });
+  }, []);
+
+  const startChat = useCallback(() => {
+    dispatch({ type: "START_CHAT" });
   }, []);
 
   const reset = useCallback(() => {
@@ -425,11 +482,16 @@ export function useReviewState() {
     dispatch({ type: "HISTORY_DELETE_RUN", runId });
   }, []);
 
+  const clearChat = useCallback(() => {
+    dispatch({ type: "CLEAR_CHAT" });
+  }, []);
+
   return {
     state,
     handleExtensionMessage,
     addUserMessage,
     startReview,
+    startChat,
     reset,
     markFindingValidating,
     openMCPManager,
@@ -437,5 +499,6 @@ export function useReviewState() {
     openHistory,
     closeHistory,
     deleteHistoryRun,
+    clearChat,
   };
 }

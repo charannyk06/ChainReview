@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useVSCodeAPI } from "./hooks/useVSCodeAPI";
 import { useReviewState } from "./hooks/useReviewState";
 import { OpenFileProvider } from "./contexts/OpenFileContext";
@@ -12,6 +12,7 @@ import { AuditTimeline } from "./components/timeline/AuditTimeline";
 import { MCPManagerPanel } from "./components/mcp/MCPManagerPanel";
 import { TaskHistory } from "./components/history/TaskHistory";
 import type { FindingActions } from "./components/chat/ChatMessage";
+import { MILESTONE_EVENTS } from "./lib/constants";
 import type { Patch, ExtensionMessage, MCPServerConfig } from "./lib/types";
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
     handleExtensionMessage,
     addUserMessage,
     startReview,
+    startChat,
     reset,
     markFindingValidating,
     openMCPManager,
@@ -27,9 +29,17 @@ export default function App() {
     openHistory,
     closeHistory,
     deleteHistoryRun,
+    clearChat,
   } = useReviewState();
   const [activeTab, setActiveTab] = useState<TabId>("chat");
   const [activePatch, setActivePatch] = useState<Patch | null>(null);
+
+  // Ref to access latest messages without re-creating the callback
+  const messagesRef = useRef(state.messages);
+  messagesRef.current = state.messages;
+
+  // postMessage ref — filled in after useVSCodeAPI
+  const postMessageRef = useRef<((msg: any) => void) | null>(null);
 
   // Handle patchReady messages to open the patch preview + tab switching
   const handleMessage = useCallback(
@@ -42,11 +52,16 @@ export default function App() {
       if (msg.type === "switchTab") {
         setActiveTab(msg.tab);
       }
+      // Extension requests us to persist current messages
+      if (msg.type === "requestPersistMessages") {
+        postMessageRef.current?.({ type: "persistMessages", messages: messagesRef.current });
+      }
     },
     [handleExtensionMessage]
   );
 
   const { postMessage } = useVSCodeAPI(handleMessage);
+  postMessageRef.current = postMessage;
 
   const handleStartReview = (mode: "repo" | "diff") => {
     startReview(mode);
@@ -54,19 +69,40 @@ export default function App() {
     setActiveTab("chat");
   };
 
+  const handleStartChat = useCallback(() => {
+    startChat();
+    setActiveTab("chat");
+  }, [startChat]);
+
   const handleSendQuery = useCallback(
-    (query: string) => {
+    (query: string, agents?: string[], targetPath?: string) => {
       addUserMessage(query);
-      postMessage({ type: "chatQuery", query });
+      if (agents && agents.length > 0) {
+        // Agents mentioned — trigger a full agent review run
+        startReview("repo");
+        postMessage({ type: "chatQuery", query, agents, targetPath });
+        setActiveTab("chat");
+      } else {
+        // No agents — plain chat Q&A
+        postMessage({ type: "chatQuery", query });
+      }
     },
-    [addUserMessage, postMessage]
+    [addUserMessage, postMessage, startReview]
   );
 
   const handleNewThread = useCallback(() => {
     reset();
+    postMessage({ type: "clearChat" });
     setActiveTab("chat");
     setActivePatch(null);
-  }, [reset]);
+  }, [reset, postMessage]);
+
+  const handleClearChat = useCallback(() => {
+    clearChat();
+    postMessage({ type: "clearChat" });
+    setActiveTab("chat");
+    setActivePatch(null);
+  }, [clearChat, postMessage]);
 
   const handleOpenMCPManager = useCallback(() => {
     openMCPManager();
@@ -233,6 +269,7 @@ export default function App() {
         <EmptyState
           onStartRepoReview={() => handleStartReview("repo")}
           onStartDiffReview={() => handleStartReview("diff")}
+          onStartChat={handleStartChat}
           onOpenHistory={handleOpenHistory}
         />
       </OpenFileProvider>
@@ -251,7 +288,7 @@ export default function App() {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           findingsCount={state.findings.length}
-          eventsCount={state.events.length}
+          eventsCount={state.events.filter(e => MILESTONE_EVENTS.has(e.type)).length}
         />
 
         <div className="flex-1 overflow-hidden">

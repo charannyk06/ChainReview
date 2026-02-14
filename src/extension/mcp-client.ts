@@ -222,7 +222,8 @@ export class CrpClient {
 
   async runReview(
     repoPath: string,
-    mode: "repo" | "diff"
+    mode: "repo" | "diff",
+    agents?: string[]
   ): Promise<{
     runId: string;
     findings: Finding[];
@@ -230,7 +231,11 @@ export class CrpClient {
     status: string;
     error?: string;
   }> {
-    const result = await this.callTool("crp.review.run", { repoPath, mode });
+    const args: Record<string, unknown> = { repoPath, mode };
+    if (agents && agents.length > 0) {
+      args.agents = agents;
+    }
+    const result = await this.callTool("crp.review.run", args);
     return JSON.parse(result);
   }
 
@@ -363,7 +368,7 @@ export class CrpClient {
   async validateFinding(
     findingJson: string
   ): Promise<{
-    verdict: "confirmed" | "likely_valid" | "uncertain" | "likely_false_positive" | "false_positive";
+    verdict: "still_present" | "partially_fixed" | "fixed" | "unable_to_determine";
     reasoning: string;
     toolCalls: Array<{ tool: string; args: Record<string, unknown>; result: string }>;
   }> {
