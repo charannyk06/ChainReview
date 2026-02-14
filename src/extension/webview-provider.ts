@@ -17,6 +17,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   "crp_web_search": "Web Search",
   "crp_patch_generate": "Generate Fix",
   "crp_review_validate_finding": "Validate Finding",
+  "crp_spawn_review": "Spawn Review Agents",
 };
 
 const TOOL_ICON_MAP: Record<string, string> = {
@@ -33,6 +34,7 @@ const TOOL_ICON_MAP: Record<string, string> = {
   "crp_web_search": "web",
   "crp_patch_generate": "brain",
   "crp_review_validate_finding": "shield",
+  "crp_spawn_review": "brain",
 };
 
 function summarizeArgs(tool: string, args: Record<string, unknown>): string {
@@ -142,9 +144,17 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       case "startReview":
         await this._startReview(message.mode as "repo" | "diff", message.path as string | undefined);
         break;
-      case "chatQuery":
-        await this._handleChatQuery(message.query as string);
+      case "chatQuery": {
+        const agents = message.agents as string[] | undefined;
+        if (agents && agents.length > 0) {
+          // Agents mentioned — trigger a full review run with those agents
+          await this._startReview("repo", message.targetPath as string | undefined, agents);
+        } else {
+          // No agents — plain chat Q&A
+          await this._handleChatQuery(message.query as string);
+        }
         break;
+      }
       case "requestPatch":
         await this._requestPatch(message.findingId as string);
         break;
@@ -447,6 +457,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
           const blockId = `ctx-${++this._blockCounter}`;
           this._chatStreamingTextBlockId = blockId;
           this._chatStreamingTextAccum = delta;
+          this._chatTextBlockCount++;
           this.postMessage({
             type: "chatResponseBlock",
             messageId: this._activeChatMessageId,
@@ -535,6 +546,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
           // No delta events were received (fallback) — emit full block
           const text = event.text as string;
           if (text) {
+            this._chatTextBlockCount++;
             this.postMessage({
               type: "chatResponseBlock",
               messageId: this._activeChatMessageId,
@@ -747,6 +759,31 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       }
 
       // ═══════════════════════════════════════════════════════
+      // CHAT-SPAWNED REVIEW (AI decided to launch sub-agents)
+      // ═══════════════════════════════════════════════════════
+      case "chatSpawnedReview": {
+        const runId = event.runId as string;
+        const findingsCount = event.findingsCount as number;
+        const agents = event.agents as string[];
+
+        if (runId) {
+          this._currentRunId = runId;
+        }
+
+        // Transition UI to "running" mode so findings tab, timeline, etc. appear
+        // The review is already complete by the time this event arrives, so
+        // immediately transition to complete
+        this.postMessage({ type: "reviewStarted", mode: "repo" as const });
+        this.postMessage({
+          type: "reviewComplete",
+          findings: this._findings,
+          events: [],
+        });
+
+        break;
+      }
+
+      // ═══════════════════════════════════════════════════════
       // LEGACY: Direct toolCall/toolResult (non-agent-tagged)
       // ═══════════════════════════════════════════════════════
       case "toolCall": {
@@ -784,7 +821,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   // ── Review Flow (with real-time streaming) ──
 
-  private async _startReview(mode: "repo" | "diff", path?: string) {
+  private async _startReview(mode: "repo" | "diff", path?: string, agents?: string[]) {
     if (!this._crpClient?.isConnected()) {
       this.postMessage({ type: "reviewError", error: "CRP server is not connected. Check that your Anthropic API key is set in Settings (chainreview.anthropicApiKey) and restart VS Code." });
       return;
@@ -813,7 +850,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     });
 
     try {
-      const result = await this._crpClient.runReview(repoPath, mode);
+      const result = await this._crpClient.runReview(repoPath, mode, agents);
       this._currentRunId = result.runId;
 
       if (result.findings.length > 0) {
@@ -835,7 +872,12 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       });
 
       // ── Generate detailed final report ──
-      this._emitFinalReport(this._findings);
+      // Emit as its own standalone chat message so it appears AFTER all agent
+      // cards (which are already complete and auto-collapsed by now).
+      const summaryMessageId = `summary-${Date.now()}`;
+      this.postMessage({ type: "chatResponseStart", messageId: summaryMessageId });
+      this._emitFinalReport(this._findings, summaryMessageId);
+      this.postMessage({ type: "chatResponseEnd", messageId: summaryMessageId });
 
       this.postMessage({ type: "reviewComplete", findings: result.findings, events: result.events });
     } catch (err: any) {
@@ -858,9 +900,19 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   // health of the codebase in plain language so the user can immediately
   // grasp the situation.
 
-  private _emitFinalReport(findings: Finding[]) {
+  private _emitFinalReport(findings: Finding[], messageId?: string) {
+    // Helper: emit block into a standalone chat message (if messageId provided)
+    // or fall back to addBlock (legacy).
+    const emit = (block: Record<string, unknown>) => {
+      if (messageId) {
+        this.postMessage({ type: "chatResponseBlock", messageId, block });
+      } else {
+        this._emitBlock(block);
+      }
+    };
+
     if (findings.length === 0) {
-      this._emitBlock({
+      emit({
         kind: "text",
         id: `summary-${++this._blockCounter}`,
         text: "## ✅ Review Complete\n\nNo issues were detected. The codebase looks healthy — no architecture, security, or bug concerns were found by the review agents.",
@@ -1019,8 +1071,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     lines.push(`${stepNum}. Use **Explain** on any finding for a deep-dive, or **Verify** to challenge it`);
     lines.push("");
 
-    // Emit as a standalone text block (no agent tag = appears after all agent cards)
-    this._emitBlock({
+    // Emit as a standalone text block — now routed through the messageId channel
+    // so it appears as its own message AFTER all agent cards have completed.
+    emit({
       kind: "text",
       id: `summary-${++this._blockCounter}`,
       text: lines.join("\n"),
@@ -1035,9 +1088,18 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   // 1. Create a streaming assistant message (chatResponseStart)
   // 2. As the MCP call runs, stderr events fire: chatThinking, chatText, chatToolCall, chatToolResult
   // 3. These events push blocks to the webview INCREMENTALLY via chatResponseBlock
-  // 4. When the MCP call completes, we mark the message complete (chatResponseEnd)
+  // 4. When the MCP call completes, we flush stderr, inject fallback answer if needed,
+  //    then mark the message complete (chatResponseEnd)
   //
-  // This gives real-time streaming: thinking → text → tool calls → text, continuous loop.
+  // IMPORTANT: There is a race condition between stderr (streaming events) and
+  // stdout (MCP result). The MCP result may arrive before all stderr events have
+  // been flushed. We handle this by:
+  //   a) Waiting for stderr to flush after the MCP call completes
+  //   b) Using the MCP result's `answer` field as a fallback if no text blocks were streamed
+  //   c) Keeping _activeChatMessageId alive during the flush window
+
+  /** Count of text blocks emitted during current chat query (for fallback detection) */
+  private _chatTextBlockCount = 0;
 
   private async _handleChatQuery(query: string) {
     if (!this._crpClient?.isConnected()) {
@@ -1052,6 +1114,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     this._chatStreamingTextAccum = "";
     this._chatStreamingThinkingBlockId = null;
     this._chatStreamingThinkingAccum = "";
+    this._chatTextBlockCount = 0;
 
     // Create the streaming assistant message
     this.postMessage({ type: "chatResponseStart", messageId });
@@ -1060,10 +1123,34 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       // The chatQuery MCP call blocks until complete, BUT during execution
       // the server streams events via stderr → _handleStreamEvent → chatThinking/chatText/chatToolCall/chatToolResult
       // which push blocks to the webview INCREMENTALLY.
-      // By the time this awaited call returns, all blocks are already in the UI.
-      await this._crpClient.chatQuery(query, this._currentRunId);
+      //
+      // RACE CONDITION FIX: stderr events from the final LLM turn may still be
+      // in transit when the MCP result arrives via stdout. We flush stderr by
+      // waiting a few event-loop ticks before marking the message complete.
+      const result = await this._crpClient.chatQuery(query, this._currentRunId);
 
-      // Mark the message as complete — all blocks were already streamed
+      // ── Flush stderr: wait for any in-flight events to be processed ──
+      // Node.js processes I/O callbacks in phases. Multiple ticks allow
+      // buffered stderr chunks to be received and handled.
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      // ── Fallback: if no text blocks were streamed, inject the answer directly ──
+      // This handles the case where stderr events were dropped or never arrived.
+      if (this._chatTextBlockCount === 0 && result.answer && result.answer.trim()) {
+        this.postMessage({
+          type: "chatResponseBlock",
+          messageId,
+          block: {
+            kind: "text",
+            id: `ctx-${++this._blockCounter}`,
+            text: result.answer,
+            format: "markdown",
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Mark the message as complete
       this.postMessage({ type: "chatResponseEnd", messageId });
     } catch (err: any) {
       // Emit error block
@@ -1086,6 +1173,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       this._chatStreamingTextAccum = "";
       this._chatStreamingThinkingBlockId = null;
       this._chatStreamingThinkingAccum = "";
+      this._chatTextBlockCount = 0;
     }
   }
 
@@ -1187,7 +1275,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       .map((ev) => `- \`${ev.filePath}\` (lines ${ev.startLine}–${ev.endLine})`)
       .join("\n");
     const userTicket = [
-      `🔍 **Verify Finding**`,
+      `🔍 **Verify Fix**`,
       ``,
       `**${finding.title}**`,
       `**Severity:** ${finding.severity.toUpperCase()} · **Category:** ${finding.category} · **Confidence:** ${Math.round(finding.confidence * 100)}%`,
@@ -1196,6 +1284,8 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       ``,
       `**Evidence:**`,
       evidenceList,
+      ``,
+      `*Checking if this bug is still present in the current code...*`,
     ].join("\n");
 
     this.postMessage({ type: "injectUserMessage", text: userTicket });
@@ -1210,7 +1300,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         id: `sae-${++this._blockCounter}`,
         agent: "validator",
         event: "started",
-        message: `Validating: ${finding.title}`,
+        message: `Verifying fix: ${finding.title}`,
         timestamp: new Date().toISOString(),
       },
     });
@@ -1222,22 +1312,24 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       // (validateThinking, validateText, validateToolCall, validateToolResult)
       const result = await this._crpClient.validateFinding(JSON.stringify(finding));
 
+      // Flush stderr — wait for any in-flight streaming events to be processed
+      await new Promise(resolve => setTimeout(resolve, 150));
+
       // Emit verdict summary
       const verdictLabel: Record<string, string> = {
-        confirmed: "Confirmed",
-        likely_valid: "Likely Valid",
-        uncertain: "Uncertain",
-        likely_false_positive: "Likely False Positive",
-        false_positive: "False Positive",
+        still_present: "Still Present",
+        partially_fixed: "Partially Fixed",
+        fixed: "Fixed ✓",
+        unable_to_determine: "Unable to Determine",
       };
 
       const validationMsg = [
-        `### Validator Verdict: ${verdictLabel[result.verdict] || result.verdict}`,
+        `### Verification Result: ${verdictLabel[result.verdict] || result.verdict}`,
         ``,
         `**Finding:** ${finding.title}`,
-        `**Verdict:** \`${result.verdict}\``,
+        `**Status:** \`${result.verdict}\``,
         ``,
-        `**Reasoning:**`,
+        `**Analysis:**`,
         result.reasoning,
       ].join("\n");
 
@@ -1268,7 +1360,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         reasoning: result.reasoning,
       });
 
-      vscode.window.showInformationMessage(`ChainReview: Validator verdict — ${result.verdict}`);
+      vscode.window.showInformationMessage(`ChainReview: Verification result — ${verdictLabel[result.verdict] || result.verdict}`);
     } catch (err: any) {
       const errMsg = err.message || "Unknown error";
       const isApiKeyError = errMsg.includes("API key") || errMsg.includes("401") || errMsg.includes("authentication");
@@ -1469,7 +1561,17 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    if (agentId === "claude-code") {
+    // ── CLI agent configurations ──
+    const CLI_AGENTS: Record<string, { label: string; cmd: string }> = {
+      "claude-code": { label: "Claude Code", cmd: "claude" },
+      "gemini-cli":  { label: "Gemini CLI",  cmd: "gemini" },
+      "codex-cli":   { label: "Codex CLI",   cmd: "codex" },
+    };
+
+    const cliAgent = CLI_AGENTS[agentId];
+
+    // ── Terminal-based CLI agents (Claude Code, Gemini CLI, Codex CLI) ──
+    if (cliAgent) {
       try {
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!workspaceFolder) {
@@ -1480,6 +1582,25 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
         const fs = await import("fs");
         const path = await import("path");
+        const { execSync } = await import("child_process");
+
+        // Check if the CLI is available
+        let cliAvailable = false;
+        try {
+          execSync(`which ${cliAgent.cmd} 2>/dev/null || where ${cliAgent.cmd} 2>NUL`, { timeout: 5000 });
+          cliAvailable = true;
+        } catch {
+          // CLI not in PATH
+        }
+
+        if (!cliAvailable) {
+          await vscode.env.clipboard.writeText(prompt);
+          vscode.window.showWarningMessage(
+            `ChainReview: "${cliAgent.cmd}" CLI not found in PATH — finding copied to clipboard instead. Install ${cliAgent.label} CLI and ensure it's in your PATH.`
+          );
+          return;
+        }
+
         const chainReviewDir = path.join(workspaceFolder, ".chainreview");
         if (!fs.existsSync(chainReviewDir)) {
           fs.mkdirSync(chainReviewDir, { recursive: true });
@@ -1490,13 +1611,26 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         fs.writeFileSync(promptFilePath, prompt, "utf-8");
 
         const terminal = vscode.window.createTerminal({
-          name: `ChainReview → Claude Code`,
+          name: `ChainReview → ${cliAgent.label}`,
           cwd: workspaceFolder,
           iconPath: new vscode.ThemeIcon("sparkle"),
         });
         terminal.show();
-        terminal.sendText(`cat "${promptFilePath}" | claude --print`, false);
-        terminal.sendText("", true);
+
+        // Build the command — launch each CLI in PRINT mode, reading the prompt
+        // file via stdin redirect to avoid $() expansion echoing the whole prompt.
+        let shellCmd: string;
+        if (agentId === "claude-code") {
+          // Claude Code: use -p (print mode) with stdin redirect — no echo duplication
+          shellCmd = `claude -p --verbose < '${promptFilePath}'`;
+        } else if (agentId === "codex-cli") {
+          // Codex CLI: use quiet flag with stdin redirect
+          shellCmd = `codex -q < '${promptFilePath}'`;
+        } else {
+          // Gemini CLI: use stdin redirect
+          shellCmd = `gemini < '${promptFilePath}'`;
+        }
+        terminal.sendText(shellCmd);
 
         const messageId = `agent-${Date.now()}`;
         this.postMessage({ type: "chatResponseStart", messageId });
@@ -1506,10 +1640,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
             kind: "text",
             id: `sca-${++this._blockCounter}`,
             text: [
-              `**Sent to Claude Code** 🚀`, ``,
-              `Finding **${finding.title}** has been sent to Claude Code in a new terminal.`, ``,
+              `**Sent to ${cliAgent.label}** 🚀`, ``,
+              `Finding **${finding.title}** has been sent to ${cliAgent.label} in a new terminal.`, ``,
               `The prompt file is saved at \`.chainreview/${promptFileName}\``, ``,
-              `After Claude Code fixes the issue, run **Re-Review** to verify.`,
+              `After ${cliAgent.label} fixes the issue, run **Re-Review** to verify.`,
             ].join("\n"),
             format: "markdown",
             timestamp: new Date().toISOString(),
@@ -1525,99 +1659,42 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         return;
       } catch (err: any) {
         await vscode.env.clipboard.writeText(prompt);
-        vscode.window.showWarningMessage(`ChainReview: Could not launch terminal — finding copied to clipboard. Error: ${err.message}`);
+        vscode.window.showWarningMessage(`ChainReview: Could not launch ${cliAgent.label} — finding copied to clipboard. Error: ${err.message}`);
         return;
       }
     }
 
-    // kilo-code, gemini-cli, codex-cli — launch in terminal (similar to claude-code)
-    if (agentId === "gemini-cli" || agentId === "codex-cli" || agentId === "kilo-code") {
-      try {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!workspaceFolder) {
-          await vscode.env.clipboard.writeText(prompt);
-          vscode.window.showInformationMessage("ChainReview: No workspace — finding copied to clipboard instead");
-          return;
-        }
-
-        const fs = await import("fs");
-        const path = await import("path");
-        const chainReviewDir = path.join(workspaceFolder, ".chainreview");
-        if (!fs.existsSync(chainReviewDir)) {
-          fs.mkdirSync(chainReviewDir, { recursive: true });
-        }
-
-        const promptFileName = `fix-${findingId.replace(/[^a-zA-Z0-9]/g, "-")}.md`;
-        const promptFilePath = path.join(chainReviewDir, promptFileName);
-        fs.writeFileSync(promptFilePath, prompt, "utf-8");
-
-        const cliCommands: Record<string, string> = {
-          "gemini-cli": "gemini",
-          "codex-cli": "codex",
-          "kilo-code": "kilo",
-        };
-        const cliLabels: Record<string, string> = {
-          "gemini-cli": "Gemini CLI",
-          "codex-cli": "Codex CLI",
-          "kilo-code": "Kilo Code",
-        };
-
-        const cliCmd = cliCommands[agentId] || agentId;
-        const cliLabel = cliLabels[agentId] || agentId;
-
-        const terminal = vscode.window.createTerminal({
-          name: `ChainReview → ${cliLabel}`,
-          cwd: workspaceFolder,
-          iconPath: new vscode.ThemeIcon("sparkle"),
-        });
-        terminal.show();
-        terminal.sendText(`cat "${promptFilePath}" | ${cliCmd}`, false);
-        terminal.sendText("", true);
-
-        const messageId = `agent-${Date.now()}`;
-        this.postMessage({ type: "chatResponseStart", messageId });
-        this.postMessage({
-          type: "chatResponseBlock", messageId,
-          block: {
-            kind: "text",
-            id: `sca-${++this._blockCounter}`,
-            text: [
-              `**Sent to ${cliLabel}** 🚀`, ``,
-              `Finding **${finding.title}** has been sent to ${cliLabel} in a new terminal.`, ``,
-              `The prompt file is saved at \`.chainreview/${promptFileName}\``,
-            ].join("\n"),
-            format: "markdown",
-            timestamp: new Date().toISOString(),
-          },
-        });
-        this.postMessage({ type: "chatResponseEnd", messageId });
-
-        if (this._currentRunId && this._crpClient?.isConnected()) {
-          await this._crpClient.recordEvent(this._currentRunId, "evidence_collected", undefined, {
-            action: "sent_to_coding_agent", agent: agentId, findingId, findingTitle: finding.title,
-          }).catch(() => {});
-        }
-        return;
-      } catch (err: any) {
-        await vscode.env.clipboard.writeText(prompt);
-        vscode.window.showWarningMessage(`ChainReview: Could not launch terminal — finding copied to clipboard. Error: ${err.message}`);
-        return;
-      }
-    }
-
+    // ── VS Code extension-based agents (Kilo Code, Cursor) — clipboard + command ──
     await vscode.env.clipboard.writeText(prompt);
-    const agentLabels: Record<string, string> = { "cursor": "Cursor" };
-    const label = agentLabels[agentId] || "your coding agent";
-    vscode.window.showInformationMessage(
-      `ChainReview: Finding copied — paste into ${label}'s chat (Cmd+L or Ctrl+L)`,
-      "Open Chat"
-    ).then((choice) => {
-      if (choice === "Open Chat") {
-        if (agentId === "cursor") {
-          Promise.resolve(vscode.commands.executeCommand("aipopup.action.modal.generate")).catch(() => {});
+
+    const extensionAgents: Record<string, { label: string; command?: string; shortcut: string }> = {
+      "kilo-code": { label: "Kilo Code", command: "kilo-code.startNewTask", shortcut: "Cmd+Shift+K" },
+      "cursor":    { label: "Cursor",    command: "aipopup.action.modal.generate", shortcut: "Cmd+L" },
+    };
+
+    const extAgent = extensionAgents[agentId];
+    if (extAgent) {
+      vscode.window.showInformationMessage(
+        `ChainReview: Finding copied — paste into ${extAgent.label}'s chat (${extAgent.shortcut})`,
+        "Open Chat"
+      ).then((choice) => {
+        if (choice === "Open Chat" && extAgent.command) {
+          vscode.commands.executeCommand(extAgent.command).then(undefined, () => {
+            // Command not available — extension not installed
+            vscode.window.showWarningMessage(
+              `ChainReview: ${extAgent.label} doesn't appear to be installed. The finding is still on your clipboard.`
+            );
+          });
         }
-      }
-    });
+      });
+      return;
+    }
+
+    // ── Fallback — unknown agent ──
+    const label = agentId || "your coding agent";
+    vscode.window.showInformationMessage(
+      `ChainReview: Finding copied to clipboard — paste into ${label}'s chat`
+    );
   }
 
   // ── Task History ──
