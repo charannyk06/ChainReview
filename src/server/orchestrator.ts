@@ -74,6 +74,8 @@ export async function runReview(
     });
   }
 
+  const allFindings: Finding[] = [];
+
   try {
     // ── Step 1: Open repository ──
     emitEvent("evidence_collected", undefined, {
@@ -192,10 +194,8 @@ export async function runReview(
       diffContent,
     };
 
-    const allFindings: Finding[] = [];
-
     // ── Shared agent callback factory ──
-    const agentCallbacks = (agentName: "architecture" | "security" | "validator") => ({
+    const agentCallbacks = (agentName: "architecture" | "security" | "validator" | "bugs") => ({
       onText: (text: string) => {
         // Strip the raw <findings> JSON block from displayed text — that data
         // is already captured as structured findings and shown in the Findings
@@ -266,17 +266,9 @@ export async function runReview(
       }
     }
 
-    // ── Step 6: Run Architecture + Security Agents IN PARALLEL ──
-    // Both agents start simultaneously and stream their tool calls independently.
+    // ── Step 6: Run Agents IN PARALLEL ──
+    // All agents start simultaneously and stream their tool calls independently.
     // Each agent makes as many tool calls as it needs — no artificial limits.
-    emitEvent("agent_started", "architecture", {
-      kind: "agent_lifecycle",
-      message: "Architecture Agent starting review...",
-    });
-    emitEvent("agent_started", "security", {
-      kind: "agent_lifecycle",
-      message: "Security Agent starting review...",
-    });
 
     // Check for cancellation before starting agents
     if (signal.aborted) {
@@ -295,6 +287,26 @@ export async function runReview(
     const agentsToRun = options?.agents ?? ["architecture", "security", "bugs"];
     const targetPath = options?.targetPath;
 
+    // Emit agent_started events
+    if (agentsToRun.includes("architecture")) {
+      emitEvent("agent_started", "architecture", {
+        kind: "agent_lifecycle",
+        message: "Architecture Agent starting review...",
+      });
+    }
+    if (agentsToRun.includes("security")) {
+      emitEvent("agent_started", "security", {
+        kind: "agent_lifecycle",
+        message: "Security Agent starting review...",
+      });
+    }
+    if (agentsToRun.includes("bugs")) {
+      emitEvent("agent_started", "bugs", {
+        kind: "agent_lifecycle",
+        message: "Bugs Agent starting review...",
+      });
+    }
+
     // Build agent execution promises based on selection
     const agentPromises: Promise<any>[] = [];
     const agentNames: string[] = [];
@@ -309,34 +321,39 @@ export async function runReview(
     }
     if (agentsToRun.includes("bugs")) {
       agentNames.push("bugs");
+      const bugsCallbacks = agentCallbacks("bugs");
       agentPromises.push(runBugsAgent(targetPath, runId, {
-        onEvent: callbacks.onEvent,
+        onEvent: (event) => {
+          emitEvent(event.type, event.agent, event.data);
+        },
         onFinding: (finding) => {
+          const findingId = store.insertFinding(runId, {
+            ...finding,
+            agent: "bugs",
+            category: finding.category || "bugs",
+            evidence: finding.evidence || [],
+          });
           const f: Finding = {
-            id: finding.id,
-            agentId: "bugs",
-            category: "bugs",
-            title: finding.title,
-            description: finding.description,
-            filePath: finding.filePath,
-            lineStart: finding.lineStart,
-            lineEnd: finding.lineEnd,
-            severity: finding.severity,
-            confidence: finding.confidence,
-            evidence: finding.evidence,
-            suggestedFix: finding.suggestedFix,
-            status: "pending",
+            id: findingId,
+            ...finding,
+            agent: "bugs",
+            category: finding.category || "bugs",
+            evidence: finding.evidence || [],
           };
           allFindings.push(f);
-          store.insertFinding(runId, f);
+          callbacks.onFinding(f);
           emitEvent("finding_emitted", "bugs", {
-            findingId: f.id,
+            kind: "finding",
+            findingId,
             title: f.title,
             severity: f.severity,
+            confidence: f.confidence,
           });
         },
-        onThinking: (text) => callbacks.onText("bugs", text, false),
-        onToolCall: (name, input) => callbacks.onToolCall("bugs", name, input as Record<string, unknown>),
+        onText: bugsCallbacks.onText,
+        onThinking: bugsCallbacks.onThinking,
+        onToolCall: bugsCallbacks.onToolCall,
+        onToolResult: bugsCallbacks.onToolResult,
       }, signal));
     }
 
@@ -408,53 +425,11 @@ export async function runReview(
       }
     }
 
-    // ── Step 8: Explainer Agent — Generate Human-Readable Explanations ──
-    // The explainer transforms technical findings into clear, actionable
-    // explanations for developers and stakeholders.
-    let explanations: Explanation[] = [];
-    if (allFindings.length > 0 && !signal.aborted) {
-      emitEvent("agent_started", "explainer", {
-        kind: "agent_lifecycle",
-        message: `Explainer Agent generating explanations for ${allFindings.length} finding(s)...`,
-      });
-
-      try {
-        explanations = await runExplainerAgent(
-          allFindings,
-          runId,
-          {
-            onEvent: (event) => callbacks.onEvent(event),
-            onExplanation: (explanation) => {
-              emitEvent("finding_explained", "explainer", {
-                findingId: explanation.findingId,
-                summary: explanation.summary,
-                impact: explanation.whyItMatters.impact,
-              });
-            },
-            onThinking: (text) => {
-              callbacks.onText("explainer", text, false);
-            },
-            onToolCall: (name, input) => {
-              callbacks.onToolCall("explainer", name, input as Record<string, unknown>);
-            },
-          },
-          signal
-        );
-
-        emitEvent("agent_completed", "explainer", {
-          kind: "agent_lifecycle",
-          message: `Explainer completed — generated ${explanations.length} explanation(s)`,
-        });
-      } catch (err: any) {
-        if (!signal.aborted) {
-          emitEvent("evidence_collected", "explainer", {
-            kind: "agent_lifecycle",
-            event: "error",
-            error: `Explainer agent failed: ${err.message}`,
-          });
-        }
-      }
-    }
+    // ── Step 8: Explainer Agent — DISABLED during automatic scans ──
+    // The explainer is available on-demand via the "Explain" button on each
+    // finding card but no longer runs automatically during repo/diff reviews
+    // to keep scan times fast and avoid unnecessary LLM calls.
+    const explanations: Explanation[] = [];
 
     // ── Complete ──
     activeReviewAbort = null;
