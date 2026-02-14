@@ -29,7 +29,7 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
       elements.push(
         <pre
           key={elements.length}
-          className="my-2.5 px-4 py-3 rounded-xl bg-[var(--cr-bg-tertiary)] border border-[var(--cr-border-subtle)] text-[11.5px] font-mono text-[var(--cr-text-primary)] overflow-x-auto leading-relaxed"
+          className="my-2.5 px-4 py-3 rounded-xl bg-[var(--cr-bg-tertiary)] border border-[var(--cr-border-subtle)] text-[11.5px] font-mono text-[var(--cr-text-secondary)] overflow-x-auto leading-relaxed"
         >
           {lang && (
             <span className="text-[9px] text-[var(--cr-text-ghost)] block mb-1.5 uppercase tracking-wider font-semibold">{lang}</span>
@@ -64,8 +64,8 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
     if (line.match(/^[-*]\s/)) {
       elements.push(
         <div key={elements.length} className="flex gap-2.5 ml-1 py-0.5">
-          <span className="text-[var(--cr-text-tertiary)] text-[13px] select-none leading-[1.65]">•</span>
-          <span className="text-[13px] text-[var(--cr-text-primary)] leading-[1.65]">
+          <span className="text-[var(--cr-text-ghost)] text-[13px] select-none leading-[1.65]">•</span>
+          <span className="text-[13px] text-[var(--cr-text-secondary)] leading-[1.65]">
             {renderInline(line.slice(2))}
           </span>
         </div>
@@ -83,7 +83,7 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
 
     // Regular paragraph
     elements.push(
-      <p key={elements.length} className="text-[13px] text-[var(--cr-text-primary)] leading-[1.7]">
+      <p key={elements.length} className="text-[13px] text-[var(--cr-text-secondary)] leading-[1.7]">
         {renderInline(line)}
       </p>
     );

@@ -97,7 +97,7 @@ export function ToolCallRow({ block }: ToolCallRowProps) {
         {isFileTool && (filePath || argsSummaryIsPath) ? (
           <ExtBadge filePath={filePath || block.argsSummary} />
         ) : (
-          <IconComponent className="size-3 text-[var(--cr-text-tertiary)] shrink-0" />
+          <IconComponent className="size-3 text-[var(--cr-text-muted)] shrink-0" />
         )}
 
         <span className="text-[11px] font-medium text-[var(--cr-text-secondary)] truncate">
@@ -110,7 +110,7 @@ export function ToolCallRow({ block }: ToolCallRowProps) {
               "text-[10px] truncate flex-1 min-w-0",
               isFileTool && (filePath || argsSummaryIsPath)
                 ? "text-indigo-400/80 hover:text-indigo-300 cursor-pointer font-mono"
-                : "text-[var(--cr-text-tertiary)]"
+                : "text-[var(--cr-text-muted)]"
             )}
             onClick={(e) => {
               if (isFileTool && (filePath || argsSummaryIsPath)) {
@@ -144,16 +144,16 @@ export function ToolCallRow({ block }: ToolCallRowProps) {
             <div className="px-2.5 py-1.5 ml-5 mt-0.5 text-[10px] font-mono rounded-md bg-[var(--cr-bg-secondary)] border border-[var(--cr-border-subtle)]">
               {Object.keys(block.args).length > 0 && (
                 <div className="mb-1">
-                  <span className="text-[var(--cr-text-tertiary)]">args:</span>
-                  <pre className="text-[var(--cr-text-secondary)] whitespace-pre-wrap mt-0.5">
+                  <span className="text-[var(--cr-text-muted)]">args:</span>
+                  <pre className="text-[var(--cr-text-tertiary)] whitespace-pre-wrap mt-0.5">
                     {JSON.stringify(block.args, null, 2)}
                   </pre>
                 </div>
               )}
               {block.result && (
                 <div>
-                  <span className="text-[var(--cr-text-tertiary)]">result:</span>
-                  <pre className="text-[var(--cr-text-secondary)] whitespace-pre-wrap mt-0.5 max-h-24 overflow-y-auto">
+                  <span className="text-[var(--cr-text-muted)]">result:</span>
+                  <pre className="text-[var(--cr-text-tertiary)] whitespace-pre-wrap mt-0.5 max-h-24 overflow-y-auto">
                     {block.result.length > 400
                       ? block.result.slice(0, 400) + "..."
                       : block.result}

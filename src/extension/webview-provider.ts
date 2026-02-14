@@ -118,16 +118,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this._extensionUri],
     };
 
-    const html = this._getHtmlForWebview(webviewView.webview);
-    console.log("[ChainReview] Webview HTML length:", html.length);
-    console.log("[ChainReview] Extension URI:", this._extensionUri.fsPath);
-    const scriptPath = vscode.Uri.joinPath(this._extensionUri, "dist", "webview", "assets", "index.js");
-    const stylePath = vscode.Uri.joinPath(this._extensionUri, "dist", "webview", "assets", "index.css");
-    console.log("[ChainReview] Script path exists:", scriptPath.fsPath);
-    console.log("[ChainReview] Style path exists:", stylePath.fsPath);
-    console.log("[ChainReview] Script URI:", webviewView.webview.asWebviewUri(scriptPath).toString());
-    console.log("[ChainReview] Style URI:", webviewView.webview.asWebviewUri(stylePath).toString());
-    webviewView.webview.html = html;
+    webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage((message) => {
       this._handleMessage(message).catch((err) => {
@@ -295,19 +286,6 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
             agent: eventAgent,
             event: "started",
             message: data?.message as string || `${eventAgent} agent started`,
-            timestamp: auditEvent.timestamp || new Date().toISOString(),
-          }, eventAgent);
-          break;
-        }
-
-        // Agent completed (used by bugs + explainer agents)
-        if (auditEvent.type === "agent_completed" && eventAgent) {
-          this._emitBlock({
-            kind: "sub_agent_event",
-            id: `sae-${++this._blockCounter}`,
-            agent: eventAgent,
-            event: "completed",
-            message: data?.message as string,
             timestamp: auditEvent.timestamp || new Date().toISOString(),
           }, eventAgent);
           break;
@@ -808,26 +786,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   private async _startReview(mode: "repo" | "diff", path?: string) {
     if (!this._crpClient?.isConnected()) {
-      // Show both webview error AND VS Code notification with action button
-      this.postMessage({
-        type: "reviewError",
-        error: "CRP server is not connected. Set your Anthropic API key in VS Code Settings → chainreview.anthropicApiKey, then reload the window (Cmd+Shift+P → Reload Window).",
-      });
-      const vscode = require("vscode") as typeof import("vscode");
-      vscode.window.showErrorMessage(
-        "ChainReview: Server not connected. Set your API key and reload.",
-        "Open Settings",
-        "Reload Window"
-      ).then((choice) => {
-        if (choice === "Open Settings") {
-          vscode.commands.executeCommand(
-            "workbench.action.openSettings",
-            "chainreview.anthropicApiKey"
-          );
-        } else if (choice === "Reload Window") {
-          vscode.commands.executeCommand("workbench.action.reloadWindow");
-        }
-      });
+      this.postMessage({ type: "reviewError", error: "CRP server is not connected. Check that your Anthropic API key is set in Settings (chainreview.anthropicApiKey) and restart VS Code." });
       return;
     }
 
@@ -865,12 +824,6 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         this.postMessage({ type: "reviewError", error: result.error || "Review failed with unknown error" });
         return;
       }
-
-      // Wait for stderr stream to flush all remaining agent lifecycle events
-      // (completed/error tiles) before emitting the summary.  The MCP tool
-      // response arrives via stdout JSON-RPC while agent tiles stream via
-      // stderr — a brief pause ensures every tile has reached the UI.
-      await new Promise((r) => setTimeout(r, 600));
 
       this._emitBlock({
         kind: "sub_agent_event",
@@ -910,7 +863,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       this._emitBlock({
         kind: "text",
         id: `summary-${++this._blockCounter}`,
-        text: "## Review Complete\n\nNo issues were detected. The codebase looks healthy — no architecture, security, or bug concerns were found by the review agents.",
+        text: "## ✅ Review Complete\n\nNo issues were detected. The codebase looks healthy — no architecture, security, or bug concerns were found by the review agents.",
         format: "markdown",
         timestamp: new Date().toISOString(),
       });
@@ -939,20 +892,25 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
     // ── Determine overall health ──
     let healthLabel: string;
+    let healthEmoji: string;
     if (criticalCount > 0) {
+      healthEmoji = "🔴";
       healthLabel = "Needs Immediate Attention";
     } else if (highCount > 0) {
+      healthEmoji = "🟠";
       healthLabel = "Significant Issues Found";
     } else if (medCount > 0) {
+      healthEmoji = "🟡";
       healthLabel = "Moderate Concerns";
     } else {
+      healthEmoji = "🟢";
       healthLabel = "Generally Healthy";
     }
 
     const lines: string[] = [];
 
     // ── Header ──
-    lines.push(`## Executive Summary`);
+    lines.push(`## ${healthEmoji} Executive Summary`);
     lines.push("");
     lines.push(`**Overall Assessment: ${healthLabel}**`);
     lines.push("");
@@ -979,7 +937,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
     if (archFindings.length > 0) {
       const archCritHigh = archFindings.filter(f => f.severity === "critical" || f.severity === "high").length;
-      lines.push(`### Architecture — ${archFindings.length} finding${archFindings.length !== 1 ? "s" : ""}`);
+      lines.push(`### 🏛 Architecture — ${archFindings.length} finding${archFindings.length !== 1 ? "s" : ""}`);
       lines.push("");
       if (archCritHigh > 0) {
         lines.push(`The architecture agent found **${archCritHigh} serious concern${archCritHigh !== 1 ? "s" : ""}** that could affect maintainability and scalability. Key areas include:`);
@@ -989,7 +947,8 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       lines.push("");
       // List just the titles — keep it scannable, no code
       for (const f of archFindings.slice(0, 8)) {
-        lines.push(`- **${f.title}** — ${f.description.split(/[.\n]/)[0].trim()}`);
+        const sevIcon = f.severity === "critical" ? "🔴" : f.severity === "high" ? "🟠" : f.severity === "medium" ? "🟡" : "🔵";
+        lines.push(`- ${sevIcon} **${f.title}** — ${f.description.split(/[.\n]/)[0].trim()}`);
       }
       if (archFindings.length > 8) {
         lines.push(`- *...and ${archFindings.length - 8} more*`);
@@ -999,7 +958,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
     if (secFindings.length > 0) {
       const secCritHigh = secFindings.filter(f => f.severity === "critical" || f.severity === "high").length;
-      lines.push(`### Security — ${secFindings.length} finding${secFindings.length !== 1 ? "s" : ""}`);
+      lines.push(`### 🔒 Security — ${secFindings.length} finding${secFindings.length !== 1 ? "s" : ""}`);
       lines.push("");
       if (secCritHigh > 0) {
         lines.push(`The security agent identified **${secCritHigh} high-priority vulnerability${secCritHigh !== 1 ? "ies" : "y"}** that should be addressed before deployment:`);
@@ -1008,7 +967,8 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       }
       lines.push("");
       for (const f of secFindings.slice(0, 8)) {
-        lines.push(`- **${f.title}** — ${f.description.split(/[.\n]/)[0].trim()}`);
+        const sevIcon = f.severity === "critical" ? "🔴" : f.severity === "high" ? "🟠" : f.severity === "medium" ? "🟡" : "🔵";
+        lines.push(`- ${sevIcon} **${f.title}** — ${f.description.split(/[.\n]/)[0].trim()}`);
       }
       if (secFindings.length > 8) {
         lines.push(`- *...and ${secFindings.length - 8} more*`);
@@ -1017,12 +977,13 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     }
 
     if (bugFindings.length > 0) {
-      lines.push(`### Bugs — ${bugFindings.length} finding${bugFindings.length !== 1 ? "s" : ""}`);
+      lines.push(`### 🐛 Bugs — ${bugFindings.length} finding${bugFindings.length !== 1 ? "s" : ""}`);
       lines.push("");
       lines.push("Potential bugs and reliability issues were detected:");
       lines.push("");
       for (const f of bugFindings.slice(0, 8)) {
-        lines.push(`- **${f.title}** — ${f.description.split(/[.\n]/)[0].trim()}`);
+        const sevIcon = f.severity === "critical" ? "🔴" : f.severity === "high" ? "🟠" : f.severity === "medium" ? "🟡" : "🔵";
+        lines.push(`- ${sevIcon} **${f.title}** — ${f.description.split(/[.\n]/)[0].trim()}`);
       }
       if (bugFindings.length > 8) {
         lines.push(`- *...and ${bugFindings.length - 8} more*`);
@@ -1033,7 +994,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     // ── Recommended next steps ──
     lines.push("---");
     lines.push("");
-    lines.push("### What to Do Next");
+    lines.push("### 💡 What to Do Next");
     lines.push("");
 
     let stepNum = 1;
@@ -1080,10 +1041,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   private async _handleChatQuery(query: string) {
     if (!this._crpClient?.isConnected()) {
-      this.postMessage({
-        type: "reviewError",
-        error: "CRP server is not connected. Set your Anthropic API key in VS Code Settings → chainreview.anthropicApiKey, then reload the window (Cmd+Shift+P → Reload Window).",
-      });
+      this.postMessage({ type: "reviewError", error: "CRP server is not connected. Check that your Anthropic API key is set in Settings (chainreview.anthropicApiKey) and restart VS Code." });
       return;
     }
 
@@ -1153,7 +1111,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       .map((ev) => `- \`${ev.filePath}\` (lines ${ev.startLine}–${ev.endLine})`)
       .join("\n");
     const userTicket = [
-      `**Explain Finding**`,
+      `✨ **Explain Finding**`,
       ``,
       `**${finding.title}**`,
       `**Severity:** ${finding.severity.toUpperCase()} · **Category:** ${finding.category} · **Confidence:** ${Math.round(finding.confidence * 100)}%`,
@@ -1229,7 +1187,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       .map((ev) => `- \`${ev.filePath}\` (lines ${ev.startLine}–${ev.endLine})`)
       .join("\n");
     const userTicket = [
-      `**Verify Finding**`,
+      `🔍 **Verify Finding**`,
       ``,
       `**${finding.title}**`,
       `**Severity:** ${finding.severity.toUpperCase()} · **Category:** ${finding.category} · **Confidence:** ${Math.round(finding.confidence * 100)}%`,
@@ -1428,36 +1386,15 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   // ── Send to Coding Agent ──
 
   private async _sendToCodingAgent(findingId: string, agentId?: string) {
-    console.log(`ChainReview: _sendToCodingAgent called — findingId=${findingId}, agentId=${agentId}, findings count=${this._findings.length}`);
     let finding = this._findings.find((f) => f.id === findingId);
     if (!finding && this._crpClient?.isConnected() && this._currentRunId) {
       try {
         const findings = await this._crpClient.getFindings(this._currentRunId);
         finding = findings.find((f) => f.id === findingId);
-        if (finding) {
-          console.log(`ChainReview: Found finding via CRP client fallback`);
-        }
-      } catch (err: any) {
-        console.error(`ChainReview: CRP fallback failed — ${err.message}`);
-      }
+      } catch { /* noop */ }
     }
     if (!finding) {
-      console.error(`ChainReview: Finding "${findingId}" not found in ${this._findings.length} cached findings`);
-      vscode.window.showErrorMessage("ChainReview: Finding not found — please try re-running the review");
-      // Send a visible chat message so the user sees the error
-      const messageId = `err-${Date.now()}`;
-      this.postMessage({ type: "chatResponseStart", messageId });
-      this.postMessage({
-        type: "chatResponseBlock", messageId,
-        block: {
-          kind: "text",
-          id: `err-${++this._blockCounter}`,
-          text: `**Could not find finding** \`${findingId}\` — the finding may have been cleared. Try re-running the review.`,
-          format: "markdown",
-          timestamp: new Date().toISOString(),
-        },
-      });
-      this.postMessage({ type: "chatResponseEnd", messageId });
+      vscode.window.showErrorMessage("ChainReview: Finding not found");
       return;
     }
 
@@ -1529,20 +1466,6 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (agentId === "clipboard" || !agentId) {
       await vscode.env.clipboard.writeText(prompt);
       vscode.window.showInformationMessage("ChainReview: Finding copied to clipboard — paste into your coding agent");
-      // Emit a visible chat confirmation
-      const msgId = `clip-${Date.now()}`;
-      this.postMessage({ type: "chatResponseStart", messageId: msgId });
-      this.postMessage({
-        type: "chatResponseBlock", messageId: msgId,
-        block: {
-          kind: "text",
-          id: `sca-${++this._blockCounter}`,
-          text: `**Copied to clipboard** — Finding **${finding.title}** is ready to paste into your coding agent.`,
-          format: "markdown",
-          timestamp: new Date().toISOString(),
-        },
-      });
-      this.postMessage({ type: "chatResponseEnd", messageId: msgId });
       return;
     }
 
@@ -1583,7 +1506,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
             kind: "text",
             id: `sca-${++this._blockCounter}`,
             text: [
-              `**Sent to Claude Code**`, ``,
+              `**Sent to Claude Code** 🚀`, ``,
               `Finding **${finding.title}** has been sent to Claude Code in a new terminal.`, ``,
               `The prompt file is saved at \`.chainreview/${promptFileName}\``, ``,
               `After Claude Code fixes the issue, run **Re-Review** to verify.`,
@@ -1659,7 +1582,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
             kind: "text",
             id: `sca-${++this._blockCounter}`,
             text: [
-              `**Sent to ${cliLabel}**`, ``,
+              `**Sent to ${cliLabel}** 🚀`, ``,
               `Finding **${finding.title}** has been sent to ${cliLabel} in a new terminal.`, ``,
               `The prompt file is saved at \`.chainreview/${promptFileName}\``,
             ].join("\n"),
@@ -2003,54 +1926,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 </head>
 <body class="bg-transparent text-white antialiased">
   <div id="root"></div>
-  <script nonce="${nonce}">
-    // Diagnostic: catch ALL errors before and during main script load
-    window.__CR_DIAG = [];
-    window.onerror = function(msg, src, line, col, err) {
-      var info = 'ERROR: ' + msg + ' at ' + (src||'?') + ':' + line + ':' + col;
-      window.__CR_DIAG.push(info);
-      var el = document.getElementById('cr-diag');
-      if (!el) {
-        el = document.createElement('div');
-        el.id = 'cr-diag';
-        el.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:#1a1a2e;color:#f87171;padding:16px;font:12px/1.6 monospace;overflow:auto;white-space:pre-wrap;';
-        document.body.appendChild(el);
-      }
-      el.textContent = 'ChainReview Diagnostic\\n' + '='.repeat(40) + '\\n' + window.__CR_DIAG.join('\\n\\n');
-      return false;
-    };
-    window.onunhandledrejection = function(e) {
-      var info = 'UNHANDLED REJECTION: ' + (e.reason && e.reason.stack || e.reason || 'unknown');
-      window.__CR_DIAG.push(info);
-      var el = document.getElementById('cr-diag');
-      if (!el) {
-        el = document.createElement('div');
-        el.id = 'cr-diag';
-        el.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:#1a1a2e;color:#f87171;padding:16px;font:12px/1.6 monospace;overflow:auto;white-space:pre-wrap;';
-        document.body.appendChild(el);
-      }
-      el.textContent = 'ChainReview Diagnostic\\n' + '='.repeat(40) + '\\n' + window.__CR_DIAG.join('\\n\\n');
-    };
-    // Mark script load timing
-    window.__CR_DIAG.push('Diagnostic script loaded at ' + new Date().toISOString());
-  </script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
-  <script nonce="${nonce}">
-    // Post-load check: if root is still empty after 3 seconds, show diagnostic
-    setTimeout(function() {
-      var root = document.getElementById('root');
-      if (root && root.children.length === 0 && !document.getElementById('cr-diag')) {
-        var el = document.createElement('div');
-        el.id = 'cr-diag';
-        el.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:#1a1a2e;color:#fbbf24;padding:16px;font:12px/1.6 monospace;overflow:auto;white-space:pre-wrap;';
-        el.textContent = 'ChainReview Diagnostic\\n' + '='.repeat(40) + '\\n'
-          + 'Root element is empty after 3 seconds.\\n'
-          + 'Script loaded but React did not mount.\\n\\n'
-          + 'Diagnostics collected:\\n' + (window.__CR_DIAG || []).join('\\n');
-        document.body.appendChild(el);
-      }
-    }, 3000);
-  </script>
 </body>
 </html>`;
   }

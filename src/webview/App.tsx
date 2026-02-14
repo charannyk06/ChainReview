@@ -241,7 +241,7 @@ export default function App() {
 
   return (
     <OpenFileProvider postMessage={postMessage}>
-      <div className="relative flex flex-col h-screen bg-[var(--cr-bg-root)]">
+      <div className="flex flex-col h-screen bg-[var(--cr-bg-root)]">
         <Header
           onNewThread={handleNewThread}
           onOpenMCPManager={handleOpenMCPManager}
@@ -286,35 +286,11 @@ export default function App() {
           )}
         </div>
 
-        {/* Error banner — prominent when there are no messages (initial error) */}
+        {/* Error banner */}
         {state.error && (
-          state.messages.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center absolute inset-0 z-10 bg-[var(--cr-bg-root)]">
-              <div className="flex flex-col items-center gap-4 px-8 text-center max-w-[320px]">
-                <div className="size-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                  <svg className="size-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-[13px] font-medium text-red-300 mb-1.5">Review Failed</p>
-                  <p className="text-[11px] text-[var(--cr-text-secondary)] leading-relaxed">
-                    {state.error}
-                  </p>
-                </div>
-                <button
-                  onClick={handleNewThread}
-                  className="mt-2 px-4 py-2 text-[11px] font-medium rounded-lg bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-secondary)] border border-[var(--cr-border)] hover:bg-[var(--cr-bg-elevated)] hover:text-[var(--cr-text-primary)] transition-all"
-                >
-                  Back to Home
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="px-4 py-2 bg-red-500/10 border-t border-red-500/30 text-xs text-red-300">
-              {state.error}
-            </div>
-          )
+          <div className="px-3 py-2 bg-red-500/10 border-t border-red-500/30 text-xs text-red-300">
+            {state.error}
+          </div>
         )}
 
         {/* Patch preview modal */}

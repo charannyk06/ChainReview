@@ -15,16 +15,16 @@
   --cr-bg-input: #1a1a1a;
   --cr-bg-input-focus: #1e1e1e;
 
-  --cr-border: rgba(255, 255, 255, 0.09);
-  --cr-border-subtle: rgba(255, 255, 255, 0.06);
-  --cr-border-strong: rgba(255, 255, 255, 0.14);
+  --cr-border: rgba(255, 255, 255, 0.06);
+  --cr-border-subtle: rgba(255, 255, 255, 0.04);
+  --cr-border-strong: rgba(255, 255, 255, 0.10);
   --cr-border-focus: rgba(99, 102, 241, 0.4);
 
-  --cr-text-primary: #ebebeb;
-  --cr-text-secondary: #b0b0b0;
-  --cr-text-tertiary: #8a8a8a;
-  --cr-text-muted: #6e6e6e;
-  --cr-text-ghost: #555555;
+  --cr-text-primary: #e5e5e5;
+  --cr-text-secondary: #a3a3a3;
+  --cr-text-tertiary: #737373;
+  --cr-text-muted: #525252;
+  --cr-text-ghost: #404040;
 
   --cr-accent: #6366f1;
   --cr-accent-hover: #818cf8;

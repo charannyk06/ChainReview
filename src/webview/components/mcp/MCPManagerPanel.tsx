@@ -84,7 +84,7 @@ export function MCPManagerPanel({
             className="flex flex-col h-full"
           >
             {/* Header */}
-            <div className="relative px-5 py-3 border-b border-[var(--cr-border)] bg-gradient-to-b from-[var(--cr-bg-secondary)] to-[var(--cr-bg-primary)] shrink-0">
+            <div className="relative px-4 py-3 border-b border-[var(--cr-border)] bg-gradient-to-b from-[var(--cr-bg-secondary)] to-[var(--cr-bg-primary)] shrink-0">
               {/* Background decoration */}
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(99,102,241,0.05),transparent_50%)]" />
               
@@ -121,7 +121,7 @@ export function MCPManagerPanel({
             </div>
 
             {/* Stats bar */}
-            <div className="px-5 py-2.5 border-b border-[var(--cr-border-subtle)] bg-[var(--cr-bg-secondary)]/50">
+            <div className="px-4 py-2.5 border-b border-[var(--cr-border-subtle)] bg-[var(--cr-bg-secondary)]/50">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <div className="size-6 rounded-md bg-[var(--cr-bg-tertiary)] flex items-center justify-center">
@@ -167,7 +167,7 @@ export function MCPManagerPanel({
 
             {/* Server List */}
             <div className="flex-1 overflow-y-auto cr-scrollbar" style={{ scrollbarGutter: "stable both-edges" }}>
-              <div className="p-5 pt-4 space-y-2">
+              <div className="p-3 space-y-2">
                 {/* Built-in CRP Server (premium card) */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -285,7 +285,7 @@ export function MCPManagerPanel({
             </div>
 
             {/* Footer */}
-            <div className="px-5 py-3 border-t border-[var(--cr-border-subtle)] bg-[var(--cr-bg-secondary)]/30 shrink-0">
+            <div className="px-4 py-3 border-t border-[var(--cr-border-subtle)] bg-[var(--cr-bg-secondary)]/30 shrink-0">
               <p className="text-[10px] text-[var(--cr-text-muted)] leading-relaxed">
                 <span className="text-indigo-400 font-medium">MCP</span> servers provide additional tools for code review agents via the Model Context Protocol.
               </p>

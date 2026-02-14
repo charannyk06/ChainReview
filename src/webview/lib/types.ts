@@ -2,7 +2,7 @@
 
 export type ReviewMode = "repo" | "diff";
 
-export type AgentName = "architecture" | "security" | "bugs" | "validator" | "explainer" | "system";
+export type AgentName = "architecture" | "security" | "validator" | "system";
 
 export type FindingSeverity = "critical" | "high" | "medium" | "low" | "info";
 

@@ -54,19 +54,12 @@ export interface Finding {
 // ── Agent Finding (before ID assignment) ──
 
 export interface AgentFinding {
-  id?: string;
   category: FindingCategory;
   severity: FindingSeverity;
   title: string;
   description: string;
   confidence: number;
-  evidence: Evidence[] | string;
-  /** Flat file path (used by bugs agent's emit_finding tool) */
-  filePath?: string;
-  lineStart?: number;
-  lineEnd?: number;
-  suggestedFix?: string;
-  metadata?: Record<string, unknown>;
+  evidence: Evidence[];
 }
 
 // ── Patch ──

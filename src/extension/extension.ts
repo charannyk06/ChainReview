@@ -55,12 +55,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const envPath = path.join(root, ".env");
         if (!fs.existsSync(envPath)) return false;
         const content = fs.readFileSync(envPath, "utf-8");
-        // Match ANTHROPIC_API_KEY= with a real key (must start with sk-)
-        // Exclude placeholder values like "your-api-key-here"
-        const match = content.match(/^ANTHROPIC_API_KEY=(.+)$/m);
-        if (!match) return false;
-        const val = match[1].trim().replace(/^["']|["']$/g, "");
-        return val.startsWith("sk-") && val.length > 20;
+        return /^ANTHROPIC_API_KEY=.+$/m.test(content);
       } catch { return false; }
     })();
 

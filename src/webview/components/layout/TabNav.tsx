@@ -34,7 +34,7 @@ export function TabNav({
   };
 
   return (
-    <div className="flex px-2 border-b border-[var(--cr-border)] bg-[var(--cr-bg-primary)] shrink-0">
+    <div className="flex border-b border-[var(--cr-border)] bg-[var(--cr-bg-primary)] shrink-0">
       {TABS.map((tab) => {
         const badge = getBadge(tab.id);
         const isActive = activeTab === tab.id;
