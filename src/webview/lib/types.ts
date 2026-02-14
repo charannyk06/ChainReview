@@ -2,7 +2,7 @@
 
 export type ReviewMode = "repo" | "diff";
 
-export type AgentName = "architecture" | "security" | "validator" | "system";
+export type AgentName = "architecture" | "security" | "bugs" | "validator" | "explainer" | "system";
 
 export type FindingSeverity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -195,7 +195,7 @@ export interface ReviewRunSummary {
 export type WebviewMessage =
   | { type: "startReview"; mode: ReviewMode; path?: string }
   | { type: "cancelReview" }
-  | { type: "chatQuery"; query: string }
+  | { type: "chatQuery"; query: string; agents?: string[]; targetPath?: string }
   | { type: "requestPatch"; findingId: string }
   | { type: "applyPatch"; patchId: string }
   | { type: "dismissPatch"; patchId: string }
@@ -216,7 +216,7 @@ export type WebviewMessage =
   | { type: "loadReviewRun"; runId: string };
 
 // Extension → Webview
-export type ValidatorVerdict = "confirmed" | "likely_valid" | "uncertain" | "likely_false_positive" | "false_positive";
+export type ValidatorVerdict = "still_present" | "partially_fixed" | "fixed" | "unable_to_determine";
 
 export type ExtensionMessage =
   | { type: "reviewStarted"; mode: ReviewMode }
@@ -243,7 +243,7 @@ export type ExtensionMessage =
 
 // ── Review State ──
 
-export type ReviewStatus = "idle" | "running" | "complete" | "error";
+export type ReviewStatus = "idle" | "running" | "complete" | "error" | "chatting";
 
 export interface ValidationResult {
   verdict: ValidatorVerdict;

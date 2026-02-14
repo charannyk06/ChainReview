@@ -38,6 +38,7 @@ type Action =
   | { type: "ADD_PATCH"; patch: Patch }
   | { type: "REVIEW_COMPLETE"; findings: Finding[]; events: AuditEvent[] }
   | { type: "REVIEW_ERROR"; error: string }
+  | { type: "START_CHAT" }
   | { type: "RESET" }
   | { type: "FINDING_VALIDATING"; findingId: string }
   | { type: "FINDING_VALIDATED"; findingId: string; verdict: ValidatorVerdict; reasoning: string }
@@ -56,6 +57,9 @@ function reducer(state: ReviewState, action: Action): ReviewState {
   switch (action.type) {
     case "REVIEW_STARTED":
       return { ...initialState, status: "running", mode: action.mode, mcpServers: state.mcpServers };
+
+    case "START_CHAT":
+      return { ...initialState, status: "chatting", mcpServers: state.mcpServers };
 
     case "ADD_BLOCK": {
       const block = action.block;
@@ -397,6 +401,10 @@ export function useReviewState() {
     dispatch({ type: "REVIEW_STARTED", mode });
   }, []);
 
+  const startChat = useCallback(() => {
+    dispatch({ type: "START_CHAT" });
+  }, []);
+
   const reset = useCallback(() => {
     dispatch({ type: "RESET" });
   }, []);
@@ -430,6 +438,7 @@ export function useReviewState() {
     handleExtensionMessage,
     addUserMessage,
     startReview,
+    startChat,
     reset,
     markFindingValidating,
     openMCPManager,
