@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Codex CLI - OpenAI hexagon style -->
+  <rect width="64" height="64" rx="14" fill="#0F0F0F"/>
+  <path d="M32 14L48 23V41L32 50L16 41V23L32 14Z" stroke="#10A37F" stroke-width="3" fill="none"/>
+  <path d="M32 22L40 27V37L32 42L24 37V27L32 22Z" fill="#10A37F"/>
+</svg>

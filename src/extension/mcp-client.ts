@@ -45,7 +45,11 @@ function resolveApiKey(keyName: string, settingName: string): string | undefined
         const envContent = fs.readFileSync(envPath, "utf-8");
         const match = envContent.match(new RegExp(`^${keyName}=(.+)$`, "m"));
         if (match?.[1]) {
-          return match[1].trim().replace(/^["']|["']$/g, "");
+          const val = match[1].trim().replace(/^["']|["']$/g, "");
+          // Skip commented-out lines and placeholder values
+          if (val && !val.startsWith("#") && val !== "your-api-key-here" && val.length > 10) {
+            return val;
+          }
         }
       }
     }

@@ -37,6 +37,7 @@ type Action =
   | { type: "ADD_EVENT"; event: AuditEvent }
   | { type: "ADD_PATCH"; patch: Patch }
   | { type: "REVIEW_COMPLETE"; findings: Finding[]; events: AuditEvent[] }
+  | { type: "REVIEW_CANCELLED" }
   | { type: "REVIEW_ERROR"; error: string }
   | { type: "RESET" }
   | { type: "FINDING_VALIDATING"; findingId: string }
@@ -225,6 +226,14 @@ function reducer(state: ReviewState, action: Action): ReviewState {
                 action.events.length > 0 ? action.events : state.events,
       };
 
+    case "REVIEW_CANCELLED": {
+      // Mark all streaming messages as complete so spinners stop
+      const cancelledMsgs = state.messages.map((msg) =>
+        msg.status === "streaming" ? { ...msg, status: "complete" as const } : msg
+      );
+      return { ...state, status: "complete", messages: cancelledMsgs };
+    }
+
     case "REVIEW_ERROR":
       return { ...state, status: "error", error: action.error };
 
@@ -353,7 +362,7 @@ export function useReviewState() {
         dispatch({ type: "REVIEW_ERROR", error: msg.error });
         break;
       case "reviewCancelled":
-        dispatch({ type: "REVIEW_COMPLETE", findings: [], events: [] });
+        dispatch({ type: "REVIEW_CANCELLED" });
         break;
       // Validation messages
       case "findingValidated":

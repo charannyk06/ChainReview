@@ -190,8 +190,10 @@ const TOOLS: AgentTool[] = [
 export interface BugsAgentCallbacks {
   onEvent: (event: AuditEvent) => void;
   onFinding: (finding: AgentFinding) => void;
+  onText: (text: string) => void;
   onThinking?: (text: string) => void;
   onToolCall?: (name: string, input: unknown) => void;
+  onToolResult?: (name: string, result: string) => void;
 }
 
 /**
@@ -323,12 +325,20 @@ Begin your analysis now.`;
 
   // Run the agent loop
   await runAgentLoop({
+    name: "bugs",
     systemPrompt: SYSTEM_PROMPT,
-    initialMessage,
+    userPrompt: initialMessage,
     tools: TOOLS,
-    handleToolCall,
+    onToolCall: async (name, args) => {
+      callbacks.onToolCall?.(name, args);
+      const result = await handleToolCall(name, args);
+      callbacks.onToolResult?.(name, result);
+      return result;
+    },
+    onText: callbacks.onText,
     onThinking: callbacks.onThinking,
-    maxIterations: 25,
+    onEvent: callbacks.onEvent,
+    maxTurns: 25,
     signal,
     model: "claude-haiku-4-5-20251001",
   });

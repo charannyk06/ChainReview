@@ -11,9 +11,11 @@ import {
   LandmarkIcon,
   ShieldAlertIcon,
   SettingsIcon,
+  BugIcon,
+  SparklesIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AGENT_CONFIG, EVENT_LABELS } from "@/lib/constants";
+import { getAgentConfig, EVENT_LABELS } from "@/lib/constants";
 import type { AuditEvent, AgentName } from "@/lib/types";
 
 interface TimelineEventProps {
@@ -44,7 +46,9 @@ const EVENT_COLORS: Record<string, string> = {
 const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
   architecture: LandmarkIcon,
   security: ShieldAlertIcon,
+  bugs: BugIcon,
   validator: ShieldCheckIcon,
+  explainer: SparklesIcon,
   system: SettingsIcon,
 };
 
@@ -90,7 +94,7 @@ function getEventSummary(event: AuditEvent): string | null {
 }
 
 export function TimelineEvent({ event, index }: TimelineEventProps) {
-  const agentConfig = event.agent ? AGENT_CONFIG[event.agent] : null;
+  const agentConfig = event.agent ? getAgentConfig(event.agent) : null;
   const time = new Date(event.timestamp).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",

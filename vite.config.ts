@@ -9,6 +9,8 @@ export default defineConfig({
   build: {
     outDir: "../../dist/webview",
     emptyOutDir: true,
+    // Disable modulepreload polyfill — not needed in VS Code webview
+    modulePreload: false,
     rollupOptions: {
       input: path.resolve(__dirname, "src/webview/index.html"),
       output: {

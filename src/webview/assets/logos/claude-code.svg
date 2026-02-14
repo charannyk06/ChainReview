@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Claude Code - Anthropic's official tan/orange with stylized "C" -->
+  <rect width="64" height="64" rx="14" fill="#D4A574"/>
+  <path d="M38 20c-8.8 0-16 7.2-16 16s7.2 16 16 16c2.2 0 4.3-.4 6.2-1.2" stroke="#1a1a1a" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <circle cx="44" cy="26" r="3" fill="#1a1a1a"/>
+</svg>

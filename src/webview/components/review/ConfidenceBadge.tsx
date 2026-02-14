@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { SEVERITY_CONFIG } from "@/lib/constants";
+import { getSeverityConfig } from "@/lib/constants";
 import type { FindingSeverity } from "@/lib/types";
 
 interface ConfidenceBadgeProps {
@@ -13,7 +13,7 @@ export function ConfidenceBadge({
   confidence,
   className,
 }: ConfidenceBadgeProps) {
-  const config = SEVERITY_CONFIG[severity];
+  const config = getSeverityConfig(severity);
 
   return (
     <span

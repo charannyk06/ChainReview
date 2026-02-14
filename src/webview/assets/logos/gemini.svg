@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Gemini - Google's multi-color sparkle -->
+  <rect width="64" height="64" rx="14" fill="#1A1A2E"/>
+  <path d="M32 12L36 28H52L39 38L43 54L32 44L21 54L25 38L12 28H28L32 12Z" fill="url(#gemini-gradient)"/>
+  <defs>
+    <linearGradient id="gemini-gradient" x1="12" y1="12" x2="52" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4285F4"/>
+      <stop offset="33%" stop-color="#EA4335"/>
+      <stop offset="66%" stop-color="#FBBC04"/>
+      <stop offset="100%" stop-color="#34A853"/>
+    </linearGradient>
+  </defs>
+</svg>

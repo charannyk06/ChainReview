@@ -241,18 +241,28 @@ export async function runReview(
       agentName: "architecture" | "security" | "validator"
     ) {
       for (const af of agentFindings) {
+        // Normalize evidence: AgentFinding.evidence can be Evidence[] or string
+        const evidence: import("./types").Evidence[] = Array.isArray(af.evidence)
+          ? af.evidence
+          : [];
         const findingId = store.insertFinding(runId, {
-          ...af,
           agent: agentName,
           category: af.category || agentName,
-          evidence: af.evidence || [],
+          severity: af.severity,
+          title: af.title,
+          description: af.description,
+          confidence: af.confidence,
+          evidence,
         });
         const finding: Finding = {
           id: findingId,
-          ...af,
           agent: agentName,
           category: af.category || agentName,
-          evidence: af.evidence || [],
+          severity: af.severity,
+          title: af.title,
+          description: af.description,
+          confidence: af.confidence,
+          evidence,
         };
         allFindings.push(finding);
         callbacks.onFinding(finding);
@@ -311,32 +321,50 @@ export async function runReview(
       agentNames.push("bugs");
       agentPromises.push(runBugsAgent(targetPath, runId, {
         onEvent: callbacks.onEvent,
-        onFinding: (finding) => {
-          const f: Finding = {
-            id: finding.id,
-            agentId: "bugs",
+        onFinding: (agentFinding) => {
+          // Convert AgentFinding to proper Finding for storage and streaming.
+          // AgentFinding has flat fields (filePath, evidence as string);
+          // Finding has structured evidence array.
+          const evidence: import("./types").Evidence[] = [];
+          if (agentFinding.filePath) {
+            evidence.push({
+              filePath: agentFinding.filePath,
+              startLine: agentFinding.lineStart ?? 0,
+              endLine: agentFinding.lineEnd ?? 0,
+              snippet: typeof agentFinding.evidence === "string" ? agentFinding.evidence : "",
+            });
+          }
+          const findingId = store.insertFinding(runId, {
+            agent: "bugs",
             category: "bugs",
-            title: finding.title,
-            description: finding.description,
-            filePath: finding.filePath,
-            lineStart: finding.lineStart,
-            lineEnd: finding.lineEnd,
-            severity: finding.severity,
-            confidence: finding.confidence,
-            evidence: finding.evidence,
-            suggestedFix: finding.suggestedFix,
-            status: "pending",
+            title: agentFinding.title,
+            description: agentFinding.description,
+            severity: agentFinding.severity,
+            confidence: agentFinding.confidence,
+            evidence,
+          });
+          const f: Finding = {
+            id: findingId,
+            agent: "bugs",
+            category: "bugs",
+            title: agentFinding.title,
+            description: agentFinding.description,
+            severity: agentFinding.severity,
+            confidence: agentFinding.confidence,
+            evidence,
           };
           allFindings.push(f);
-          store.insertFinding(runId, f);
+          callbacks.onFinding(f);
           emitEvent("finding_emitted", "bugs", {
             findingId: f.id,
             title: f.title,
             severity: f.severity,
           });
         },
+        onText: (text) => callbacks.onText("bugs", text, false),
         onThinking: (text) => callbacks.onText("bugs", text, false),
         onToolCall: (name, input) => callbacks.onToolCall("bugs", name, input as Record<string, unknown>),
+        onToolResult: (name, result) => callbacks.onToolResult?.("bugs", name, result),
       }, signal));
     }
 
@@ -431,11 +459,17 @@ export async function runReview(
                 impact: explanation.whyItMatters.impact,
               });
             },
+            onText: (text) => {
+              callbacks.onText("explainer", text, false);
+            },
             onThinking: (text) => {
               callbacks.onText("explainer", text, false);
             },
             onToolCall: (name, input) => {
               callbacks.onToolCall("explainer", name, input as Record<string, unknown>);
+            },
+            onToolResult: (name, result) => {
+              callbacks.onToolResult?.("explainer", name, result);
             },
           },
           signal

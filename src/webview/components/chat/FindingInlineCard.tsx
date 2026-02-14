@@ -15,7 +15,8 @@ import {
   SendIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SEVERITY_CONFIG, AGENT_CONFIG, CATEGORY_CONFIG, CODING_AGENTS } from "@/lib/constants";
+import { getSeverityConfig, getAgentConfig, getCategoryConfig } from "@/lib/constants";
+import { HandoffMenu } from "@/components/shared/HandoffMenu";
 import { FileChip, FileHeader } from "@/components/shared/FileReference";
 import { useOpenFile } from "@/contexts/OpenFileContext";
 import type { Finding, AgentName } from "@/lib/types";
@@ -23,7 +24,9 @@ import type { Finding, AgentName } from "@/lib/types";
 const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
   architecture: LandmarkIcon,
   security: ShieldAlertIcon,
+  bugs: BugIcon,
   validator: ShieldCheckIcon,
+  explainer: SparklesIcon,
   system: SettingsIcon,
 };
 
@@ -70,9 +73,9 @@ export function FindingInlineCard({
   const [handoffOpen, setHandoffOpen] = useState(false);
   const handoffRef = useRef<HTMLDivElement>(null);
   const openFile = useOpenFile();
-  const severity = SEVERITY_CONFIG[finding.severity] || SEVERITY_CONFIG.info;
-  const agentConfig = AGENT_CONFIG[finding.agent];
-  const categoryConfig = CATEGORY_CONFIG[finding.category];
+  const severity = getSeverityConfig(finding.severity);
+  const agentConfig = getAgentConfig(finding.agent);
+  const categoryConfig = getCategoryConfig(finding.category);
   const AgentIcon = AGENT_ICONS[finding.agent] || SettingsIcon;
   const CategoryIcon = getCategoryIcon(categoryConfig.icon);
   const severityBar = SEVERITY_BAR[finding.severity] || "bg-[var(--cr-text-ghost)]";
@@ -239,65 +242,14 @@ export function FindingInlineCard({
                           handoffOpen && "rotate-90"
                         )} />
                       </button>
-                      <AnimatePresence>
-                        {handoffOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -4, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -4, scale: 0.95 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute bottom-full left-0 mb-2 w-60 rounded-xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] shadow-2xl shadow-black/50 z-50 overflow-hidden"
-                          >
-                            <div className="py-1.5">
-                              {CODING_AGENTS.map((agent) => {
-                                if (agent.separator) {
-                                  return (
-                                    <div
-                                      key={agent.id}
-                                      className="border-t border-[var(--cr-border-subtle)] my-1.5"
-                                    />
-                                  );
-                                }
-                                return (
-                                  <button
-                                    key={agent.id}
-                                    onClick={() => {
-                                      onSendToCodingAgent(finding.id, agent.id);
-                                      setHandoffOpen(false);
-                                    }}
-                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
-                                  >
-                                    {agent.icon ? (
-                                      <img
-                                        src={agent.icon}
-                                        alt=""
-                                        className="size-5 rounded"
-                                        onError={(e) => {
-                                          (e.target as HTMLImageElement).style.display = "none";
-                                        }}
-                                      />
-                                    ) : agent.id === "clipboard" ? (
-                                      <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                    ) : agent.id === "export-markdown" ? (
-                                      <ExternalLinkIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                    ) : agent.id === "config-more" ? (
-                                      <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                    ) : null}
-                                    <span className={cn("text-[12px] font-medium flex-1", agent.color)}>
-                                      {agent.label}
-                                    </span>
-                                    {agent.suffix && (
-                                      <span className="text-[10px] text-[var(--cr-text-ghost)] font-mono">
-                                        {agent.suffix}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      <HandoffMenu
+                        open={handoffOpen}
+                        onSelect={(agentId) => {
+                          onSendToCodingAgent(finding.id, agentId);
+                          setHandoffOpen(false);
+                        }}
+                        align="left"
+                      />
                     </div>
                   )}
 

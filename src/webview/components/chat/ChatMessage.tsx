@@ -83,7 +83,7 @@ export function ChatMessage({
     }
   }, [isComplete, shouldCollapse]);
 
-  // User messages — clean right-aligned bubble with generous spacing
+  // User messages — full-width dark card with generous spacing
   if (message.role === "user") {
     const userText =
       message.blocks[0]?.kind === "text" ? message.blocks[0].text : "";
@@ -94,20 +94,18 @@ export function ChatMessage({
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className="px-3 py-1.5"
+        className="px-5 py-2"
       >
-        <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-2xl bg-[var(--cr-accent-muted)] border border-[var(--cr-accent)]/15 px-4 py-3">
-            {hasMarkdown ? (
-              <div className="text-[13px] text-[var(--cr-text-primary)] leading-[1.65] [&_h1]:text-[14px] [&_h2]:text-[13.5px] [&_h3]:text-[13px] [&_p]:text-[13px] [&_li]:text-[13px] [&_code]:text-[12px]">
-                <MarkdownBlock text={userText} />
-              </div>
-            ) : (
-              <p className="text-[13px] text-[var(--cr-text-primary)] leading-[1.65]">
-                {userText}
-              </p>
-            )}
-          </div>
+        <div className="rounded-xl bg-[var(--cr-bg-secondary)] border border-[var(--cr-border)] px-4 py-3.5">
+          {hasMarkdown ? (
+            <div className="text-[13px] text-[var(--cr-text-primary)] leading-[1.7] [&_h1]:text-[14px] [&_h2]:text-[13.5px] [&_h3]:text-[13px] [&_p]:text-[13px] [&_li]:text-[13px] [&_code]:text-[12px]">
+              <MarkdownBlock text={userText} />
+            </div>
+          ) : (
+            <p className="text-[13px] text-[var(--cr-text-primary)] leading-[1.7]">
+              {userText}
+            </p>
+          )}
         </div>
       </motion.div>
     );
@@ -148,7 +146,7 @@ export function ChatMessage({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
-        className="px-3 py-1.5"
+        className="px-5 py-1.5"
       >
         <button
           className="w-full text-left"
@@ -206,7 +204,7 @@ export function ChatMessage({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="px-3 py-1.5"
+      className="px-5 py-1.5"
     >
       <div className="flex flex-col gap-2.5">
         {message.blocks.map((block) => renderInnerBlock(block))}

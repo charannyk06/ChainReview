@@ -13,7 +13,7 @@ import {
   ShieldAlertIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CODING_AGENTS } from "@/lib/constants";
+import { HandoffMenu } from "@/components/shared/HandoffMenu";
 import { CategoryFilter } from "./CategoryFilter";
 import { FindingCard } from "./FindingCard";
 import type { Finding, FindingCategory, ValidationResult } from "@/lib/types";
@@ -145,7 +145,7 @@ export function FindingsGrid({
   return (
     <div className={cn("h-full flex flex-col", className)}>
       {/* ═══ Summary Header ═══ */}
-      <div className="px-3 pt-3 pb-2.5">
+      <div className="px-5 pt-3 pb-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2.5">
@@ -203,7 +203,7 @@ export function FindingsGrid({
       </div>
 
       {/* ═══ Category Filter ═══ */}
-      <div className="px-3 py-2 border-b border-[var(--cr-border-subtle)]">
+      <div className="px-5 py-2 border-b border-[var(--cr-border-subtle)]">
         <CategoryFilter
           active={filter}
           onChange={setFilter}
@@ -221,7 +221,7 @@ export function FindingsGrid({
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="flex items-center gap-2.5 px-3 py-2.5 mx-3 rounded-xl bg-indigo-500/5 border border-indigo-500/20">
+            <div className="flex items-center gap-2.5 px-3 py-2.5 mx-5 rounded-xl bg-indigo-500/5 border border-indigo-500/20">
               <span className="text-[11px] text-indigo-300 font-semibold tabular-nums">
                 {selectedIds.size} selected
               </span>
@@ -252,62 +252,11 @@ export function FindingsGrid({
                     Send {selectedIds.size} to
                     <ArrowRightIcon className="size-3" />
                   </button>
-                  <AnimatePresence>
-                    {batchHandoffOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -4, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -4, scale: 0.95 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute bottom-full right-0 mb-2 w-60 rounded-xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] shadow-2xl shadow-black/50 z-50 overflow-hidden backdrop-blur-sm"
-                      >
-                        <div className="py-1.5">
-                          {CODING_AGENTS.map((agent) => {
-                            if (agent.separator) {
-                              return (
-                                <div
-                                  key={agent.id}
-                                  className="border-t border-[var(--cr-border-subtle)] my-1.5"
-                                />
-                              );
-                            }
-                            return (
-                              <button
-                                key={agent.id}
-                                onClick={() => handleBatchHandoff(agent.id)}
-                                className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
-                              >
-                                {agent.icon ? (
-                                  <img
-                                    src={agent.icon}
-                                    alt=""
-                                    className="size-5 rounded"
-                                    onError={(e) => {
-                                      (e.target as HTMLImageElement).style.display = "none";
-                                    }}
-                                  />
-                                ) : agent.id === "clipboard" ? (
-                                  <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                ) : agent.id === "export-markdown" ? (
-                                  <ExternalLinkIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                ) : agent.id === "config-more" ? (
-                                  <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                ) : null}
-                                <span className={cn("text-[12px] font-medium flex-1", agent.color)}>
-                                  {agent.label}
-                                </span>
-                                {agent.suffix && (
-                                  <span className="text-[10px] text-[var(--cr-text-ghost)] font-mono">
-                                    {agent.suffix}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  <HandoffMenu
+                    open={batchHandoffOpen}
+                    onSelect={(agentId) => handleBatchHandoff(agentId)}
+                    align="right"
+                  />
                 </div>
               )}
 
@@ -323,7 +272,7 @@ export function FindingsGrid({
       </AnimatePresence>
 
       {/* ═══ Findings List ═══ */}
-      <div className="flex-1 overflow-y-auto px-3 pb-4 pt-3" style={{ scrollbarGutter: "stable both-edges" }}>
+      <div className="flex-1 overflow-y-auto px-5 pb-4 pt-3" style={{ scrollbarGutter: "stable both-edges" }}>
         <div className="flex flex-col gap-3">
           {filtered.map((finding, i) => (
             <motion.div

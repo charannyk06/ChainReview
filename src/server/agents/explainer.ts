@@ -183,8 +183,10 @@ export interface Explanation {
 export interface ExplainerCallbacks {
   onEvent: (event: AuditEvent) => void;
   onExplanation: (explanation: Explanation) => void;
+  onText: (text: string) => void;
   onThinking?: (text: string) => void;
   onToolCall?: (name: string, input: unknown) => void;
+  onToolResult?: (name: string, result: string) => void;
 }
 
 /**
@@ -200,24 +202,28 @@ export async function runExplainerAgent(
   const explanations: Explanation[] = [];
 
   // Build context message with all findings
-  const findingsContext = findings.map((f, i) => `
+  const findingsContext = findings.map((f, i) => {
+    const ev = Array.isArray(f.evidence) && f.evidence.length > 0 ? f.evidence[0] : null;
+    const fileLoc = ev ? `${ev.filePath}${ev.startLine ? `:${ev.startLine}` : ""}${ev.endLine ? `-${ev.endLine}` : ""}` : "N/A";
+    const evidenceText = ev
+      ? `\`${ev.filePath}\` (lines ${ev.startLine}-${ev.endLine}):\n\`\`\`\n${ev.snippet}\n\`\`\``
+      : "None provided";
+    return `
 ### Finding ${i + 1}: ${f.title}
 - **ID:** ${f.id}
 - **Category:** ${f.category}
 - **Severity:** ${f.severity}
 - **Confidence:** ${f.confidence}
-- **File:** ${f.filePath}${f.lineStart ? `:${f.lineStart}` : ""}${f.lineEnd ? `-${f.lineEnd}` : ""}
-- **Agent:** ${f.agentId}
+- **File:** ${fileLoc}
+- **Agent:** ${f.agent}
 
 **Description:**
 ${f.description}
 
 **Evidence:**
-${f.evidence || "None provided"}
-
-**Suggested Fix:**
-${f.suggestedFix || "None provided"}
-`).join("\n---\n");
+${evidenceText}
+`;
+  }).join("\n---\n");
 
   const initialMessage = `You have received ${findings.length} validated finding(s) from the code review. Your task is to explain each one clearly for developers and stakeholders.
 
@@ -331,12 +337,20 @@ Start with Finding 1 and work through all of them. Use your tools to gather cont
 
   // Run the agent loop
   await runAgentLoop({
+    name: "explainer",
     systemPrompt: SYSTEM_PROMPT,
-    initialMessage,
+    userPrompt: initialMessage,
     tools: TOOLS,
-    handleToolCall,
+    onToolCall: async (name, args) => {
+      callbacks.onToolCall?.(name, args);
+      const result = await handleToolCall(name, args);
+      callbacks.onToolResult?.(name, result);
+      return result;
+    },
+    onText: callbacks.onText,
     onThinking: callbacks.onThinking,
-    maxIterations: findings.length * 5 + 10, // Allow enough iterations for all findings
+    onEvent: callbacks.onEvent,
+    maxTurns: findings.length * 5 + 10, // Allow enough iterations for all findings
     signal,
     // Use claude-haiku-4-5 for fast, cost-effective explanations
     model: "claude-haiku-4-5-20251001",

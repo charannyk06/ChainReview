@@ -1,0 +1,70 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "editor.formatOnSave": true,
+    "search.exclude": {
+      "dist/**": true,
+      "node_modules/**": true,
+      "*.db": true
+    },
+    "files.watcherExclude": {
+      "dist/**": true,
+      "node_modules/**": true
+    }
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Run Extension",
+        "type": "extensionHost",
+        "request": "launch",
+        "args": [
+          "--extensionDevelopmentPath=${workspaceFolder}",
+          "${workspaceFolder}"
+        ],
+        "outFiles": [
+          "${workspaceFolder}/dist/**/*.js"
+        ],
+        "preLaunchTask": "npm: build",
+        "env": {
+          "ANTHROPIC_API_KEY": "${env:ANTHROPIC_API_KEY}"
+        }
+      },
+      {
+        "name": "Run Extension (Skip Build)",
+        "type": "extensionHost",
+        "request": "launch",
+        "args": [
+          "--extensionDevelopmentPath=${workspaceFolder}",
+          "${workspaceFolder}"
+        ],
+        "outFiles": [
+          "${workspaceFolder}/dist/**/*.js"
+        ],
+        "env": {
+          "ANTHROPIC_API_KEY": "${env:ANTHROPIC_API_KEY}"
+        }
+      },
+      {
+        "name": "Debug Server",
+        "type": "node",
+        "request": "launch",
+        "program": "${workspaceFolder}/dist/server/server.js",
+        "outFiles": [
+          "${workspaceFolder}/dist/**/*.js"
+        ],
+        "preLaunchTask": "npm: build",
+        "env": {
+          "ANTHROPIC_API_KEY": "${env:ANTHROPIC_API_KEY}"
+        },
+        "console": "integratedTerminal"
+      }
+    ]
+  }
+}
