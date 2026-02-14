@@ -49,11 +49,11 @@ export function ChatInput({
     const pathMatch = trimmed.match(/(?:check|analyze|review)\s+([^\s@]+)/i);
     const targetPath = pathMatch?.[1];
 
-    // Expand @all to all review agents
-    let agents = mentions;
-    if (mentions.includes("all")) {
-      agents = ["security", "architecture", "bugs"];
-    }
+    // Expand @all and filter to valid review agents only
+    const VALID_REVIEW_AGENTS = new Set(["security", "architecture", "bugs"]);
+    let agents = mentions.includes("all")
+      ? ["security", "architecture", "bugs"]
+      : mentions.filter((m) => VALID_REVIEW_AGENTS.has(m));
 
     onSend(trimmed, agents.length > 0 ? agents : undefined, targetPath);
     mentionRef.current?.clear();
@@ -67,19 +67,19 @@ export function ChatInput({
   }, []);
 
   const handleRepoReview = useCallback(() => {
-    // If there are mentions, use those agents; otherwise run all
-    let agents = currentMentions;
-    if (agents.includes("all")) {
-      agents = ["security", "architecture", "bugs"];
-    }
+    // Filter to valid review agents; @all expands to all three
+    const VALID = new Set(["security", "architecture", "bugs"]);
+    const agents = currentMentions.includes("all")
+      ? ["security", "architecture", "bugs"]
+      : currentMentions.filter((m) => VALID.has(m));
     onStartRepoReview?.(agents.length > 0 ? agents : undefined);
   }, [currentMentions, onStartRepoReview]);
 
   const handleDiffReview = useCallback(() => {
-    let agents = currentMentions;
-    if (agents.includes("all")) {
-      agents = ["security", "architecture", "bugs"];
-    }
+    const VALID = new Set(["security", "architecture", "bugs"]);
+    const agents = currentMentions.includes("all")
+      ? ["security", "architecture", "bugs"]
+      : currentMentions.filter((m) => VALID.has(m));
     onStartDiffReview?.(agents.length > 0 ? agents : undefined);
   }, [currentMentions, onStartDiffReview]);
 

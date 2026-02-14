@@ -16,7 +16,6 @@ import {
   ShieldCheckIcon,
   NetworkIcon,
   BugIcon,
-  SparklesIcon,
   UsersIcon,
 } from "lucide-react";
 
@@ -47,12 +46,6 @@ export const AVAILABLE_AGENTS: AgentMention[] = [
     name: "Bugs",
     description: "Find logic errors, null handling, race conditions",
     icon: <BugIcon className="size-3.5" />,
-  },
-  {
-    id: "explainer",
-    name: "Explainer",
-    description: "Generate human-readable explanations",
-    icon: <SparklesIcon className="size-3.5" />,
   },
   {
     id: "all",
