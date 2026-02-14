@@ -138,11 +138,11 @@ function createSuggestionPlugin(
         },
 
         onUpdate: (props: any) => {
-          selectedIndex = Math.min(selectedIndex, props.items.length - 1);
-          if (selectedIndex < 0) selectedIndex = 0;
+          const items: AgentMention[] = props.items ?? [];
+          selectedIndex = Math.min(selectedIndex, Math.max(items.length - 1, 0));
           setSuggestionState({
             query: props.query,
-            items: props.items,
+            items,
             selectedIndex,
             clientRect: props.clientRect,
             command: props.command,
@@ -150,10 +150,12 @@ function createSuggestionPlugin(
         },
 
         onKeyDown: (props: any) => {
+          const items: AgentMention[] = props.items ?? [];
+
           if (props.event.key === "ArrowUp") {
             selectedIndex =
               selectedIndex <= 0
-                ? props.items.length - 1
+                ? Math.max(items.length - 1, 0)
                 : selectedIndex - 1;
             setSuggestionState((prev) =>
               prev ? { ...prev, selectedIndex } : null
@@ -163,7 +165,9 @@ function createSuggestionPlugin(
 
           if (props.event.key === "ArrowDown") {
             selectedIndex =
-              selectedIndex >= props.items.length - 1
+              items.length === 0
+                ? 0
+                : selectedIndex >= items.length - 1
                 ? 0
                 : selectedIndex + 1;
             setSuggestionState((prev) =>
@@ -173,8 +177,8 @@ function createSuggestionPlugin(
           }
 
           if (props.event.key === "Enter") {
-            if (props.items[selectedIndex]) {
-              props.command(props.items[selectedIndex]);
+            if (items[selectedIndex]) {
+              props.command(items[selectedIndex]);
             }
             return true;
           }

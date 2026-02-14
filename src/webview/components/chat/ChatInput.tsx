@@ -100,8 +100,7 @@ export function ChatInput({
           {onCancelReview && (
             <button
               onClick={onCancelReview}
-              className="cr-btn cr-btn-red"
-              style={{ padding: "5px 12px", fontSize: "10px" }}
+              className="cr-btn cr-btn-sm cr-btn-red"
             >
               <SquareIcon className="size-2.5 fill-current" />
               Stop
@@ -120,10 +119,10 @@ export function ChatInput({
             return (
               <div
                 key={agentId}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--cr-accent-subtle)] border border-[var(--cr-accent)]/20"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.06]"
               >
-                <span className="text-[var(--cr-accent)]">{agent.icon}</span>
-                <span className="text-[10px] font-medium text-[var(--cr-accent)]">
+                <span className="text-[var(--cr-text-secondary)]">{agent.icon}</span>
+                <span className="text-[10px] font-medium text-[var(--cr-text-secondary)]">
                   {agent.name}
                 </span>
               </div>
@@ -133,7 +132,7 @@ export function ChatInput({
       )}
 
       {/* Input card */}
-      <div className="rounded-2xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] overflow-hidden shadow-sm">
+      <div className="rounded-xl bg-[var(--cr-bg-input)] overflow-hidden ring-1 ring-white/[0.04] focus-within:ring-white/[0.08] transition-all duration-150">
         {/* Mention Input */}
         <div className="relative">
           <MentionInput
@@ -142,7 +141,7 @@ export function ChatInput({
             placeholder={
               isReviewing
                 ? "Review in progress..."
-                : "Type @ to mention an agent (e.g., @Security check src/auth/)"
+                : "Ask anything about your codebase..."
             }
             onSubmit={handleSubmit}
             onChange={handleChange}
@@ -155,10 +154,11 @@ export function ChatInput({
                 onClick={handleSubmit}
                 disabled={disabled}
                 className={cn(
-                  "flex items-center justify-center size-8 rounded-lg",
-                  "bg-[var(--cr-accent)] text-white hover:bg-[var(--cr-accent-hover)]",
+                  "flex items-center justify-center size-7 rounded-lg",
+                  "bg-[var(--cr-text-tertiary)] text-[var(--cr-bg-root)]",
+                  "hover:bg-[var(--cr-text-secondary)]",
                   "transition-all duration-100 active:scale-95",
-                  "disabled:opacity-35 shadow-sm"
+                  "disabled:opacity-35"
                 )}
               >
                 <SendIcon className="size-3.5" />
@@ -168,25 +168,23 @@ export function ChatInput({
         </div>
 
         {/* Bottom bar */}
-        <div className="flex items-center justify-between px-3 pb-2.5 pt-0">
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between px-3 pb-2 pt-0">
+          <div className="flex items-center gap-2">
             {onStartRepoReview && !isReviewing && (
               <button
                 onClick={handleRepoReview}
                 disabled={disabled}
-                className="cr-btn cr-btn-ghost"
-                style={{ padding: "5px 12px", fontSize: "10px" }}
+                className="flex items-center gap-1.5 text-[10px] font-medium text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] transition-colors disabled:opacity-35"
               >
                 <FolderSearchIcon className="size-3" />
-                {hasMentions ? "Review with Selected" : "Review Repo"}
+                {hasMentions ? "Review Selected" : "Review Repo"}
               </button>
             )}
             {onStartDiffReview && !isReviewing && (
               <button
                 onClick={handleDiffReview}
                 disabled={disabled}
-                className="cr-btn cr-btn-ghost"
-                style={{ padding: "5px 12px", fontSize: "10px" }}
+                className="flex items-center gap-1.5 text-[10px] font-medium text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] transition-colors disabled:opacity-35"
               >
                 <GitCompareArrowsIcon className="size-3" />
                 Review Diff
@@ -198,8 +196,8 @@ export function ChatInput({
             {isReviewing
               ? "Click Stop to cancel"
               : hasContent
-              ? "Send (⌘ + ↵)"
-              : "Type @ for agents"}
+              ? "⏎ Send"
+              : "@ agents"}
           </span>
         </div>
       </div>

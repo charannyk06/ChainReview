@@ -2,17 +2,19 @@ import { SpotlightBackground } from "@/components/ui/spotlight";
 import { ColourfulText } from "@/components/ui/colourful-text";
 import { EncryptedText } from "@/components/ui/encrypted-text";
 import { HoverBorderGradient } from "@/components/ui/hover-border-gradient";
-import { FolderSearchIcon, GitCompareArrowsIcon, ClockIcon } from "lucide-react";
+import { FolderSearchIcon, GitCompareArrowsIcon, ClockIcon, MessageCircleIcon } from "lucide-react";
 
 interface EmptyStateProps {
   onStartRepoReview: () => void;
   onStartDiffReview: () => void;
+  onStartChat?: () => void;
   onOpenHistory?: () => void;
 }
 
 export function EmptyState({
   onStartRepoReview,
   onStartDiffReview,
+  onStartChat,
   onOpenHistory,
 }: EmptyStateProps) {
   return (
@@ -62,6 +64,21 @@ export function EmptyState({
               Review Diff
             </span>
           </HoverBorderGradient>
+
+          {onStartChat && (
+            <HoverBorderGradient
+              containerClassName="w-full rounded-lg"
+              className="w-full flex items-center justify-center gap-2.5 bg-[var(--cr-bg-secondary)] px-5 py-3.5 rounded-lg"
+              as="button"
+              duration={6}
+              onClick={onStartChat}
+            >
+              <MessageCircleIcon className="size-4 text-emerald-400" />
+              <span className="text-[13px] font-medium text-[var(--cr-text-secondary)]">
+                Ask
+              </span>
+            </HoverBorderGradient>
+          )}
         </div>
 
         {/* History link */}

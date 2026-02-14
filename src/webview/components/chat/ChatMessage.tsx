@@ -1,8 +1,20 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronDownIcon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  LandmarkIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
+  SettingsIcon,
+  BotIcon,
+  BugIcon,
+  BookOpenIcon,
+  LoaderCircleIcon,
+  CheckCircle2Icon,
+  CircleXIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SubAgentTile } from "./SubAgentTile";
+import { getAgentConfig } from "@/lib/constants";
 import { ToolCallRow } from "./ToolCallRow";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { MarkdownBlock } from "./MarkdownBlock";
@@ -14,6 +26,7 @@ import type {
   ToolCallBlock,
   SubAgentEventBlock,
   StatusBlock,
+  AgentName,
 } from "@/lib/types";
 
 export interface FindingActions {
@@ -29,6 +42,16 @@ interface ConversationMessageViewProps {
   findingActions?: FindingActions;
 }
 
+/** Agent icons — safe fallback */
+const AGENT_ICONS: Record<string, React.FC<{ className?: string }>> = {
+  architecture: LandmarkIcon,
+  security: ShieldAlertIcon,
+  bugs: BugIcon,
+  validator: ShieldCheckIcon,
+  explainer: BookOpenIcon,
+  system: SettingsIcon,
+};
+
 /** Render an inner block — finding_card blocks are EXCLUDED from chat (findings tab only) */
 function renderInnerBlock(block: ContentBlock) {
   switch (block.kind) {
@@ -41,7 +64,6 @@ function renderInnerBlock(block: ContentBlock) {
     case "text":
       return <MarkdownBlock key={block.id} text={block.text} />;
     case "finding_card":
-      // Findings only appear in the Findings tab — not rendered in chat
       return null;
     case "status":
       return <StatusRow key={block.id} block={block as StatusBlock} />;
@@ -75,15 +97,14 @@ export function ChatMessage({
   const shouldCollapse = isAgentMessage && isComplete && summary.toolCalls > 0;
   const [expanded, setExpanded] = useState(!isComplete);
 
-  // ── Auto-collapse when agent finishes ──
-  // When isComplete transitions from false → true, collapse the card
+  // Auto-collapse when agent finishes
   useEffect(() => {
     if (isComplete && shouldCollapse) {
       setExpanded(false);
     }
   }, [isComplete, shouldCollapse]);
 
-  // User messages — clean right-aligned bubble with generous spacing
+  // ── User messages — right-aligned bubble ──
   if (message.role === "user") {
     const userText =
       message.blocks[0]?.kind === "text" ? message.blocks[0].text : "";
@@ -97,7 +118,7 @@ export function ChatMessage({
         className="px-3 py-1.5"
       >
         <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-2xl bg-[var(--cr-accent-muted)] border border-[var(--cr-accent)]/15 px-4 py-3">
+          <div className="max-w-[85%] rounded-2xl bg-white/[0.06] px-4 py-3">
             {hasMarkdown ? (
               <div className="text-[13px] text-[var(--cr-text-primary)] leading-[1.65] [&_h1]:text-[14px] [&_h2]:text-[13.5px] [&_h3]:text-[13px] [&_p]:text-[13px] [&_li]:text-[13px] [&_code]:text-[12px]">
                 <MarkdownBlock text={userText} />
@@ -113,7 +134,7 @@ export function ChatMessage({
     );
   }
 
-  // Find agent lifecycle blocks for the header
+  // Find agent lifecycle blocks
   const startedBlock = message.blocks.find(
     (b): b is SubAgentEventBlock =>
       b.kind === "sub_agent_event" && b.event === "started"
@@ -134,47 +155,72 @@ export function ChatMessage({
       )
   );
 
-  // Collapsible Agent Section
+  // ── Agent messages — flat layout with small agent label divider ──
   if (isAgentMessage && startedBlock) {
-    const headerEvent = completedBlock
-      ? completedBlock.event
-      : startedBlock.event;
-    const headerMessage = completedBlock
-      ? completedBlock.message
-      : startedBlock.message;
+    const agentName = startedBlock.agent;
+    const config = getAgentConfig(agentName);
+    const AgentIcon = AGENT_ICONS[agentName] || BotIcon;
+    const isActive = !completedBlock || completedBlock.event === "started";
+    const isDone = completedBlock?.event === "completed";
+    const isError = completedBlock?.event === "error";
 
     return (
       <motion.div
-        initial={{ opacity: 0, y: 6 }}
+        initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2 }}
-        className="px-3 py-1.5"
+        transition={{ duration: 0.15 }}
+        className="px-3 py-0.5"
       >
+        {/* Agent label divider — small inline label, not a tile */}
         <button
-          className="w-full text-left"
-          onClick={() => setExpanded(!expanded)}
+          className={cn(
+            "flex items-center gap-1.5 py-1 text-left rounded-md transition-colors duration-100",
+            shouldCollapse && "cursor-pointer hover:opacity-80"
+          )}
+          onClick={() => shouldCollapse && setExpanded(!expanded)}
         >
-          <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0">
-              <SubAgentTile
-                agent={startedBlock.agent}
-                event={headerEvent}
-                message={headerMessage}
-                toolCount={summary.toolCalls}
-                findingCount={summary.findings}
-              />
-            </div>
-            {shouldCollapse && (
-              <ChevronDownIcon
-                className={cn(
-                  "size-3.5 text-[var(--cr-text-muted)] transition-transform duration-150 shrink-0",
-                  !expanded && "-rotate-90"
-                )}
-              />
+          <AgentIcon
+            className={cn(
+              "size-3 shrink-0",
+              isActive && config.color,
+              isDone && "text-emerald-400/60",
+              isError && "text-red-400/60"
             )}
-          </div>
+          />
+          <span
+            className={cn(
+              "text-[10px] font-semibold uppercase tracking-wider",
+              isActive && config.color,
+              isDone && "text-emerald-400/50",
+              isError && "text-red-400/50"
+            )}
+          >
+            {config.shortLabel}
+          </span>
+
+          {/* Status indicator */}
+          {isActive && (
+            <LoaderCircleIcon className="size-2.5 text-[var(--cr-text-ghost)] animate-spin" />
+          )}
+          {isDone && (
+            <CheckCircle2Icon className="size-2.5 text-emerald-400/40" />
+          )}
+          {isError && (
+            <CircleXIcon className="size-2.5 text-red-400/40" />
+          )}
+
+          {/* Collapse chevron — only when collapsible */}
+          {shouldCollapse && (
+            <ChevronRightIcon
+              className={cn(
+                "size-2.5 text-[var(--cr-text-ghost)] transition-transform duration-150",
+                expanded && "rotate-90"
+              )}
+            />
+          )}
         </button>
 
+        {/* Inner blocks — flow directly */}
         <AnimatePresence initial={false}>
           {(expanded || !shouldCollapse) && innerBlocks.length > 0 && (
             <motion.div
@@ -184,7 +230,7 @@ export function ChatMessage({
               transition={{ duration: 0.15 }}
               className="overflow-hidden"
             >
-              <div className="flex flex-col gap-2.5 mt-3 ml-3 pl-4 border-l border-[var(--cr-border-subtle)]">
+              <div className="flex flex-col gap-1">
                 {innerBlocks.map((block) => renderInnerBlock(block))}
               </div>
             </motion.div>
@@ -192,7 +238,7 @@ export function ChatMessage({
         </AnimatePresence>
 
         {message.status === "streaming" && (
-          <div className="ml-3 pl-4 border-l border-[var(--cr-border-subtle)] mt-2">
+          <div className="mt-1">
             <TextShimmer />
           </div>
         )}
@@ -200,7 +246,7 @@ export function ChatMessage({
     );
   }
 
-  // Regular assistant messages — no collapsing
+  // ── Regular assistant messages — flat ──
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}

@@ -9,14 +9,13 @@ import {
   XCircleIcon,
   ChevronRightIcon,
   BugIcon,
-  ClipboardCopyIcon,
-  ExternalLinkIcon,
   WrenchIcon,
   SendIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SEVERITY_CONFIG, AGENT_CONFIG, CATEGORY_CONFIG, CODING_AGENTS } from "@/lib/constants";
+import { getSeverityConfig, getAgentConfig, getCategoryConfig } from "@/lib/constants";
 import { FileChip, FileHeader } from "@/components/shared/FileReference";
+import { HandoffMenu } from "@/components/shared/HandoffMenu";
 import { useOpenFile } from "@/contexts/OpenFileContext";
 import type { Finding, AgentName } from "@/lib/types";
 
@@ -69,19 +68,24 @@ export function FindingInlineCard({
   const [expanded, setExpanded] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
   const handoffRef = useRef<HTMLDivElement>(null);
+  const handoffBtnRef = useRef<HTMLButtonElement>(null);
   const openFile = useOpenFile();
-  const severity = SEVERITY_CONFIG[finding.severity] || SEVERITY_CONFIG.info;
-  const agentConfig = AGENT_CONFIG[finding.agent];
-  const categoryConfig = CATEGORY_CONFIG[finding.category];
+  const severity = getSeverityConfig(finding.severity);
+  const agentConfig = getAgentConfig(finding.agent);
+  const categoryConfig = getCategoryConfig(finding.category);
   const AgentIcon = AGENT_ICONS[finding.agent] || SettingsIcon;
   const CategoryIcon = getCategoryIcon(categoryConfig.icon);
   const severityBar = SEVERITY_BAR[finding.severity] || "bg-[var(--cr-text-ghost)]";
 
-  // Close handoff dropdown on outside click
+  // Close handoff dropdown on outside click (accounts for portal menu)
   useEffect(() => {
     if (!handoffOpen) return;
     const handler = (e: MouseEvent) => {
-      if (handoffRef.current && !handoffRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideTrigger = handoffRef.current?.contains(target);
+      const portalMenu = document.querySelector("[class*='z-\\[9999\\]']");
+      const insidePortal = portalMenu?.contains(target);
+      if (!insideTrigger && !insidePortal) {
         setHandoffOpen(false);
       }
     };
@@ -196,8 +200,7 @@ export function FindingInlineCard({
                   {onExplain && (
                     <button
                       onClick={() => onExplain(finding.id)}
-                      className="cr-btn cr-btn-purple"
-                      style={{ fontSize: '10px', padding: '5px 10px' }}
+                      className="cr-btn cr-btn-sm cr-btn-purple"
                     >
                       <SparklesIcon className="size-3" />
                       Explain
@@ -206,8 +209,7 @@ export function FindingInlineCard({
                   {onProposePatch && (
                     <button
                       onClick={() => onProposePatch(finding.id)}
-                      className="cr-btn cr-btn-blue"
-                      style={{ fontSize: '10px', padding: '5px 10px' }}
+                      className="cr-btn cr-btn-sm cr-btn-blue"
                     >
                       <WrenchIcon className="size-3" />
                       Fix
@@ -216,8 +218,7 @@ export function FindingInlineCard({
                   {onSendToValidator && (
                     <button
                       onClick={() => onSendToValidator(finding.id)}
-                      className="cr-btn cr-btn-emerald"
-                      style={{ fontSize: '10px', padding: '5px 10px' }}
+                      className="cr-btn cr-btn-sm cr-btn-emerald"
                     >
                       <ShieldCheckIcon className="size-3" />
                       Validate
@@ -228,9 +229,9 @@ export function FindingInlineCard({
                   {onSendToCodingAgent && (
                     <div className="relative" ref={handoffRef}>
                       <button
+                        ref={handoffBtnRef}
                         onClick={() => setHandoffOpen((p) => !p)}
-                        className="cr-btn cr-btn-orange"
-                        style={{ fontSize: '10px', padding: '5px 10px' }}
+                        className="cr-btn cr-btn-sm cr-btn-orange"
                       >
                         <SendIcon className="size-3" />
                         Send to Agent
@@ -239,73 +240,22 @@ export function FindingInlineCard({
                           handoffOpen && "rotate-90"
                         )} />
                       </button>
-                      <AnimatePresence>
-                        {handoffOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -4, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -4, scale: 0.95 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute bottom-full left-0 mb-2 w-60 rounded-xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] shadow-2xl shadow-black/50 z-50 overflow-hidden"
-                          >
-                            <div className="py-1.5">
-                              {CODING_AGENTS.map((agent) => {
-                                if (agent.separator) {
-                                  return (
-                                    <div
-                                      key={agent.id}
-                                      className="border-t border-[var(--cr-border-subtle)] my-1.5"
-                                    />
-                                  );
-                                }
-                                return (
-                                  <button
-                                    key={agent.id}
-                                    onClick={() => {
-                                      onSendToCodingAgent(finding.id, agent.id);
-                                      setHandoffOpen(false);
-                                    }}
-                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
-                                  >
-                                    {agent.icon ? (
-                                      <img
-                                        src={agent.icon}
-                                        alt=""
-                                        className="size-5 rounded"
-                                        onError={(e) => {
-                                          (e.target as HTMLImageElement).style.display = "none";
-                                        }}
-                                      />
-                                    ) : agent.id === "clipboard" ? (
-                                      <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                    ) : agent.id === "export-markdown" ? (
-                                      <ExternalLinkIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                    ) : agent.id === "config-more" ? (
-                                      <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                    ) : null}
-                                    <span className={cn("text-[12px] font-medium flex-1", agent.color)}>
-                                      {agent.label}
-                                    </span>
-                                    {agent.suffix && (
-                                      <span className="text-[10px] text-[var(--cr-text-ghost)] font-mono">
-                                        {agent.suffix}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      <HandoffMenu
+                        open={handoffOpen}
+                        triggerRef={handoffBtnRef}
+                        onSelect={(agentId) => {
+                          onSendToCodingAgent(finding.id, agentId);
+                          setHandoffOpen(false);
+                        }}
+                      />
                     </div>
                   )}
 
-                  {/* False positive — right-aligned, subtle */}
+                  {/* False positive — right-aligned, ghost button */}
                   {onMarkFalsePositive && (
                     <button
                       onClick={() => onMarkFalsePositive(finding.id)}
-                      className="inline-flex items-center gap-1 text-[10px] px-2 py-1.5 rounded-md text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] hover:bg-[var(--cr-bg-hover)] transition-colors ml-auto"
+                      className="cr-btn cr-btn-sm cr-btn-ghost ml-auto"
                     >
                       <XCircleIcon className="size-3" />
                       False Positive

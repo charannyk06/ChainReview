@@ -9,24 +9,26 @@ import {
   XCircleIcon,
   ChevronDownIcon,
   BugIcon,
-  ClipboardCopyIcon,
+  BookOpenIcon,
   CheckIcon,
   WrenchIcon,
-  ExternalLinkIcon,
   LoaderIcon,
   CircleIcon,
   SunIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AGENT_CONFIG, SEVERITY_CONFIG, CATEGORY_CONFIG, CODING_AGENTS } from "@/lib/constants";
+import { getAgentConfig, getSeverityConfig, getCategoryConfig } from "@/lib/constants";
 import { FileChip, FileHeader } from "@/components/shared/FileReference";
+import { HandoffMenu } from "@/components/shared/HandoffMenu";
 import { useOpenFile } from "@/contexts/OpenFileContext";
 import type { Finding, AgentName, ValidationResult, ValidatorVerdict } from "@/lib/types";
 
 const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
   architecture: LandmarkIcon,
   security: ShieldAlertIcon,
+  bugs: BugIcon,
   validator: ShieldCheckIcon,
+  explainer: BookOpenIcon,
   system: SettingsIcon,
 };
 
@@ -70,11 +72,10 @@ interface FindingCardProps {
 
 /** Verdict badge config */
 const VERDICT_BADGE: Record<ValidatorVerdict, { label: string; color: string; bgColor: string; borderColor: string; icon: "shield" | "bug" | "help" }> = {
-  confirmed: { label: "Confirmed Bug", color: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/20", icon: "bug" },
-  likely_valid: { label: "Likely Bug", color: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-[var(--cr-border-strong)]", icon: "bug" },
-  uncertain: { label: "Uncertain", color: "text-yellow-400", bgColor: "bg-yellow-500/10", borderColor: "border-yellow-500/20", icon: "help" },
-  likely_false_positive: { label: "Likely OK", color: "text-emerald-400", bgColor: "bg-emerald-500/10", borderColor: "border-emerald-500/20", icon: "shield" },
-  false_positive: { label: "No Bug — Verified", color: "text-emerald-400", bgColor: "bg-emerald-500/10", borderColor: "border-emerald-500/20", icon: "shield" },
+  still_present: { label: "Still Present", color: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/20", icon: "bug" },
+  partially_fixed: { label: "Partially Fixed", color: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-[var(--cr-border-strong)]", icon: "help" },
+  fixed: { label: "Fixed ✓", color: "text-emerald-400", bgColor: "bg-emerald-500/10", borderColor: "border-emerald-500/20", icon: "shield" },
+  unable_to_determine: { label: "Unable to Verify", color: "text-yellow-400", bgColor: "bg-yellow-500/10", borderColor: "border-yellow-500/20", icon: "help" },
 };
 
 export function FindingCard({
@@ -94,19 +95,26 @@ export function FindingCard({
   const [expanded, setExpanded] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
   const handoffRef = useRef<HTMLDivElement>(null);
+  const handoffBtnRef = useRef<HTMLButtonElement>(null);
   const openFile = useOpenFile();
-  const agentConfig = AGENT_CONFIG[finding.agent];
-  const categoryConfig = CATEGORY_CONFIG[finding.category];
-  const severity = SEVERITY_CONFIG[finding.severity] || SEVERITY_CONFIG.info;
+  const agentConfig = getAgentConfig(finding.agent);
+  const categoryConfig = getCategoryConfig(finding.category);
+  const severity = getSeverityConfig(finding.severity);
   const AgentIcon = AGENT_ICONS[finding.agent] || SettingsIcon;
   const CategoryIcon = getCategoryIcon(categoryConfig.icon);
   const severityDotColor = SEVERITY_DOT[finding.severity] || "text-gray-400";
 
-  // Close handoff dropdown when clicking outside
+  // Close handoff dropdown when clicking outside (accounts for portal menu)
   useEffect(() => {
     if (!handoffOpen) return;
     const handler = (e: MouseEvent) => {
-      if (handoffRef.current && !handoffRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Check if click is inside the trigger wrapper OR the portal menu
+      const insideTrigger = handoffRef.current?.contains(target);
+      // Portal menu has z-[9999] and is a direct child of body — find it
+      const portalMenu = document.querySelector("[class*='z-\\[9999\\]']");
+      const insidePortal = portalMenu?.contains(target);
+      if (!insideTrigger && !insidePortal) {
         setHandoffOpen(false);
       }
     };
@@ -120,20 +128,20 @@ export function FindingCard({
 
   // Derive badge from actual validation result
   const verdictBadge = validationResult ? VERDICT_BADGE[validationResult.verdict] : null;
-  const isConfirmedBug = validationResult?.verdict === "confirmed" || validationResult?.verdict === "likely_valid";
-  const isVerifiedClean = validationResult?.verdict === "false_positive" || validationResult?.verdict === "likely_false_positive";
+  const isStillPresent = validationResult?.verdict === "still_present" || validationResult?.verdict === "partially_fixed";
+  const isFixed = validationResult?.verdict === "fixed";
 
   return (
     <motion.div
       layout
       className={cn(
-        "group relative rounded-xl transition-all duration-200",
-        selected
-          ? "border-2 border-indigo-500/50 bg-indigo-500/5 shadow-[0_0_15px_rgba(99,102,241,0.08)]"
-          : "border border-[var(--cr-border)] bg-[var(--cr-bg-secondary)] hover:border-[var(--cr-border-strong)] hover:shadow-md hover:shadow-black/20",
-        isValidating && "ring-1 ring-emerald-500/30 border-emerald-500/20",
-        isConfirmedBug && !isValidating && "ring-1 ring-red-500/20 border-red-500/15",
-        isVerifiedClean && !isValidating && "ring-1 ring-emerald-500/20 border-emerald-500/15",
+        "group relative transition-all duration-200",
+        "border-b border-[var(--cr-border-subtle)]",
+        selected && "bg-indigo-500/5",
+        isValidating && "bg-emerald-500/5",
+        isStillPresent && !isValidating && "bg-red-500/5",
+        isFixed && !isValidating && "bg-emerald-500/5",
+        !selected && !isValidating && !isStillPresent && !isFixed && "hover:bg-[var(--cr-bg-hover)]",
         className
       )}
     >
@@ -142,7 +150,7 @@ export function FindingCard({
         <div className="absolute top-3.5 right-3.5 z-10">
           <div className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/25 rounded-lg px-2.5 py-1">
             <LoaderIcon className="size-3 text-emerald-400 animate-spin" />
-            <span className="text-[10px] font-semibold text-emerald-400">Verifying...</span>
+            <span className="text-[10px] font-semibold text-emerald-400">Checking Fix...</span>
           </div>
         </div>
       )}
@@ -191,11 +199,12 @@ export function FindingCard({
               {selected && <CheckIcon className="size-3 text-white" strokeWidth={3} />}
             </div>
           ) : (
-            <CircleIcon
-              className={cn("size-2.5 shrink-0 mt-1.5 fill-current", severityDotColor)}
-              strokeWidth={0}
-              title={severity.label}
-            />
+            <span title={severity.label}>
+              <CircleIcon
+                className={cn("size-2.5 shrink-0 mt-1.5 fill-current", severityDotColor)}
+                strokeWidth={0}
+              />
+            </span>
           )}
 
           {/* Title + description */}
@@ -276,12 +285,12 @@ export function FindingCard({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4 space-y-3" style={{ paddingLeft: 'calc(16px + 10px + 0.75rem)' }}>
+            <div className="px-4 pb-4 space-y-3" style={{ paddingLeft: 'calc(10px + 0.75rem)' }}>
               {/* Evidence snippets with proper file headers */}
               {finding.evidence.map((ev, i) => (
                 <div
                   key={i}
-                  className="rounded-lg border border-[var(--cr-border-subtle)] bg-[var(--cr-bg-primary)] overflow-hidden"
+                  className="rounded-md border border-[var(--cr-border-subtle)] bg-[var(--cr-bg-root)] overflow-hidden"
                 >
                   <FileHeader
                     filePath={ev.filePath}
@@ -331,7 +340,7 @@ export function FindingCard({
                         isValidating
                           ? "bg-emerald-500/10 text-emerald-400/60 border-emerald-500/20 cursor-wait"
                           : validationResult
-                          ? isConfirmedBug
+                          ? isStillPresent
                             ? "bg-red-500/15 text-red-300 border-red-500/30 hover:bg-red-500/25"
                             : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
                           : "cr-btn-emerald"
@@ -340,15 +349,15 @@ export function FindingCard({
                       {isValidating ? (
                         <LoaderIcon className="size-3.5 animate-spin" />
                       ) : validationResult ? (
-                        isConfirmedBug ? <BugIcon className="size-3.5" /> : <CheckIcon className="size-3.5" />
+                        isStillPresent ? <BugIcon className="size-3.5" /> : <CheckIcon className="size-3.5" />
                       ) : (
                         <ShieldCheckIcon className="size-3.5" />
                       )}
                       {isValidating
-                        ? "Verifying..."
+                        ? "Checking Fix..."
                         : validationResult
-                        ? verdictBadge?.label || "Re-Verify"
-                        : "Verify"}
+                        ? verdictBadge?.label || "Re-check"
+                        : "Verify Fix"}
                     </button>
                   )}
                 </div>
@@ -359,6 +368,7 @@ export function FindingCard({
                   {onSendToCodingAgent && (
                     <div className="relative" ref={handoffRef}>
                       <button
+                        ref={handoffBtnRef}
                         onClick={() => setHandoffOpen((p) => !p)}
                         className="cr-btn cr-btn-orange"
                       >
@@ -370,66 +380,15 @@ export function FindingCard({
                         )} />
                       </button>
 
-                      {/* Agent dropdown */}
-                      <AnimatePresence>
-                        {handoffOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -4, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -4, scale: 0.95 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute bottom-full left-0 mb-2 w-60 rounded-xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] shadow-2xl shadow-black/50 z-50 overflow-hidden backdrop-blur-sm"
-                          >
-                            <div className="py-1.5">
-                              {CODING_AGENTS.map((agent) => {
-                                if (agent.separator) {
-                                  return (
-                                    <div
-                                      key={agent.id}
-                                      className="border-t border-[var(--cr-border-subtle)] my-1.5"
-                                    />
-                                  );
-                                }
-                                return (
-                                  <button
-                                    key={agent.id}
-                                    onClick={() => {
-                                      onSendToCodingAgent(finding.id, agent.id);
-                                      setHandoffOpen(false);
-                                    }}
-                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
-                                  >
-                                    {agent.icon ? (
-                                      <img
-                                        src={agent.icon}
-                                        alt=""
-                                        className="size-5 rounded"
-                                        onError={(e) => {
-                                          (e.target as HTMLImageElement).style.display = "none";
-                                        }}
-                                      />
-                                    ) : agent.id === "clipboard" ? (
-                                      <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                    ) : agent.id === "export-markdown" ? (
-                                      <ExternalLinkIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                    ) : agent.id === "config-more" ? (
-                                      <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
-                                    ) : null}
-                                    <span className={cn("text-[12px] font-medium flex-1", agent.color)}>
-                                      {agent.label}
-                                    </span>
-                                    {agent.suffix && (
-                                      <span className="text-[10px] text-[var(--cr-text-ghost)] font-mono">
-                                        {agent.suffix}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      {/* Agent dropdown — portal-based shared component */}
+                      <HandoffMenu
+                        open={handoffOpen}
+                        triggerRef={handoffBtnRef}
+                        onSelect={(agentId) => {
+                          onSendToCodingAgent(finding.id, agentId);
+                          setHandoffOpen(false);
+                        }}
+                      />
                     </div>
                   )}
 

@@ -1,18 +1,8 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { TimelineEvent } from "./TimelineEvent";
-import type { AuditEvent, EventType } from "@/lib/types";
-
-/** Only these event types are meaningful milestones for the timeline */
-const MILESTONE_EVENTS: Set<EventType> = new Set([
-  "agent_started",
-  "finding_emitted",
-  "patch_proposed",
-  "patch_validated",
-  "human_accepted",
-  "human_rejected",
-  "false_positive_marked",
-]);
+import { MILESTONE_EVENTS } from "@/lib/constants";
+import type { AuditEvent } from "@/lib/types";
 
 interface AuditTimelineProps {
   events: AuditEvent[];
@@ -55,7 +45,7 @@ export function AuditTimeline({ events, className }: AuditTimelineProps) {
 
   return (
     <div className={cn("h-full overflow-y-auto", className)} style={{ scrollbarGutter: "stable both-edges" }}>
-      <div className="px-3 py-3">
+      <div className="px-3 pt-4 pb-3">
         {/* Summary bar */}
         <div className="flex items-center gap-3 mb-4 pb-3 border-b border-[var(--cr-border-subtle)]">
           <h3 className="text-[12px] font-semibold text-[var(--cr-text-muted)] uppercase tracking-wider">

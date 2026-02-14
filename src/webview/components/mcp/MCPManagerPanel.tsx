@@ -3,8 +3,6 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeftIcon,
   PlusIcon,
-  ServerIcon,
-  ZapIcon,
   SparklesIcon,
   PlugIcon,
 } from "lucide-react";
@@ -67,10 +65,6 @@ export function MCPManagerPanel({
     setEditingServer(null);
   }, []);
 
-  const connectedCount = servers.filter((s) => s.status === "connected").length;
-  const enabledCount = servers.filter((s) => s.config.enabled).length;
-  const totalTools = servers.reduce((acc, s) => acc + s.tools.length, 0);
-
   return (
     <div className={cn("flex flex-col h-full bg-[var(--cr-bg-root)]", className)}>
       <AnimatePresence mode="wait">
@@ -117,51 +111,6 @@ export function MCPManagerPanel({
                   <PlusIcon className="size-3.5" />
                   Add Server
                 </motion.button>
-              </div>
-            </div>
-
-            {/* Stats bar */}
-            <div className="px-4 py-2.5 border-b border-[var(--cr-border-subtle)] bg-[var(--cr-bg-secondary)]/50">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="size-6 rounded-md bg-[var(--cr-bg-tertiary)] flex items-center justify-center">
-                    <ServerIcon className="size-3 text-[var(--cr-text-muted)]" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-medium text-[var(--cr-text-primary)]">
-                      {servers.length + 1}
-                    </p>
-                    <p className="text-[9px] text-[var(--cr-text-muted)]">Servers</p>
-                  </div>
-                </div>
-                
-                {enabledCount > 0 && (
-                  <div className="flex items-center gap-2">
-                    <div className="size-6 rounded-md bg-emerald-500/10 flex items-center justify-center">
-                      <div className="size-2 rounded-full bg-emerald-400" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-medium text-emerald-400">
-                        {connectedCount}/{enabledCount}
-                      </p>
-                      <p className="text-[9px] text-[var(--cr-text-muted)]">Connected</p>
-                    </div>
-                  </div>
-                )}
-                
-                {totalTools > 0 && (
-                  <div className="flex items-center gap-2">
-                    <div className="size-6 rounded-md bg-indigo-500/10 flex items-center justify-center">
-                      <ZapIcon className="size-3 text-indigo-400" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-medium text-indigo-400">
-                        {totalTools + 20}
-                      </p>
-                      <p className="text-[9px] text-[var(--cr-text-muted)]">Tools</p>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
