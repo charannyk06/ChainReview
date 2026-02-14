@@ -4,6 +4,7 @@ export type ReviewMode = "repo" | "diff";
 export type AgentName = "architecture" | "security" | "bugs" | "validator" | "explainer" | "system";
 export type FindingSeverity = "critical" | "high" | "medium" | "low" | "info";
 export type FindingCategory = "architecture" | "security" | "bugs";
+export type FindingStatus = "active" | "dismissed" | "resolved";
 
 export type EventType =
   | "agent_started"
@@ -49,6 +50,8 @@ export interface Finding {
   confidence: number;
   evidence: Evidence[];
   patchId?: string;
+  fingerprint?: string;
+  status?: FindingStatus;
 }
 
 // ── Agent Finding (before ID assignment) ──
@@ -118,6 +121,8 @@ export interface AgentContext {
   importGraph?: ImportGraphResult;
   semgrepResults?: SemgrepResult[];
   diffContent?: string;
+  /** Summary of prior active findings for this repo — agents should skip these */
+  priorFindings?: string;
 }
 
 // ── Callbacks for streaming progress ──

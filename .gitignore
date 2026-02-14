@@ -9,3 +9,5 @@ chainreview-store.db
 .DS_Store
 .vscode/launch.json
 .claude/
+.chainreview/
+*.code-workspace
