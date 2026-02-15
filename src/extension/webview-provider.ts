@@ -68,6 +68,8 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   private _findings: Finding[] = [];
   private _validationVerdicts: Record<string, { verdict: string; reasoning: string }> = {};
   private _blockCounter = 0;
+  /** Flag to suppress error messages when review was user-cancelled */
+  private _reviewCancelled = false;
   /** Track running tool_call block IDs per-agent for parallel routing */
   private _lastRunningToolBlockIds: Record<string, string> = {};
   /** Legacy fallback for non-agent-tagged tool calls */
@@ -296,10 +298,11 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   // ── Cancel Review ──
 
   private _cancelReview() {
+    // Set flag BEFORE aborting so _startReview catch block knows this was intentional
+    this._reviewCancelled = true;
+
     if (this._crpClient) {
-      this._crpClient.cancelReview().catch(() => {
-        this._crpClient?.cancelActiveOperation();
-      });
+      this._crpClient.cancelReview().catch(() => {});
     }
     this._emitBlock({
       kind: "sub_agent_event",
@@ -881,6 +884,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     this._findings = [];
     this._lastRunningToolBlockId = null;
     this._lastRunningToolBlockIds = {};
+    this._reviewCancelled = false;
 
     this.postMessage({ type: "reviewStarted", mode });
 
@@ -936,6 +940,11 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       // Persist chat messages
       this.postMessage({ type: "requestPersistMessages" });
     } catch (err: any) {
+      // Don't show error if user intentionally cancelled — _cancelReview already sent reviewCancelled
+      if (this._reviewCancelled) {
+        this._reviewCancelled = false;
+        return;
+      }
       this.postMessage({ type: "reviewError", error: `Review failed: ${err.message}` });
     }
   }

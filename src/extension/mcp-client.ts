@@ -459,24 +459,26 @@ export class CrpClient {
   }
 
   /** Cancel the currently running review on the server side.
-   *  This sends a cancel signal to the server which aborts all running agents,
-   *  AND aborts the client-side MCP call so it doesn't block waiting for the response.
+   *  This aborts the client-side MCP call FIRST (so the UI unblocks immediately),
+   *  then sends a cancel signal to the server to abort running agents.
    */
   async cancelReview(): Promise<void> {
-    // 1. Tell the server to abort running agents via signal
+    // 1. Abort client-side IMMEDIATELY so _startReview unblocks
+    this.cancelActiveOperation();
+
+    // 2. Tell the server to abort running agents (best-effort, don't await)
     try {
       if (this.connected) {
-        await this.client.callTool(
+        // Fire-and-forget — don't block on this
+        this.client.callTool(
           { name: "crp.review.cancel", arguments: {} },
           undefined,
           { timeout: 5000 } as any
-        );
+        ).catch(() => {});
       }
     } catch {
       // Best effort — the server might already be winding down
     }
-    // 2. Also abort the client-side waiting operation
-    this.cancelActiveOperation();
   }
 
   private async callTool(name: string, args: Record<string, unknown>): Promise<string> {
@@ -515,12 +517,13 @@ export class CrpClient {
       );
     } catch (err: any) {
       if (isLongRunning) this._activeAbort = null;
-      // Handle timeout (-32001) and user cancellation (AbortError)
+      // Handle user cancellation (AbortError) BEFORE timeout — abort can trigger
+      // timeout-like errors in the MCP SDK, so check abort signal first.
+      if (controller.signal.aborted || err.name === "AbortError" || err.message?.includes("abort")) {
+        throw new Error("Operation cancelled by user");
+      }
       if (err.code === -32001 || err.message?.includes("timed out")) {
         throw new Error(`Operation timed out after ${timeoutMs / 1000}s — the server may still be processing`);
-      }
-      if (err.name === "AbortError" || err.message?.includes("abort")) {
-        throw new Error("Operation cancelled by user");
       }
       throw err;
     }
