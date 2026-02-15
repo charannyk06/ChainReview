@@ -1,6 +1,6 @@
-import { runAgentLoop, createToolExecutor, routeStandardTool, type AgentTool, type AgentCallbacks, type ToolHandler } from "./base-agent";
+import { runAgentLoop, createToolExecutor, routeStandardTool, sanitizeForPrompt, type AgentTool, type AgentCallbacks, type ToolHandler } from "./base-agent";
 import { codePatternScan } from "../tools/code";
-import type { AgentFinding, Evidence } from "../types";
+import type { AgentContext, AgentFinding, Evidence } from "../types";
 
 /**
  * Bugs Agent
@@ -72,29 +72,35 @@ Your mission is to find **application logic bugs** — the subtle errors that ca
 
 ## TOOLS AVAILABLE
 
+- **crp_repo_tree**: Get repository file tree to understand project structure
 - **crp_repo_file**: Read file contents to examine code
-- **crp_repo_search**: Search for patterns across the codebase
+- **crp_repo_search**: Search for patterns across the codebase using regex
+- **crp_repo_diff**: Get git diff to find recently introduced bugs
 - **crp_code_pattern_scan**: Run pattern scans for common bug patterns
-- **emit_finding**: Report a bug finding
+- **crp_exec_command**: Execute read-only shell commands (git log, git blame, grep, etc.)
+- **emit_finding**: Report a bug finding — YOU MUST CALL THIS FOR EVERY BUG
 
-## METHODOLOGY
+## METHODOLOGY — FOLLOW THIS EXACTLY
 
-1. Start by searching for common bug patterns:
-   - \`.then(\` without \`.catch(\`
-   - \`catch\\s*\\(.*\\)\\s*\\{\\s*\\}\` (empty catch)
-   - \`==\\s\` without \`===\`
-   - \`\\.length\\s*[<>=]\` (boundary checks)
-   - \`await\` inside loops
-   - \`JSON\\.parse\` without try/catch
-
-2. Read suspicious files to understand context
-
-3. For each real bug found, emit a finding with:
+1. **EXPLORE** — Get the file tree to understand the project layout
+2. **SEARCH** — Search for common bug patterns across the codebase:
+   - \`.then(\` without \`.catch(\` (unhandled promise rejections)
+   - \`catch\\s*\\(.*\\)\\s*\\{\\s*\\}\` (empty catch blocks that swallow errors)
+   - \`==\\s\` without \`===\` (loose equality)
+   - \`\\.length\\s*[<>=]\` (off-by-one boundary checks)
+   - \`await\` inside loops (potential performance/race issues)
+   - \`JSON\\.parse\` without try/catch (crash on invalid JSON)
+   - \`\\!\` prefix on complex expressions (inverted logic)
+   - \`as any\` or type assertions (type safety bypasses)
+3. **READ** — Read each suspicious file to understand context and confirm the bug
+4. **EMIT** — For each confirmed bug, call emit_finding with:
    - Clear title describing the bug
    - Exact file path and line numbers
    - Evidence showing the problematic code
    - Explanation of what could go wrong
    - Suggested fix
+
+CRITICAL: You MUST use at least 5 tools before producing findings. You MUST call emit_finding for every bug — it is the ONLY way to report your findings.
 
 ## OUTPUT RULES
 
@@ -111,6 +117,17 @@ Your mission is to find **application logic bugs** — the subtle errors that ca
   - 0.5-0.7: Possible bug, needs review`;
 
 const TOOLS: AgentTool[] = [
+  {
+    name: "crp_repo_tree",
+    description: "Get repository file tree to understand project structure and find files to investigate",
+    input_schema: {
+      type: "object",
+      properties: {
+        maxDepth: { type: "number", description: "Maximum directory depth" },
+        pattern: { type: "string", description: "Filter files by pattern" },
+      },
+    },
+  },
   {
     name: "crp_repo_file",
     description: "Read file contents to examine code for bugs",
@@ -138,6 +155,18 @@ const TOOLS: AgentTool[] = [
     },
   },
   {
+    name: "crp_repo_diff",
+    description: "Get git diff to review recent changes for newly introduced bugs",
+    input_schema: {
+      type: "object",
+      properties: {
+        ref1: { type: "string", description: "First git ref (commit, branch, tag)" },
+        ref2: { type: "string", description: "Second git ref" },
+        staged: { type: "boolean", description: "Show staged changes only" },
+      },
+    },
+  },
+  {
     name: "crp_code_pattern_scan",
     description: "Run structured pattern scans for common bug patterns",
     input_schema: {
@@ -154,8 +183,20 @@ const TOOLS: AgentTool[] = [
     },
   },
   {
+    name: "crp_exec_command",
+    description: "Execute a read-only shell command (wc, find, ls, cat, head, tail, grep, git log/show/blame/diff/status, npm ls, tsc --noEmit)",
+    input_schema: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "Shell command to execute" },
+        timeout: { type: "number", description: "Timeout in ms (default: 10000)" },
+      },
+      required: ["command"],
+    },
+  },
+  {
     name: "emit_finding",
-    description: "Report a bug finding. Call this for each bug discovered.",
+    description: "Report a bug finding. You MUST call this for each bug you discover. This is the ONLY way to report findings.",
     input_schema: {
       type: "object",
       properties: {
@@ -164,14 +205,14 @@ const TOOLS: AgentTool[] = [
         filePath: { type: "string", description: "Relative path to the file" },
         lineStart: { type: "number", description: "Starting line number" },
         lineEnd: { type: "number", description: "Ending line number" },
-        severity: { 
-          type: "string", 
+        severity: {
+          type: "string",
           enum: ["critical", "high", "medium", "low", "info"],
-          description: "Bug severity" 
+          description: "Bug severity"
         },
-        confidence: { 
-          type: "number", 
-          description: "Confidence score 0.0-1.0" 
+        confidence: {
+          type: "number",
+          description: "Confidence score 0.0-1.0"
         },
         category: {
           type: "string",
@@ -192,13 +233,14 @@ export interface BugsAgentCallbacks extends AgentCallbacks {
 
 /**
  * Run the Bugs Agent to find application logic bugs.
+ * Now accepts the full AgentContext (like security/architecture agents)
+ * for rich initial context: file tree, semgrep results, diff, prior findings.
  */
 export async function runBugsAgent(
-  targetPath: string | undefined,
-  runId: string,
+  context: AgentContext,
   callbacks: BugsAgentCallbacks,
   signal?: AbortSignal,
-  priorFindings?: string
+  targetPath?: string
 ): Promise<AgentFinding[]> {
   const findings: AgentFinding[] = [];
 
@@ -206,20 +248,74 @@ export async function runBugsAgent(
     ? `Focus your analysis on: ${targetPath}`
     : "Analyze the entire repository";
 
-  const initialMessage = `You are reviewing a TypeScript/JavaScript codebase for application logic bugs.
+  // Build a rich initial message with full context (matching security/architecture agents)
+  let initialMessage = `Analyze this TypeScript/JavaScript codebase for application logic bugs.
+
+Repository: ${context.repoPath}
+Review mode: ${context.mode}
 
 ${scopeDescription}
 
-Start by searching for common bug patterns:
-1. Search for unhandled promises: \`.then(\` without error handling
-2. Search for empty catch blocks: catch blocks that swallow errors
-3. Search for loose equality: == instead of ===
-4. Search for potential null access: property access without null checks
-5. Search for async issues: await in loops, missing await
+File tree (${context.fileTree.length} files):
+${context.fileTree
+  .filter(
+    (f) =>
+      f.endsWith(".ts") ||
+      f.endsWith(".tsx") ||
+      f.endsWith(".js") ||
+      f.endsWith(".jsx")
+  )
+  .slice(0, 150)
+  .join("\n")}
+${context.fileTree.length > 150 ? `\n... and ${context.fileTree.length - 150} more files` : ""}
+`;
 
-For each real bug you find, read the surrounding code to understand context, then emit a finding.
-${priorFindings || ""}
-Begin your analysis now.`;
+  if (context.semgrepResults && context.semgrepResults.length > 0) {
+    initialMessage += `
+Semgrep Scan Results (${context.semgrepResults.length} findings — use these as starting points):
+${context.semgrepResults
+  .map(
+    (r, i) =>
+      `${i + 1}. [${sanitizeForPrompt(r.severity, 20)}] ${sanitizeForPrompt(r.ruleId, 100)}
+   File: ${sanitizeForPrompt(r.filePath, 200)}:${r.startLine}-${r.endLine}
+   Message: ${sanitizeForPrompt(r.message, 500)}
+   Code: ${sanitizeForPrompt(r.snippet, 500)}`
+  )
+  .join("\n\n")}
+`;
+  }
+
+  if (context.diffContent) {
+    initialMessage += `
+Diff content (recent changes — check these for newly introduced bugs):
+${sanitizeForPrompt(context.diffContent, 5000)}
+`;
+  }
+
+  if (context.priorFindings) {
+    initialMessage += sanitizeForPrompt(context.priorFindings, 5000);
+  }
+
+  initialMessage += `
+
+NOW: Begin your deep investigation using ALL available tools. You have 7 powerful tools:
+1. crp_repo_tree — understand project structure, find files to investigate
+2. crp_repo_file — read files to examine code for bugs
+3. crp_repo_search — search for bug patterns (empty catches, loose equality, unhandled promises, null access)
+4. crp_repo_diff — check recent changes for newly introduced bugs
+5. crp_code_pattern_scan — run pattern scans for common bug patterns
+6. crp_exec_command — use git log, git blame for deeper analysis
+7. emit_finding — report each bug you find (REQUIRED for every bug)
+
+CRITICAL INSTRUCTIONS:
+- You MUST use at least 5-10 tool calls BEFORE emitting any findings
+- You MUST read the actual code before reporting any bug
+- You MUST call emit_finding for EVERY bug you discover — this is the ONLY way to report findings
+- Every finding MUST include real code evidence from files you read
+- Search for these patterns: .then( without .catch(, empty catch blocks, == instead of ===, missing null checks, await in loops, JSON.parse without try/catch, missing await on promises
+- Start by getting the file tree, then searching for patterns, then reading suspicious files
+
+Begin your investigation now. Use tools aggressively.`;
 
   // Tool handler: routes standard tools + handles bugs-specific virtual tools
   const bugsToolHandler: ToolHandler = async (name, args) => {
@@ -297,7 +393,7 @@ Begin your analysis now.`;
     onEvent: callbacks.onEvent,
     maxTurns: 25,
     signal,
-    model: "claude-haiku-4-5-20251001",
+    forcedToolTurns: 5,
   });
 
   // Emit completion event

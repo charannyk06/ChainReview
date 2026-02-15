@@ -351,7 +351,7 @@ export async function runReview(
     }
     if (agentsToRun.includes("bugs")) {
       agentNames.push("bugs");
-      agentPromises.push(runBugsAgent(targetPath, runId, {
+      agentPromises.push(runBugsAgent(context, {
         ...agentCallbacks("bugs"),
         onFinding: (finding) => {
           const evidence = finding.evidence || [];
@@ -390,7 +390,7 @@ export async function runReview(
             confidence: f.confidence,
           });
         },
-      }, signal, priorFindings));
+      }, signal, targetPath));
     }
 
     emitEvent("agent_started", undefined, {
