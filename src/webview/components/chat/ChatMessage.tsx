@@ -154,10 +154,10 @@ export function ChatMessage({
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className="px-3 py-2"
+        className="py-2"
       >
         <div className="flex justify-end">
-          <div className="max-w-[80%] rounded-2xl bg-white/[0.06] px-4 py-3.5">
+          <div className="max-w-[85%] rounded-2xl bg-white/[0.06] px-4 py-3.5">
             {hasMarkdown ? (
               <div className="text-[13px] text-[var(--cr-text-primary)] leading-[1.65] [&_h1]:text-[14px] [&_h2]:text-[13.5px] [&_h3]:text-[13px] [&_p]:text-[13px] [&_li]:text-[13px] [&_code]:text-[12px]">
                 <MarkdownBlock text={userText} />

@@ -273,4 +273,6 @@ export interface ReviewState {
   /** Task history overlay state */
   historyOpen?: boolean;
   reviewHistory?: ReviewRunSummary[];
+  /** Finding IDs dismissed as false positive — persists across state restores */
+  dismissedFindingIds: Set<string>;
 }

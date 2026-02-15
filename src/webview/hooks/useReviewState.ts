@@ -25,6 +25,7 @@ const initialState: ReviewState = {
   mcpServers: [],
   validationVerdicts: {},
   validatingFindings: new Set(),
+  dismissedFindingIds: new Set(),
 };
 
 type Action =
@@ -223,23 +224,26 @@ function reducer(state: ReviewState, action: Action): ReviewState {
     case "ADD_PATCH":
       return { ...state, patches: [...state.patches, action.patch] };
 
-    case "REVIEW_COMPLETE":
+    case "REVIEW_COMPLETE": {
+      // Keep findings streamed in real-time; only use batch if no streamed findings exist
+      const completedFindings = state.findings.length > 0 ? state.findings :
+                action.findings.length > 0 ? action.findings : state.findings;
       return {
         ...state,
         status: "complete",
-        // Keep findings streamed in real-time; only use batch if no streamed findings exist
-        findings: state.findings.length > 0 ? state.findings :
-                  action.findings.length > 0 ? action.findings : state.findings,
+        // Filter out any findings previously dismissed as false positive
+        findings: completedFindings.filter((f) => !state.dismissedFindingIds.has(f.id)),
         // Keep events streamed in real-time; only use batch if no streamed events exist
         events: state.events.length > 0 ? state.events :
                 action.events.length > 0 ? action.events : state.events,
       };
+    }
 
     case "REVIEW_ERROR":
       return { ...state, status: "error", error: action.error };
 
     case "RESET":
-      return { ...initialState, mcpServers: state.mcpServers, validationVerdicts: state.validationVerdicts, validatingFindings: new Set() };
+      return { ...initialState, mcpServers: state.mcpServers, validationVerdicts: state.validationVerdicts, validatingFindings: new Set(), dismissedFindingIds: new Set() };
 
     // ── Finding Validation ──
     case "FINDING_VALIDATING": {
@@ -328,11 +332,15 @@ function reducer(state: ReviewState, action: Action): ReviewState {
       const restoredStatus: ReviewStatus = action.status === "running" ? "complete" : (action.status as ReviewStatus);
       // Don't downgrade status: if we're already chatting, don't go back to idle
       const effectiveStatus = (restoredStatus === "idle" && state.status !== "idle") ? state.status : restoredStatus;
+      // Filter out any findings that were dismissed as false positive in this session
+      const restoredFindings = action.findings.length > 0
+        ? action.findings.filter((f) => !state.dismissedFindingIds.has(f.id))
+        : state.findings;
       return {
         ...state,
         status: effectiveStatus,
         mode: action.mode || state.mode,
-        findings: action.findings.length > 0 ? action.findings : state.findings,
+        findings: restoredFindings,
         events: action.events.length > 0 ? action.events : state.events,
         validationVerdicts: {
           ...state.validationVerdicts,
@@ -342,11 +350,15 @@ function reducer(state: ReviewState, action: Action): ReviewState {
     }
 
     // ── False Positive ──
-    case "MARK_FALSE_POSITIVE":
+    case "MARK_FALSE_POSITIVE": {
+      const nextDismissed = new Set(state.dismissedFindingIds);
+      nextDismissed.add(action.findingId);
       return {
         ...state,
         findings: state.findings.filter((f) => f.id !== action.findingId),
+        dismissedFindingIds: nextDismissed,
       };
+    }
 
     case "CLEAR_CHAT":
       return { ...initialState, mcpServers: state.mcpServers };

@@ -351,11 +351,8 @@ export async function runReview(
     }
     if (agentsToRun.includes("bugs")) {
       agentNames.push("bugs");
-      const bugsCallbacks = agentCallbacks("bugs");
       agentPromises.push(runBugsAgent(targetPath, runId, {
-        onEvent: (event) => {
-          emitEvent(event.type, event.agent, event.data);
-        },
+        ...agentCallbacks("bugs"),
         onFinding: (finding) => {
           const evidence = finding.evidence || [];
           const category = finding.category || "bugs";
@@ -393,10 +390,6 @@ export async function runReview(
             confidence: f.confidence,
           });
         },
-        onText: bugsCallbacks.onText,
-        onThinking: bugsCallbacks.onThinking,
-        onToolCall: bugsCallbacks.onToolCall,
-        onToolResult: bugsCallbacks.onToolResult,
       }, signal, priorFindings));
     }
 

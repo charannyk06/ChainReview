@@ -6,10 +6,7 @@ import type {
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
-import { repoTree, repoFile, repoSearch, repoDiff } from "./tools/repo";
-import { codeImportGraph, codePatternScan } from "./tools/code";
-import { execCommand } from "./tools/exec";
-import { webSearch } from "./tools/web";
+import { routeStandardTool } from "./agents/base-agent";
 import { runReview } from "./orchestrator";
 import type { Store } from "./store";
 import type { ReviewCallbacks } from "./types";
@@ -197,65 +194,48 @@ async function handleToolCall(
   args: Record<string, unknown>,
   spawnCtx?: SpawnReviewContext,
 ): Promise<unknown> {
-  switch (name) {
-    case "crp_repo_tree":
-      return repoTree(args as any);
-    case "crp_repo_file":
-      return repoFile(args as any);
-    case "crp_repo_search":
-      return repoSearch(args as any);
-    case "crp_repo_diff":
-      return repoDiff(args as any);
-    case "crp_code_import_graph":
-      return codeImportGraph(args as any);
-    case "crp_code_pattern_scan":
-      return codePatternScan(args as any);
-    case "crp_exec_command":
-      return execCommand(args as any);
-    case "crp_web_search":
-      return webSearch(args as any);
-    case "crp_spawn_review": {
-      if (!spawnCtx) {
-        return { error: "Review spawning not available — store context not provided" };
-      }
-      const agents = (args.agents as string[] | undefined) || ["security", "architecture", "bugs"];
-      const targetPath = args.targetPath as string | undefined;
-      const { store, reviewCallbacks } = spawnCtx;
-
-      // Get the repo path from the most recent run or active repo
-      const runs = store.getReviewRuns(1);
-      const repoPath = runs[0]?.repoPath;
-      if (!repoPath) {
-        return { error: "No repository path available. Run a review first or open a repo." };
-      }
-
-      const options = {
-        agents: agents as ("security" | "architecture" | "bugs")[],
-        targetPath,
-      };
-
-      const result = await runReview(repoPath, "repo", store, reviewCallbacks, options);
-
-      const spawnResult: SpawnedReviewResult = {
-        runId: result.runId,
-        findingsCount: result.findings.length,
-        agents,
-      };
-
-      return {
-        status: "complete",
-        runId: result.runId,
-        findingsCount: result.findings.length,
-        agents,
-        summary: result.findings.length > 0
-          ? `Review complete: ${result.findings.length} finding(s) from ${agents.join(", ")} agent(s). Findings are now visible in the Findings tab.`
-          : `Review complete: no issues found by ${agents.join(", ")} agent(s). The code looks clean.`,
-        _spawnResult: spawnResult, // Internal: for chatQuery to pick up
-      };
+  // Handle chat-specific tool (crp_spawn_review), delegate rest to standard router
+  if (name === "crp_spawn_review") {
+    if (!spawnCtx) {
+      return { error: "Review spawning not available — store context not provided" };
     }
-    default:
-      throw new Error(`Unknown tool: ${name}`);
+    const agents = (args.agents as string[] | undefined) || ["security", "architecture", "bugs"];
+    const targetPath = args.targetPath as string | undefined;
+    const { store, reviewCallbacks } = spawnCtx;
+
+    // Get the repo path from the most recent run or active repo
+    const runs = store.getReviewRuns(1);
+    const repoPath = runs[0]?.repoPath;
+    if (!repoPath) {
+      return { error: "No repository path available. Run a review first or open a repo." };
+    }
+
+    const options = {
+      agents: agents as ("security" | "architecture" | "bugs")[],
+      targetPath,
+    };
+
+    const result = await runReview(repoPath, "repo", store, reviewCallbacks, options);
+
+    const spawnResult: SpawnedReviewResult = {
+      runId: result.runId,
+      findingsCount: result.findings.length,
+      agents,
+    };
+
+    return {
+      status: "complete",
+      runId: result.runId,
+      findingsCount: result.findings.length,
+      agents,
+      summary: result.findings.length > 0
+        ? `Review complete: ${result.findings.length} finding(s) from ${agents.join(", ")} agent(s). Findings are now visible in the Findings tab.`
+        : `Review complete: no issues found by ${agents.join(", ")} agent(s). The code looks clean.`,
+      _spawnResult: spawnResult, // Internal: for chatQuery to pick up
+    };
   }
+
+  return routeStandardTool(name, args);
 }
 
 function buildContextPrompt(store: Store, runId: string): string {
@@ -602,32 +582,6 @@ const VALIDATOR_TOOLS = [
   },
 ];
 
-/** Route validator tool calls to the actual CRP tool backends */
-async function handleValidatorToolCall(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  switch (name) {
-    case "crp_repo_tree":
-      return repoTree(args as any);
-    case "crp_repo_file":
-      return repoFile(args as any);
-    case "crp_repo_search":
-      return repoSearch(args as any);
-    case "crp_repo_diff":
-      return repoDiff(args as any);
-    case "crp_code_import_graph":
-      return codeImportGraph(args as any);
-    case "crp_code_pattern_scan":
-      return codePatternScan(args as any);
-    case "crp_exec_command":
-      return execCommand(args as any);
-    case "crp_web_search":
-      return webSearch(args as any);
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
-}
 
 const VALIDATOR_SYSTEM_PROMPT = `You are the Verification Agent in ChainReview. Your job is to check whether a previously reported bug has been FIXED in the CURRENT code.
 
@@ -802,7 +756,7 @@ Give your verdict using <verdict> tags.`;
         callbacks?.onToolCall?.(toolBlock.name, toolBlock.input as Record<string, unknown>);
 
         try {
-          const result = await handleValidatorToolCall(
+          const result = await routeStandardTool(
             toolBlock.name,
             toolBlock.input as Record<string, unknown>
           );

@@ -1,7 +1,6 @@
-import { runAgentLoop, type AgentTool } from "./base-agent";
-import { repoFile, repoSearch } from "../tools/repo";
+import { runAgentLoop, createToolExecutor, routeStandardTool, type AgentTool, type AgentCallbacks, type ToolHandler } from "./base-agent";
 import { codePatternScan } from "../tools/code";
-import type { AgentFinding, AuditEvent, Evidence } from "../types";
+import type { AgentFinding, Evidence } from "../types";
 
 /**
  * Bugs Agent
@@ -187,13 +186,8 @@ const TOOLS: AgentTool[] = [
   },
 ];
 
-export interface BugsAgentCallbacks {
-  onEvent: (event: AuditEvent) => void;
+export interface BugsAgentCallbacks extends AgentCallbacks {
   onFinding: (finding: AgentFinding) => void;
-  onText: (text: string) => void;
-  onThinking?: (text: string) => void;
-  onToolCall: (name: string, input: Record<string, unknown>) => void;
-  onToolResult: (name: string, result: string) => void;
 }
 
 /**
@@ -208,7 +202,7 @@ export async function runBugsAgent(
 ): Promise<AgentFinding[]> {
   const findings: AgentFinding[] = [];
 
-  const scopeDescription = targetPath 
+  const scopeDescription = targetPath
     ? `Focus your analysis on: ${targetPath}`
     : "Analyze the entire repository";
 
@@ -227,78 +221,26 @@ For each real bug you find, read the surrounding code to understand context, the
 ${priorFindings || ""}
 Begin your analysis now.`;
 
-  // Tool execution handler
-  async function executeToolCall(
-    name: string,
-    input: Record<string, unknown>
-  ): Promise<string> {
+  // Tool handler: routes standard tools + handles bugs-specific virtual tools
+  const bugsToolHandler: ToolHandler = async (name, args) => {
     switch (name) {
-      case "crp_repo_file": {
-        try {
-          const result = await repoFile({
-            path: input.path as string,
-            startLine: input.startLine as number | undefined,
-            endLine: input.endLine as number | undefined,
-          });
-          return JSON.stringify(result);
-        } catch (err: any) {
-          return JSON.stringify({ error: err.message });
-        }
-      }
-
-      case "crp_repo_search": {
-        try {
-          const result = await repoSearch({
-            pattern: input.pattern as string,
-            glob: input.glob as string | undefined,
-            maxResults: input.maxResults as number | undefined,
-          });
-          return JSON.stringify(result);
-        } catch (err: any) {
-          return JSON.stringify({ error: err.message });
-        }
-      }
-
-      case "crp_code_pattern_scan": {
-        try {
-          // codePatternScan accepts a single pattern or config; run for each pattern
-          const patterns = input.patterns as string[] | undefined;
-          if (patterns && patterns.length > 0) {
-            const allResults: any[] = [];
-            for (const pat of patterns.slice(0, 5)) { // limit to 5 patterns
-              try {
-                const result = await codePatternScan({ pattern: pat });
-                allResults.push(...result.results);
-              } catch {
-                // Individual pattern failure is non-fatal
-              }
-            }
-            return JSON.stringify({ results: allResults, totalResults: allResults.length });
-          }
-          const result = await codePatternScan({});
-          return JSON.stringify(result);
-        } catch (err: any) {
-          return JSON.stringify({ error: err.message });
-        }
-      }
-
       case "emit_finding": {
         const findingId = `bugs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const evidenceArr: Evidence[] = [];
-        if (input.evidence) {
+        if (args.evidence) {
           evidenceArr.push({
-            filePath: (input.filePath as string) || "unknown",
-            startLine: (input.lineStart as number) || 1,
-            endLine: (input.lineEnd as number) || 1,
-            snippet: input.evidence as string,
+            filePath: (args.filePath as string) || "unknown",
+            startLine: (args.lineStart as number) || 1,
+            endLine: (args.lineEnd as number) || 1,
+            snippet: args.evidence as string,
           });
         }
 
         const finding: AgentFinding = {
-          title: input.title as string,
-          description: input.description as string + (input.suggestedFix ? `\n\n**Suggested Fix:** ${input.suggestedFix}` : ""),
-          severity: input.severity as "critical" | "high" | "medium" | "low" | "info",
-          confidence: input.confidence as number,
+          title: args.title as string,
+          description: args.description as string + (args.suggestedFix ? `\n\n**Suggested Fix:** ${args.suggestedFix}` : ""),
+          severity: args.severity as "critical" | "high" | "medium" | "low" | "info",
+          confidence: args.confidence as number,
           category: "bugs",
           evidence: evidenceArr,
         };
@@ -306,12 +248,9 @@ Begin your analysis now.`;
         findings.push(finding);
         callbacks.onFinding(finding);
 
-        // Emit audit event
         callbacks.onEvent({
-          id: `event-${Date.now()}`,
           type: "finding_emitted",
           agent: "bugs",
-          timestamp: new Date().toISOString(),
           data: { findingId, title: finding.title, severity: finding.severity },
         });
 
@@ -322,34 +261,40 @@ Begin your analysis now.`;
         });
       }
 
+      case "crp_code_pattern_scan": {
+        // Bugs agent uses array-of-patterns schema; run each pattern separately
+        const patterns = args.patterns as string[] | undefined;
+        if (patterns && patterns.length > 0) {
+          const allResults: any[] = [];
+          for (const pat of patterns.slice(0, 5)) {
+            try {
+              const result = await codePatternScan({ pattern: pat });
+              allResults.push(...result.results);
+            } catch {
+              // Individual pattern failure is non-fatal
+            }
+          }
+          return { results: allResults, totalResults: allResults.length };
+        }
+        return codePatternScan({});
+      }
+
       default:
-        return JSON.stringify({ error: `Unknown tool: ${name}` });
+        return routeStandardTool(name, args);
     }
-  }
+  };
 
   // NOTE: The orchestrator already emits agent_started for bugs — don't duplicate it here.
 
-  // Run the agent loop — use the correct AgentLoopOptions interface
   await runAgentLoop({
     name: "bugs",
     systemPrompt: SYSTEM_PROMPT,
     userPrompt: initialMessage,
     tools: TOOLS,
-    onToolCall: async (name, args) => {
-      callbacks.onToolCall(name, args);
-      const result = await executeToolCall(name, args);
-      callbacks.onToolResult(name, result);
-      return result;
-    },
+    onToolCall: createToolExecutor(bugsToolHandler, callbacks),
     onText: callbacks.onText,
     onThinking: callbacks.onThinking,
-    onEvent: (event) => {
-      callbacks.onEvent({
-        ...event,
-        id: `event-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-      } as AuditEvent);
-    },
+    onEvent: callbacks.onEvent,
     maxTurns: 25,
     signal,
     model: "claude-haiku-4-5-20251001",
@@ -357,10 +302,8 @@ Begin your analysis now.`;
 
   // Emit completion event
   callbacks.onEvent({
-    id: `event-${Date.now()}`,
     type: "agent_completed",
     agent: "bugs",
-    timestamp: new Date().toISOString(),
     data: { findingCount: findings.length },
   });
 

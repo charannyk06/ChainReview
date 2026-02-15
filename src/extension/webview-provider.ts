@@ -1531,10 +1531,29 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (!this._crpClient?.isConnected() || !this._currentRunId) return;
     try {
       await this._crpClient.recordEvent(this._currentRunId, "false_positive_marked", undefined, { findingId });
+
+      // Get finding title for the timeline event
+      const finding = this._findings.find((f) => f.id === findingId);
+      const findingTitle = finding?.title || "Finding";
+
       // Remove finding from in-memory list
       this._findings = this._findings.filter((f) => f.id !== findingId);
+
       // Notify webview to remove the finding from UI
       this.postMessage({ type: "falsePositiveMarked", findingId });
+
+      // Also emit a timeline event so the timeline tab shows this action
+      this.postMessage({
+        type: "addEvent",
+        event: {
+          id: `fp-${findingId}-${Date.now()}`,
+          runId: this._currentRunId,
+          type: "false_positive_marked",
+          timestamp: new Date().toISOString(),
+          data: { findingId, findingTitle },
+        },
+      });
+
       vscode.window.showInformationMessage("ChainReview: Finding marked as false positive");
     } catch (err: any) {
       vscode.window.showErrorMessage(`ChainReview: Failed to record — ${err.message}`);

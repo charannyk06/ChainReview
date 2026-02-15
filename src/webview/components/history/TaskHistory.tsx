@@ -95,7 +95,7 @@ export function TaskHistory({
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--cr-border)] bg-[var(--cr-bg-primary)] shrink-0">
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--cr-border)] bg-[var(--cr-bg-primary)] shrink-0">
         <button
           onClick={onClose}
           className={cn(
@@ -116,20 +116,20 @@ export function TaskHistory({
       </div>
 
       {/* Search + Filter bar */}
-      <div className="px-3 pt-2 pb-1.5 space-y-2 shrink-0 border-b border-[var(--cr-border-subtle)]">
+      <div className="px-4 pt-2.5 pb-1.5 space-y-2 shrink-0 border-b border-[var(--cr-border-subtle)]">
         <div className="flex items-center gap-2">
           <div className="flex-1 relative">
-            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-[var(--cr-text-ghost)]" />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-[var(--cr-text-ghost)] pointer-events-none" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search reviews..."
               className={cn(
-                "w-full pl-7 pr-3 py-1.5 rounded-md text-[11px]",
-                "bg-transparent border-none",
+                "w-full pl-9 pr-3 py-1.5 rounded-lg text-[11px]",
+                "bg-[var(--cr-bg-secondary)] border border-[var(--cr-border-subtle)]",
                 "text-[var(--cr-text-primary)] placeholder:text-[var(--cr-text-ghost)]",
-                "focus:outline-none focus:bg-[var(--cr-bg-secondary)]",
+                "focus:outline-none focus:border-[var(--cr-border-strong)] focus:bg-[var(--cr-bg-tertiary)]",
                 "transition-colors"
               )}
             />
@@ -210,7 +210,7 @@ export function TaskHistory({
                   transition={{ duration: 0.1 }}
                   onClick={() => onLoadRun(run.id)}
                   className={cn(
-                    "group w-full flex items-start gap-2.5 px-3 py-2.5 text-left cursor-pointer",
+                    "group w-full flex items-start gap-2.5 px-4 py-2.5 text-left cursor-pointer",
                     "hover:bg-[var(--cr-bg-hover)]",
                     "border-b border-[var(--cr-border-subtle)]",
                     "transition-colors duration-100"
