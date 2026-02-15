@@ -175,7 +175,8 @@ export function FindingCard({
 
       {/* Header — always visible */}
       <div
-        className="px-4 pt-3 pb-3 cursor-pointer select-none"
+        style={{ padding: "12px 16px" }}
+        className="cursor-pointer select-none"
         onClick={() => {
           if (selectionMode && onToggleSelect) {
             onToggleSelect(finding.id);
@@ -285,7 +286,7 @@ export function FindingCard({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4 space-y-3" style={{ paddingLeft: 'calc(10px + 0.75rem)' }}>
+            <div className="space-y-3" style={{ padding: "0 16px 16px", paddingLeft: 'calc(10px + 0.75rem)' }}>
               {/* Evidence snippets with proper file headers */}
               {finding.evidence.map((ev, i) => (
                 <div

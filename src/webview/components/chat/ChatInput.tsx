@@ -5,10 +5,9 @@ import {
   GitCompareArrowsIcon,
   LoaderCircleIcon,
   SquareIcon,
-  AtSignIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MentionInput, MentionInputHandle, AVAILABLE_AGENTS } from "./MentionInput";
+import { MentionInput, MentionInputHandle } from "./MentionInput";
 
 interface ChatInputProps {
   onSend: (query: string, agents?: string[], targetPath?: string) => void;
@@ -81,13 +80,15 @@ export function ChatInput({
   }, [currentMentions, onStartDiffReview]);
 
   const hasContent = currentText.trim().length > 0;
-  const hasMentions = currentMentions.length > 0;
 
   return (
-    <div style={{ margin: "4px 12px 12px 12px" }} className={cn("flex-shrink-0", className)}>
-      {/* Review progress bar */}
+    <div style={{ padding: "0 12px 12px 12px" }} className={cn("flex-shrink-0", className)}>
+      {/* ── Review Status Bar (above input, separate from the card) ── */}
       {isReviewing && (
-        <div className="flex items-center justify-between px-3 py-2 mb-2.5 rounded-lg bg-[var(--cr-accent-subtle)] border border-[var(--cr-border-subtle)]">
+        <div
+          style={{ padding: "8px 12px", marginBottom: 8 }}
+          className="flex items-center justify-between rounded-xl bg-[var(--cr-accent-subtle)] border border-[var(--cr-border-subtle)]"
+        >
           <div className="flex items-center gap-2">
             <LoaderCircleIcon className="size-3.5 text-[var(--cr-accent)] animate-spin" />
             <span className="text-[11px] text-[var(--cr-accent-hover)] font-medium">
@@ -95,77 +96,64 @@ export function ChatInput({
             </span>
           </div>
           {onCancelReview && (
-            <button onClick={onCancelReview} className="cr-btn cr-btn-xs cr-btn-red">
-              <SquareIcon className="size-2 fill-current" />
+            <button
+              onClick={onCancelReview}
+              style={{ padding: "3px 10px" }}
+              className="flex items-center gap-1.5 text-[10px] font-semibold rounded-lg bg-red-500/15 text-red-400 border border-red-500/25 hover:bg-red-500/25 transition-colors"
+            >
+              <SquareIcon className="size-2.5 fill-current" />
               Stop
             </button>
           )}
         </div>
       )}
 
-      {/* Agent badges when mentioned */}
-      {hasMentions && !isReviewing && (
-        <div className="flex items-center gap-1.5 px-1 pb-2">
-          <span className="text-[10px] text-[var(--cr-text-muted)]">Agents:</span>
-          {currentMentions.map((agentId) => {
-            const agent = AVAILABLE_AGENTS.find((a) => a.id === agentId);
-            if (!agent) return null;
-            return (
-              <div
-                key={agentId}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.06]"
-              >
-                <span className="text-[var(--cr-text-secondary)] [&>svg]:size-3">{agent.icon}</span>
-                <span className="text-[10px] font-medium text-[var(--cr-text-secondary)]">
-                  {agent.name}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Input card ── */}
-      <div className={cn(
-        "rounded-2xl border border-[var(--cr-border)] bg-[var(--cr-bg-secondary)]",
-        "focus-within:border-[var(--cr-border-strong)]",
-        "transition-colors duration-150",
-      )}>
+      {/* ── Input Card — Claude Code style ── */}
+      <div
+        style={{
+          borderRadius: 16,
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "#1a1a1a",
+          overflow: "hidden",
+          transition: "border-color 150ms ease",
+        }}
+        className="focus-within:!border-[rgba(255,255,255,0.14)]"
+      >
         {/* Text area */}
-        <div className="relative">
-          <MentionInput
-            ref={mentionRef}
-            disabled={disabled || isReviewing}
-            placeholder={
-              isReviewing
-                ? "Review in progress..."
-                : hasMessages
-                  ? "Add a follow up..."
-                  : "Ask about your codebase..."
-            }
-            onSubmit={handleSubmit}
-            onChange={handleChange}
-          />
-        </div>
+        <MentionInput
+          ref={mentionRef}
+          disabled={disabled || isReviewing}
+          placeholder={
+            isReviewing
+              ? "Review in progress..."
+              : hasMessages
+                ? "Add a follow up..."
+                : "Ask about your codebase..."
+          }
+          onSubmit={handleSubmit}
+          onChange={handleChange}
+        />
+
+        {/* ── Divider line ── */}
+        <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "0" }} />
 
         {/* ── Toolbar row ── */}
-        <div className="flex items-center justify-between px-3 pb-2.5 pt-0.5">
+        <div
+          style={{ padding: "6px 10px" }}
+          className="flex items-center justify-between"
+        >
           {/* Left: action buttons */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             {onStartRepoReview && !isReviewing && (
               <button
                 onClick={handleRepoReview}
                 disabled={disabled}
                 title="Full repo review"
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-lg",
-                  "text-[10px] font-medium text-[var(--cr-text-muted)]",
-                  "hover:text-[var(--cr-text-secondary)] hover:bg-white/[0.04]",
-                  "transition-colors disabled:opacity-35"
-                )}
+                style={{ padding: "5px 8px", borderRadius: 8 }}
+                className="flex items-center gap-1.5 text-[10.5px] font-medium text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] hover:bg-white/[0.04] transition-colors disabled:opacity-35"
               >
-                <FolderSearchIcon className="size-3.5" />
-                {hasMentions ? "Review" : "Repo"}
+                <FolderSearchIcon style={{ width: 14, height: 14 }} />
+                Repo
               </button>
             )}
             {onStartDiffReview && !isReviewing && (
@@ -173,51 +161,58 @@ export function ChatInput({
                 onClick={handleDiffReview}
                 disabled={disabled}
                 title="Review git diff"
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-lg",
-                  "text-[10px] font-medium text-[var(--cr-text-muted)]",
-                  "hover:text-[var(--cr-text-secondary)] hover:bg-white/[0.04]",
-                  "transition-colors disabled:opacity-35"
-                )}
+                style={{ padding: "5px 8px", borderRadius: 8 }}
+                className="flex items-center gap-1.5 text-[10.5px] font-medium text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] hover:bg-white/[0.04] transition-colors disabled:opacity-35"
               >
-                <GitCompareArrowsIcon className="size-3.5" />
+                <GitCompareArrowsIcon style={{ width: 14, height: 14 }} />
                 Diff
               </button>
             )}
           </div>
 
-          {/* Right: stop/send button */}
+          {/* Right: hints + send */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-[var(--cr-text-ghost)] select-none">
-              {isReviewing ? "" : hasContent ? "" : "@ agents"}
-            </span>
-            {isReviewing && onCancelReview ? (
-              <button
-                onClick={onCancelReview}
-                className={cn(
-                  "flex items-center justify-center size-7 rounded-lg",
-                  "bg-red-500/15 text-red-400 hover:bg-red-500/25",
-                  "transition-all duration-100 active:scale-90",
-                )}
-                title="Stop review"
-              >
-                <SquareIcon className="size-3 fill-current" />
-              </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={disabled || isReviewing || !hasContent}
-                className={cn(
-                  "flex items-center justify-center size-7 rounded-lg",
-                  "transition-all duration-100 active:scale-90",
-                  hasContent && !isReviewing
-                    ? "bg-[var(--cr-text-primary)] text-[var(--cr-bg-root)] hover:opacity-90"
-                    : "bg-white/[0.06] text-[var(--cr-text-ghost)] cursor-default",
-                )}
-              >
-                <ArrowUpIcon className="size-4" strokeWidth={2} />
-              </button>
+            {!isReviewing && !hasContent && (
+              <span className="text-[10px] text-[var(--cr-text-ghost)] select-none">
+                @ agents
+              </span>
             )}
+            {/* Slash hint */}
+            {!isReviewing && !hasContent && (
+              <span className="text-[10px] text-[var(--cr-text-ghost)] select-none">/</span>
+            )}
+            {/* Send button */}
+            <button
+              onClick={isReviewing && onCancelReview ? onCancelReview : handleSubmit}
+              disabled={!isReviewing && (disabled || !hasContent)}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 100ms ease",
+                border: "none",
+                cursor: (!isReviewing && !hasContent) ? "default" : "pointer",
+                background: isReviewing
+                  ? "rgba(239, 68, 68, 0.15)"
+                  : hasContent
+                    ? "#e5e5e5"
+                    : "rgba(255,255,255,0.06)",
+                color: isReviewing
+                  ? "#f87171"
+                  : hasContent
+                    ? "#0f0f0f"
+                    : "rgba(255,255,255,0.15)",
+              }}
+            >
+              {isReviewing ? (
+                <SquareIcon style={{ width: 12, height: 12 }} className="fill-current" />
+              ) : (
+                <ArrowUpIcon style={{ width: 16, height: 16 }} strokeWidth={2.5} />
+              )}
+            </button>
           </div>
         </div>
       </div>

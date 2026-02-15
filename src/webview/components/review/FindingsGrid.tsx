@@ -317,7 +317,7 @@ export function FindingsGrid({
 
       {/* ═══ Findings List ═══ */}
       <div className="flex-1 overflow-y-auto cr-scrollbar">
-        <div style={{ padding: "8px 16px" }} className="flex flex-col">
+        <div style={{ padding: "8px 0" }} className="flex flex-col">
           {filtered.map((finding, i) => (
             <motion.div
               key={finding.id}
