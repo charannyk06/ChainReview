@@ -17,7 +17,6 @@ import {
   ChevronRightIcon,
   LoaderCircleIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { ExtBadge } from "@/components/shared/FileReference";
 import { useOpenFile } from "@/contexts/OpenFileContext";
 import type { ToolCallBlock, ToolIcon } from "@/lib/types";
@@ -26,7 +25,7 @@ interface ToolCallRowProps {
   block: ToolCallBlock;
 }
 
-const ICON_MAP: Record<ToolIcon, React.FC<{ className?: string }>> = {
+const ICON_MAP: Record<ToolIcon, React.FC<{ style?: React.CSSProperties }>> = {
   search: SearchIcon,
   file: FileIcon,
   tree: FolderTreeIcon,
@@ -56,6 +55,7 @@ function getFilePathFromArgs(args: Record<string, unknown>): string | null {
 
 export function ToolCallRow({ block }: ToolCallRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const openFile = useOpenFile();
   const IconComponent = ICON_MAP[block.icon] || TerminalIcon;
 
@@ -69,49 +69,83 @@ export function ToolCallRow({ block }: ToolCallRowProps) {
     block.argsSummary.includes("/") || block.argsSummary.includes(".")
   ) && !block.argsSummary.includes(" ");
 
+  const bgColor = isRunning
+    ? "var(--cr-accent-subtle)"
+    : isError
+      ? "var(--cr-error-muted)"
+      : hovered
+        ? "var(--cr-bg-hover)"
+        : "transparent";
+
   return (
-    <div className="my-px">
+    <div style={{ margin: "1px 0" }}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-[5px] rounded-md text-left transition-all duration-100 group",
-          "hover:bg-[var(--cr-bg-hover)]",
-          isRunning && "bg-[var(--cr-accent-subtle)]",
-          isError && "bg-[var(--cr-error-muted)]"
-        )}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "5px 8px",
+          borderRadius: 6,
+          textAlign: "left",
+          transition: "all 100ms ease",
+          background: bgColor,
+          border: "none",
+          cursor: "pointer",
+        }}
       >
         {/* Status dot */}
         {isRunning && (
-          <LoaderCircleIcon className="size-3 text-[var(--cr-accent)] animate-spin shrink-0" />
+          <LoaderCircleIcon style={{
+            width: 12, height: 12, color: "var(--cr-accent)",
+            flexShrink: 0, animation: "spin 1s linear infinite",
+          }} />
         )}
         {isDone && (
-          <div className="size-3 shrink-0 flex items-center justify-center">
-            <div className="size-1.5 rounded-full bg-emerald-500/60" />
+          <div style={{
+            width: 12, height: 12, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: 9999,
+              background: "rgba(16,185,129,0.60)",
+            }} />
           </div>
         )}
         {isError && (
-          <CircleXIcon className="size-3 text-red-400/70 shrink-0" />
+          <CircleXIcon style={{ width: 12, height: 12, color: "rgba(248,113,113,0.70)", flexShrink: 0 }} />
         )}
 
         {/* Tool icon */}
         {isFileTool && (filePath || argsSummaryIsPath) ? (
           <ExtBadge filePath={filePath || block.argsSummary} />
         ) : (
-          <IconComponent className="size-3 text-[var(--cr-text-muted)] shrink-0" />
+          <IconComponent style={{ width: 12, height: 12, color: "var(--cr-text-muted)", flexShrink: 0 }} />
         )}
 
-        <span className="text-[11px] font-medium text-[var(--cr-text-secondary)] truncate">
+        <span style={{
+          fontSize: 11, fontWeight: 500, color: "var(--cr-text-secondary)",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
           {block.displayName}
         </span>
 
         {block.argsSummary && (
           <span
-            className={cn(
-              "text-[10px] truncate flex-1 min-w-0",
-              isFileTool && (filePath || argsSummaryIsPath)
-                ? "text-indigo-400/80 hover:text-indigo-300 cursor-pointer font-mono"
-                : "text-[var(--cr-text-muted)]"
-            )}
+            style={{
+              fontSize: 10,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+              minWidth: 0,
+              ...(isFileTool && (filePath || argsSummaryIsPath)
+                ? { color: "rgba(129,140,248,0.80)", cursor: "pointer", fontFamily: "var(--cr-font-mono)" }
+                : { color: "var(--cr-text-muted)" }),
+            }}
             onClick={(e) => {
               if (isFileTool && (filePath || argsSummaryIsPath)) {
                 e.stopPropagation();
@@ -125,10 +159,14 @@ export function ToolCallRow({ block }: ToolCallRowProps) {
         )}
 
         <ChevronRightIcon
-          className={cn(
-            "size-2.5 text-[var(--cr-text-ghost)] transition-transform shrink-0 opacity-0 group-hover:opacity-100",
-            expanded && "rotate-90"
-          )}
+          style={{
+            width: 10, height: 10,
+            color: "var(--cr-text-ghost)",
+            transition: "transform 150ms ease",
+            flexShrink: 0,
+            opacity: hovered ? 1 : 0,
+            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+          }}
         />
       </button>
 
@@ -139,21 +177,40 @@ export function ToolCallRow({ block }: ToolCallRowProps) {
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.12 }}
-            className="overflow-hidden"
+            style={{ overflow: "hidden" }}
           >
-            <div className="px-2.5 py-1.5 ml-5 mt-0.5 text-[10px] font-mono rounded-md bg-[var(--cr-bg-secondary)] border border-[var(--cr-border-subtle)]">
+            <div style={{
+              padding: "6px 10px",
+              marginLeft: 20,
+              marginTop: 2,
+              fontSize: 10,
+              fontFamily: "var(--cr-font-mono)",
+              borderRadius: 6,
+              background: "var(--cr-bg-secondary)",
+              border: "1px solid var(--cr-border-subtle)",
+            }}>
               {Object.keys(block.args).length > 0 && (
-                <div className="mb-1">
-                  <span className="text-[var(--cr-text-muted)]">args:</span>
-                  <pre className="text-[var(--cr-text-tertiary)] whitespace-pre-wrap mt-0.5">
+                <div style={{ marginBottom: 4 }}>
+                  <span style={{ color: "var(--cr-text-muted)" }}>args:</span>
+                  <pre style={{
+                    color: "var(--cr-text-tertiary)",
+                    whiteSpace: "pre-wrap",
+                    marginTop: 2, margin: 0,
+                  }}>
                     {JSON.stringify(block.args, null, 2)}
                   </pre>
                 </div>
               )}
               {block.result && (
                 <div>
-                  <span className="text-[var(--cr-text-muted)]">result:</span>
-                  <pre className="text-[var(--cr-text-tertiary)] whitespace-pre-wrap mt-0.5 max-h-24 overflow-y-auto">
+                  <span style={{ color: "var(--cr-text-muted)" }}>result:</span>
+                  <pre style={{
+                    color: "var(--cr-text-tertiary)",
+                    whiteSpace: "pre-wrap",
+                    marginTop: 2, margin: 0,
+                    maxHeight: 96,
+                    overflowY: "auto",
+                  }}>
                     {block.result.length > 400
                       ? block.result.slice(0, 400) + "..."
                       : block.result}

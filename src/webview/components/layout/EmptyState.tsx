@@ -62,18 +62,7 @@ export function EmptyState({
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 36, position: "relative", zIndex: 1 }}>
         {/* Logo + Brand */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-          <div style={{
-            width: 72,
-            height: 72,
-            borderRadius: 18,
-            background: "linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.08) 100%)",
-            border: "1px solid rgba(99,102,241,0.18)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}>
-            <ChainReviewLogo size={42} />
-          </div>
+          <ChainReviewLogo size={56} />
           <div style={{ textAlign: "center" }}>
             <h1 style={{
               fontSize: 22,

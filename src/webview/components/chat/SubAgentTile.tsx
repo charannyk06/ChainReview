@@ -12,11 +12,10 @@ import {
   WrenchIcon,
   AlertTriangleIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { getAgentConfig } from "@/lib/constants";
+import { getAgentConfig, getAgentInlineColors } from "@/lib/constants";
 import type { AgentName } from "@/lib/types";
 
-const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
+const AGENT_ICONS: Record<AgentName, React.FC<{ style?: React.CSSProperties }>> = {
   architecture: LandmarkIcon,
   security: ShieldAlertIcon,
   bugs: BugIcon,
@@ -35,82 +34,108 @@ interface SubAgentTileProps {
 
 export function SubAgentTile({ agent, event, message, toolCount, findingCount }: SubAgentTileProps) {
   const config = getAgentConfig(agent);
+  const colors = getAgentInlineColors(agent);
   const AgentIcon = AGENT_ICONS[agent] || BotIcon;
 
   const isActive = event === "started";
   const isDone = event === "completed";
   const isError = event === "error";
 
+  const iconColor = isActive ? colors.color
+    : isDone ? "rgba(52,211,153,0.80)"
+    : isError ? "rgba(248,113,113,0.80)"
+    : "var(--cr-text-ghost)";
+
+  const iconBg = isActive ? colors.bgColor
+    : isDone ? "rgba(16,185,129,0.10)"
+    : isError ? "rgba(239,68,68,0.10)"
+    : "transparent";
+
+  const nameColor = isActive ? colors.color
+    : isDone ? "rgba(110,231,183,0.80)"
+    : isError ? "rgba(252,165,165,0.80)"
+    : "var(--cr-text-muted)";
+
   return (
-    <div className="flex items-center gap-2 py-1.5">
-      {/* Agent icon — small circle */}
-      <div
-        className={cn(
-          "flex items-center justify-center size-5 rounded-md shrink-0",
-          isActive && config.bgColor,
-          isDone && "bg-emerald-500/10",
-          isError && "bg-red-500/10"
-        )}
-      >
-        <AgentIcon
-          className={cn(
-            "size-3",
-            isActive && config.color,
-            isDone && "text-emerald-400/80",
-            isError && "text-red-400/80"
-          )}
-        />
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "6px 0",
+    }}>
+      {/* Agent icon — small rounded square */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 20,
+        height: 20,
+        borderRadius: 6,
+        flexShrink: 0,
+        background: iconBg,
+      }}>
+        <AgentIcon style={{ width: 12, height: 12, color: iconColor }} />
       </div>
 
       {/* Agent name */}
-      <span
-        className={cn(
-          "text-[11px] font-semibold",
-          isActive && config.color,
-          isDone && "text-emerald-300/80",
-          isError && "text-red-300/80"
-        )}
-      >
+      <span style={{
+        fontSize: 11,
+        fontWeight: 600,
+        color: nameColor,
+      }}>
         {config.shortLabel}
       </span>
 
       {/* Status text — subtle */}
       {message && (
         <>
-          <span className="text-[var(--cr-text-ghost)]">&middot;</span>
-          <span className="text-[10px] text-[var(--cr-text-muted)] truncate min-w-0">
+          <span style={{ color: "var(--cr-text-ghost)" }}>&middot;</span>
+          <span style={{
+            fontSize: 10,
+            color: "var(--cr-text-muted)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            minWidth: 0,
+          }}>
             {message}
           </span>
         </>
       )}
 
       {/* Spacer */}
-      <div className="flex-1" />
+      <div style={{ flex: 1 }} />
 
       {/* Stats badges — compact */}
       {toolCount != null && toolCount > 0 && (
-        <div className="flex items-center gap-0.5 text-[var(--cr-text-ghost)]">
-          <WrenchIcon className="size-2.5" />
-          <span className="text-[9px] font-mono tabular-nums">{toolCount}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 2, color: "var(--cr-text-ghost)" }}>
+          <WrenchIcon style={{ width: 10, height: 10 }} />
+          <span style={{ fontSize: 9, fontFamily: "var(--cr-font-mono)", fontVariantNumeric: "tabular-nums" }}>{toolCount}</span>
         </div>
       )}
 
       {findingCount != null && findingCount > 0 && (
-        <div className="flex items-center gap-0.5 text-amber-400/60">
-          <AlertTriangleIcon className="size-2.5" />
-          <span className="text-[9px] font-mono tabular-nums">{findingCount}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 2, color: "rgba(251,191,36,0.60)" }}>
+          <AlertTriangleIcon style={{ width: 10, height: 10 }} />
+          <span style={{ fontSize: 9, fontFamily: "var(--cr-font-mono)", fontVariantNumeric: "tabular-nums" }}>{findingCount}</span>
         </div>
       )}
 
       {/* Spinner / Done / Error */}
       {isActive && (
-        <LoaderCircleIcon className="size-3 text-[var(--cr-text-muted)] animate-spin shrink-0" />
+        <LoaderCircleIcon style={{
+          width: 12,
+          height: 12,
+          color: "var(--cr-text-muted)",
+          animation: "spin 1s linear infinite",
+          flexShrink: 0,
+        }} />
       )}
       {isDone && (
-        <CheckCircle2Icon className="size-3 text-emerald-400/60 shrink-0" />
+        <CheckCircle2Icon style={{ width: 12, height: 12, color: "rgba(52,211,153,0.60)", flexShrink: 0 }} />
       )}
       {isError && (
-        <CircleXIcon className="size-3 text-red-400/60 shrink-0" />
+        <CircleXIcon style={{ width: 12, height: 12, color: "rgba(248,113,113,0.60)", flexShrink: 0 }} />
       )}
     </div>
   );

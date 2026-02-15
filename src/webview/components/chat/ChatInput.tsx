@@ -6,7 +6,6 @@ import {
   LoaderCircleIcon,
   SquareIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { MentionInput, MentionInputHandle } from "./MentionInput";
 
 interface ChatInputProps {
@@ -17,7 +16,6 @@ interface ChatInputProps {
   disabled?: boolean;
   isReviewing?: boolean;
   hasMessages?: boolean;
-  className?: string;
 }
 
 const VALID_REVIEW_AGENTS = new Set(["security", "architecture", "bugs"]);
@@ -35,7 +33,6 @@ export function ChatInput({
   disabled = false,
   isReviewing = false,
   hasMessages = false,
-  className,
 }: ChatInputProps) {
   const mentionRef = useRef<MentionInputHandle>(null);
   const [currentText, setCurrentText] = useState("");
@@ -82,7 +79,7 @@ export function ChatInput({
   const hasContent = currentText.trim().length > 0;
 
   return (
-    <div style={{ padding: "0 12px 12px 12px", flexShrink: 0 }} className={cn(className)}>
+    <div style={{ padding: "0 12px 12px 12px", flexShrink: 0 }}>
       {/* ── Review Status Bar ── */}
       {isReviewing && (
         <div
@@ -153,7 +150,6 @@ export function ChatInput({
           overflow: "hidden",
           transition: "border-color 150ms ease",
         }}
-        className="focus-within:!border-[rgba(255,255,255,0.14)]"
       >
         {/* Text area */}
         <MentionInput

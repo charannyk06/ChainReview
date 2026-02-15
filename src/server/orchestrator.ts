@@ -116,7 +116,7 @@ export async function runReview(
     emitEvent("evidence_collected", undefined, {
       kind: "pipeline_step",
       step: "pattern_scan",
-      message: "Running Semgrep scan (30s timeout)...",
+      message: "Running Semgrep scan...",
     });
     let semgrepResults;
     try {

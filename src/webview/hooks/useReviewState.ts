@@ -13,6 +13,7 @@ import type {
   ValidatorVerdict,
   ValidationResult,
   ReviewRunSummary,
+  AgentName,
 } from "../lib/types";
 
 const initialState: ReviewState = {
@@ -70,7 +71,7 @@ function reducer(state: ReviewState, action: Action): ReviewState {
 
     case "ADD_BLOCK": {
       const block = action.block;
-      const targetAgent = action.agent; // Agent routing info from extension
+      const targetAgent = action.agent || "system"; // Agent routing info from extension; default to "system" if unset
       const msgs = [...state.messages];
 
       // SubAgentEvent "started" creates a new assistant message for that agent
@@ -141,7 +142,7 @@ function reducer(state: ReviewState, action: Action): ReviewState {
         msgs.push({
           id: crypto.randomUUID(),
           role: "assistant",
-          agent: targetAgent as any,
+          agent: targetAgent as AgentName,
           blocks: [block],
           status: "streaming",
           timestamp: block.timestamp,

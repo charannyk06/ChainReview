@@ -25,8 +25,7 @@ import {
   GlobeIcon,
   MessageSquareIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { getAgentConfig } from "@/lib/constants";
+import { getAgentConfig, getAgentInlineColors } from "@/lib/constants";
 import { ToolCallRow } from "./ToolCallRow";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { MarkdownBlock } from "./MarkdownBlock";
@@ -56,7 +55,7 @@ interface ConversationMessageViewProps {
 }
 
 /** Agent icons — safe fallback */
-const AGENT_ICONS: Record<string, React.FC<{ className?: string }>> = {
+const AGENT_ICONS: Record<string, React.FC<{ style?: React.CSSProperties }>> = {
   architecture: LandmarkIcon,
   security: ShieldAlertIcon,
   bugs: BugIcon,
@@ -86,7 +85,7 @@ function renderInnerBlock(block: ContentBlock) {
 }
 
 /** Tool icon map for collapsed summary */
-const TOOL_ICON_MAP: Record<ToolIcon, React.FC<{ className?: string }>> = {
+const TOOL_ICON_MAP: Record<ToolIcon, React.FC<{ style?: React.CSSProperties }>> = {
   search: SearchIcon,
   file: FileIcon,
   tree: FolderTreeIcon,
@@ -135,6 +134,7 @@ export function ChatMessage({
 
   const shouldCollapse = isAgentMessage && isComplete && summary.toolCalls > 0;
   const [expanded, setExpanded] = useState(!isComplete);
+  const [headerHovered, setHeaderHovered] = useState(false);
 
   // Auto-collapse when agent finishes
   useEffect(() => {
@@ -154,16 +154,30 @@ export function ChatMessage({
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className="py-2"
+        style={{ padding: "8px 0" }}
       >
-        <div className="flex justify-end">
-          <div style={{ padding: "14px 16px" }} className="max-w-[85%] rounded-2xl bg-white/[0.06]">
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div style={{
+            padding: "14px 16px",
+            maxWidth: "85%",
+            borderRadius: 16,
+            background: "rgba(255,255,255,0.06)",
+          }}>
             {hasMarkdown ? (
-              <div className="text-[13px] text-[var(--cr-text-primary)] leading-[1.65] [&_h1]:text-[14px] [&_h2]:text-[13.5px] [&_h3]:text-[13px] [&_p]:text-[13px] [&_li]:text-[13px] [&_code]:text-[12px]">
+              <div style={{
+                fontSize: 13,
+                color: "var(--cr-text-primary)",
+                lineHeight: 1.65,
+              }}>
                 <MarkdownBlock text={userText} />
               </div>
             ) : (
-              <p className="text-[13px] text-[var(--cr-text-primary)] leading-[1.65]">
+              <p style={{
+                fontSize: 13,
+                color: "var(--cr-text-primary)",
+                lineHeight: 1.65,
+                margin: 0,
+              }}>
                 {userText}
               </p>
             )}
@@ -198,87 +212,104 @@ export function ChatMessage({
   if (isAgentMessage && startedBlock) {
     const agentName = startedBlock.agent;
     const config = getAgentConfig(agentName);
+    const colors = getAgentInlineColors(agentName);
     const AgentIcon = AGENT_ICONS[agentName] || BotIcon;
     const isActive = !completedBlock || completedBlock.event === "started";
     const isDone = completedBlock?.event === "completed";
     const isError = completedBlock?.event === "error";
+
+    const agentColor = isActive ? colors.color
+      : isDone ? "rgba(52,211,153,0.60)"
+      : isError ? "rgba(248,113,113,0.60)"
+      : "var(--cr-text-ghost)";
+
+    const labelColor = isActive ? colors.color
+      : isDone ? "rgba(52,211,153,0.50)"
+      : isError ? "rgba(248,113,113,0.50)"
+      : "var(--cr-text-ghost)";
 
     return (
       <motion.div
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className="py-0.5"
+        style={{ padding: "2px 0" }}
       >
         {/* Agent label divider — small inline label, not a tile */}
         <button
-          className={cn(
-            "flex items-center gap-1.5 py-1 text-left rounded-md transition-colors duration-100",
-            shouldCollapse && "cursor-pointer hover:opacity-80"
-          )}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: 4,
+            textAlign: "left",
+            borderRadius: 6,
+            transition: "opacity 100ms ease",
+            cursor: shouldCollapse ? "pointer" : "default",
+            opacity: headerHovered && shouldCollapse ? 0.80 : 1,
+            background: "transparent",
+            border: "none",
+          }}
           onClick={() => shouldCollapse && setExpanded(!expanded)}
+          onMouseEnter={() => setHeaderHovered(true)}
+          onMouseLeave={() => setHeaderHovered(false)}
         >
-          <AgentIcon
-            className={cn(
-              "size-3 shrink-0",
-              isActive && config.color,
-              isDone && "text-emerald-400/60",
-              isError && "text-red-400/60"
-            )}
-          />
-          <span
-            className={cn(
-              "text-[10px] font-semibold uppercase tracking-wider",
-              isActive && config.color,
-              isDone && "text-emerald-400/50",
-              isError && "text-red-400/50"
-            )}
-          >
+          <AgentIcon style={{ width: 12, height: 12, flexShrink: 0, color: agentColor }} />
+          <span style={{
+            fontSize: 10,
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            color: labelColor,
+          }}>
             {config.shortLabel}
           </span>
 
           {/* Status indicator */}
           {isActive && (
-            <LoaderCircleIcon className="size-2.5 text-[var(--cr-text-ghost)] animate-spin" />
+            <LoaderCircleIcon style={{
+              width: 10,
+              height: 10,
+              color: "var(--cr-text-ghost)",
+              animation: "spin 1s linear infinite",
+            }} />
           )}
           {isDone && (
-            <CheckCircle2Icon className="size-2.5 text-emerald-400/40" />
+            <CheckCircle2Icon style={{ width: 10, height: 10, color: "rgba(52,211,153,0.40)" }} />
           )}
           {isError && (
-            <CircleXIcon className="size-2.5 text-red-400/40" />
+            <CircleXIcon style={{ width: 10, height: 10, color: "rgba(248,113,113,0.40)" }} />
           )}
 
           {/* Collapse chevron — only when collapsible */}
           {shouldCollapse && (
-            <ChevronRightIcon
-              className={cn(
-                "size-2.5 text-[var(--cr-text-ghost)] transition-transform duration-150",
-                expanded && "rotate-90"
-              )}
-            />
+            <ChevronRightIcon style={{
+              width: 10,
+              height: 10,
+              color: "var(--cr-text-ghost)",
+              transition: "transform 150ms ease",
+              transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+            }} />
           )}
         </button>
 
         {/* Collapsed summary — tool/message count + unique tool icons */}
         {shouldCollapse && !expanded && (
-          <div className="flex items-center gap-2 pl-[18px] pb-1">
-            <span className="text-[10px] text-[var(--cr-text-ghost)]">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 18, paddingBottom: 4 }}>
+            <span style={{ fontSize: 10, color: "var(--cr-text-ghost)" }}>
               {summary.toolCalls} tool call{summary.toolCalls !== 1 ? "s" : ""}
               {summary.messages > 0 && `, ${summary.messages} message${summary.messages !== 1 ? "s" : ""}`}
             </span>
             {summary.uniqueIcons.length > 0 && (
-              <div className="flex items-center gap-1">
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 {summary.uniqueIcons.map((icon) => {
                   const Ic = TOOL_ICON_MAP[icon];
                   return Ic ? (
-                    <Ic
-                      key={icon}
-                      className="size-3 text-[var(--cr-text-ghost)]"
-                    />
+                    <Ic key={icon} style={{ width: 12, height: 12, color: "var(--cr-text-ghost)" }} />
                   ) : null;
                 })}
                 {summary.messages > 0 && (
-                  <MessageSquareIcon className="size-3 text-[var(--cr-text-ghost)]" />
+                  <MessageSquareIcon style={{ width: 12, height: 12, color: "var(--cr-text-ghost)" }} />
                 )}
               </div>
             )}
@@ -293,9 +324,9 @@ export function ChatMessage({
               animate={{ height: "auto", opacity: 1 }}
               exit={shouldCollapse ? { height: 0, opacity: 0 } : undefined}
               transition={{ duration: 0.15 }}
-              className="overflow-hidden"
+              style={{ overflow: "hidden" }}
             >
-              <div className="flex flex-col gap-1">
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {innerBlocks.map((block) => renderInnerBlock(block))}
               </div>
             </motion.div>
@@ -303,7 +334,7 @@ export function ChatMessage({
         </AnimatePresence>
 
         {message.status === "streaming" && (
-          <div className="mt-1">
+          <div style={{ marginTop: 4 }}>
             <TextShimmer />
           </div>
         )}
@@ -317,9 +348,9 @@ export function ChatMessage({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="py-1.5"
+      style={{ padding: "6px 0" }}
     >
-      <div className="flex flex-col gap-2.5">
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {message.blocks.map((block) => renderInnerBlock(block))}
         {message.status === "streaming" && <TextShimmer />}
       </div>

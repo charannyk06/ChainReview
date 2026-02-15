@@ -1,5 +1,3 @@
-import { cn } from "@/lib/utils";
-
 interface MarkdownBlockProps {
   text: string;
   className?: string;
@@ -8,7 +6,7 @@ interface MarkdownBlockProps {
 /**
  * Lightweight markdown renderer supporting bold, code, headers, lists, and code blocks.
  */
-export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
+export function MarkdownBlock({ text }: MarkdownBlockProps) {
   const lines = text.split("\n");
   const elements: JSX.Element[] = [];
   let i = 0;
@@ -29,10 +27,29 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
       elements.push(
         <pre
           key={elements.length}
-          className="my-2.5 px-4 py-3 rounded-xl bg-[var(--cr-bg-tertiary)] border border-[var(--cr-border-subtle)] text-[11.5px] font-mono text-[var(--cr-text-secondary)] overflow-x-auto leading-relaxed"
+          style={{
+            margin: "10px 0",
+            padding: "12px 16px",
+            borderRadius: 12,
+            background: "var(--cr-bg-tertiary)",
+            border: "1px solid var(--cr-border-subtle)",
+            fontSize: 11.5,
+            fontFamily: "var(--cr-font-mono)",
+            color: "var(--cr-text-secondary)",
+            overflowX: "auto",
+            lineHeight: 1.6,
+          }}
         >
           {lang && (
-            <span className="text-[9px] text-[var(--cr-text-ghost)] block mb-1.5 uppercase tracking-wider font-semibold">{lang}</span>
+            <span style={{
+              fontSize: 9,
+              color: "var(--cr-text-ghost)",
+              display: "block",
+              marginBottom: 6,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              fontWeight: 600,
+            }}>{lang}</span>
           )}
           {codeLines.join("\n")}
         </pre>
@@ -43,7 +60,13 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
     // Headers
     if (line.startsWith("### ")) {
       elements.push(
-        <h3 key={elements.length} className="text-[13px] font-semibold text-[var(--cr-text-primary)] mt-4 mb-1">
+        <h3 key={elements.length} style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: "var(--cr-text-primary)",
+          marginTop: 16,
+          marginBottom: 4,
+        }}>
           {renderInline(line.slice(4))}
         </h3>
       );
@@ -52,7 +75,13 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
     }
     if (line.startsWith("## ")) {
       elements.push(
-        <h2 key={elements.length} className="text-[13.5px] font-bold text-[var(--cr-text-primary)] mt-4 mb-1">
+        <h2 key={elements.length} style={{
+          fontSize: 13.5,
+          fontWeight: 700,
+          color: "var(--cr-text-primary)",
+          marginTop: 16,
+          marginBottom: 4,
+        }}>
           {renderInline(line.slice(3))}
         </h2>
       );
@@ -63,9 +92,23 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
     // Bullet lists
     if (line.match(/^[-*]\s/)) {
       elements.push(
-        <div key={elements.length} className="flex gap-2.5 ml-1 py-0.5">
-          <span className="text-[var(--cr-text-ghost)] text-[13px] select-none leading-[1.65]">•</span>
-          <span className="text-[13px] text-[var(--cr-text-secondary)] leading-[1.65]">
+        <div key={elements.length} style={{
+          display: "flex",
+          gap: 10,
+          marginLeft: 4,
+          padding: "2px 0",
+        }}>
+          <span style={{
+            color: "var(--cr-text-ghost)",
+            fontSize: 13,
+            userSelect: "none",
+            lineHeight: 1.65,
+          }}>&#8226;</span>
+          <span style={{
+            fontSize: 13,
+            color: "var(--cr-text-secondary)",
+            lineHeight: 1.65,
+          }}>
             {renderInline(line.slice(2))}
           </span>
         </div>
@@ -76,21 +119,26 @@ export function MarkdownBlock({ text, className }: MarkdownBlockProps) {
 
     // Empty lines — paragraph break
     if (line.trim() === "") {
-      elements.push(<div key={elements.length} className="h-3" />);
+      elements.push(<div key={elements.length} style={{ height: 12 }} />);
       i++;
       continue;
     }
 
     // Regular paragraph
     elements.push(
-      <p key={elements.length} className="text-[13px] text-[var(--cr-text-secondary)] leading-[1.7]">
+      <p key={elements.length} style={{
+        fontSize: 13,
+        color: "var(--cr-text-secondary)",
+        lineHeight: 1.7,
+        margin: 0,
+      }}>
         {renderInline(line)}
       </p>
     );
     i++;
   }
 
-  return <div className={cn("space-y-1", className)}>{elements}</div>;
+  return <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{elements}</div>;
 }
 
 function renderInline(text: string): (string | JSX.Element)[] {
@@ -109,7 +157,7 @@ function renderInline(text: string): (string | JSX.Element)[] {
     if (match[2]) {
       // Bold
       result.push(
-        <strong key={key++} className="font-semibold text-[var(--cr-text-primary)]">
+        <strong key={key++} style={{ fontWeight: 600, color: "var(--cr-text-primary)" }}>
           {match[2]}
         </strong>
       );
@@ -118,7 +166,15 @@ function renderInline(text: string): (string | JSX.Element)[] {
       result.push(
         <code
           key={key++}
-          className="px-1.5 py-0.5 rounded-md bg-[var(--cr-bg-tertiary)] text-[12px] font-mono text-amber-300/90 border border-[var(--cr-border-subtle)]"
+          style={{
+            padding: "2px 6px",
+            borderRadius: 6,
+            background: "var(--cr-bg-tertiary)",
+            fontSize: 12,
+            fontFamily: "var(--cr-font-mono)",
+            color: "rgba(252,211,77,0.90)",
+            border: "1px solid var(--cr-border-subtle)",
+          }}
         >
           {match[3]}
         </code>
@@ -128,7 +184,15 @@ function renderInline(text: string): (string | JSX.Element)[] {
       result.push(
         <span
           key={key++}
-          className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-secondary)] border border-[var(--cr-border-subtle)]"
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            padding: "2px 6px",
+            borderRadius: 9999,
+            background: "var(--cr-bg-tertiary)",
+            color: "var(--cr-text-secondary)",
+            border: "1px solid var(--cr-border-subtle)",
+          }}
         >
           {match[4]}
         </span>
