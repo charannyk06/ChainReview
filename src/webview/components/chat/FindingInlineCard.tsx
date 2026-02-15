@@ -6,6 +6,7 @@ import {
   ShieldCheckIcon,
   SettingsIcon,
   SparklesIcon,
+  BookOpenIcon,
   XCircleIcon,
   ChevronRightIcon,
   BugIcon,
@@ -22,7 +23,9 @@ import type { Finding, AgentName } from "@/lib/types";
 const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
   architecture: LandmarkIcon,
   security: ShieldAlertIcon,
+  bugs: BugIcon,
   validator: ShieldCheckIcon,
+  explainer: BookOpenIcon,
   system: SettingsIcon,
 };
 

@@ -123,7 +123,7 @@ export function ChatContainer({
       >
         {/* Spacer pushes messages toward the bottom when there are few */}
         <div className="flex flex-col min-h-full justify-end">
-          <div className="flex flex-col gap-1 pb-4 pt-4">
+          <div className="flex flex-col gap-2 pb-4 pt-4">
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}
@@ -144,6 +144,7 @@ export function ChatContainer({
           onCancelReview={onCancelReview}
           disabled={false}
           isReviewing={isReviewing}
+          hasMessages={messages.length > 0}
         />
       )}
     </div>
