@@ -2,11 +2,14 @@
 // FastCode-inspired code understanding engine using ts-morph AST analysis.
 // Builds function-level call graphs, resolves symbol definitions/references,
 // and computes change blast radius via reverse dependency traversal.
+// Includes SQLite-backed incremental caching: only re-parses changed files.
 
 import * as path from "path";
+import { createHash } from "crypto";
 import { Project, SyntaxKind, Node } from "ts-morph";
 import type { SourceFile, FunctionDeclaration, MethodDeclaration } from "ts-morph";
 import { getActiveRepoPath } from "./repo";
+import type { Store, CodeIndexEntry } from "../store";
 import type {
   CallGraphResult,
   CallGraphEdge,
@@ -17,6 +20,21 @@ import type {
   ImpactedFile,
   CriticalFile,
 } from "../types";
+
+// ── Store binding for caching ──
+// The orchestrator sets the store reference before calling codeCallGraph.
+// When set, the call graph engine uses SQLite cache for incremental indexing.
+let activeStore: Store | null = null;
+
+/** Bind a Store instance for call graph caching. Call this before reviews. */
+export function setGraphStore(store: Store): void {
+  activeStore = store;
+}
+
+/** Hash file content for change detection */
+function hashContent(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 16);
+}
 
 // ── Cached ts-morph Project ──
 // The Project is expensive to create (~1-3s for medium repos). Cache it and
@@ -81,6 +99,9 @@ function getSourceFiles(project: Project): SourceFile[] {
 
 // ── crp.code.call_graph ──
 
+/** Cache stats from the last call graph build — accessible for timeline events */
+export let lastCacheStats: { total: number; cached: number; reparsed: number } | null = null;
+
 export async function codeCallGraph(args: {
   path?: string;
 }): Promise<CallGraphResult> {
@@ -97,12 +118,56 @@ export async function codeCallGraph(args: {
   // Optional path filter
   const targetDir = args.path ? path.resolve(repoPath, args.path) : null;
 
+  // ── Cache-aware indexing ──
+  // When a Store is available, check file hashes against cached entries.
+  // Only re-parse files whose content has changed. Load unchanged from cache.
+  const cachedEntries = activeStore
+    ? new Map(activeStore.getCodeIndexForRepo(repoPath).map((e) => [e.filePath, e]))
+    : new Map<string, CodeIndexEntry>();
+
+  let cacheHits = 0;
+  let cacheMisses = 0;
+  const currentFiles = new Set<string>(); // Track current files for stale entry cleanup
+
   for (const sf of sourceFiles) {
     const absPath = sf.getFilePath();
     if (targetDir && !absPath.startsWith(targetDir)) continue;
 
     const relPath = path.relative(repoPath, absPath);
     allFiles.add(relPath);
+    currentFiles.add(relPath);
+
+    // Check cache: if file hash matches, use cached edges + symbols
+    const fileContent = sf.getFullText();
+    const currentHash = hashContent(fileContent);
+    const cached = cachedEntries.get(relPath);
+
+    if (cached && cached.fileHash === currentHash) {
+      // Cache hit — load edges and symbols from cache
+      cacheHits++;
+      try {
+        const cachedEdges: CallGraphEdge[] = JSON.parse(cached.callsJson);
+        const cachedSymbols: { total: number; exported: number } = JSON.parse(cached.symbolsJson);
+        edges.push(...cachedEdges);
+        fileSymbolCounts.set(relPath, cachedSymbols);
+
+        // Rebuild fan-in/fan-out from cached edges
+        for (const edge of cachedEdges) {
+          if (edge.sourceFile !== edge.targetFile) {
+            fanOutMap.set(edge.sourceFile, (fanOutMap.get(edge.sourceFile) || 0) + 1);
+            fanInMap.set(edge.targetFile, (fanInMap.get(edge.targetFile) || 0) + 1);
+          }
+        }
+        continue;
+      } catch {
+        // Corrupted cache entry — fall through to full parse
+      }
+    }
+
+    // Cache miss — full AST parse required
+    cacheMisses++;
+
+    const fileEdges: CallGraphEdge[] = [];
 
     // Count symbols in this file
     const functions = sf.getFunctions();
@@ -112,10 +177,11 @@ export async function codeCallGraph(args: {
     const exportedCount = allDecls.filter((d) => d.isExported?.() || false).length +
       classes.filter((c) => c.isExported()).length;
 
-    fileSymbolCounts.set(relPath, {
+    const symbolCounts = {
       total: allDecls.length + classes.length,
       exported: exportedCount,
-    });
+    };
+    fileSymbolCounts.set(relPath, symbolCounts);
 
     // Extract call edges from each function/method body
     for (const decl of allDecls) {
@@ -147,13 +213,15 @@ export async function codeCallGraph(args: {
 
           // Only record cross-symbol or cross-file edges (skip self-calls within same function)
           if (relPath !== targetRelPath || sourceSymbol !== targetSymbol) {
-            edges.push({
+            const edge: CallGraphEdge = {
               sourceFile: relPath,
               sourceSymbol,
               targetFile: targetRelPath,
               targetSymbol,
               callLine,
-            });
+            };
+            fileEdges.push(edge);
+            edges.push(edge);
 
             // Track fan-in/fan-out at file level
             if (relPath !== targetRelPath) {
@@ -166,7 +234,37 @@ export async function codeCallGraph(args: {
         }
       }
     }
+
+    // Update cache for this file
+    if (activeStore) {
+      activeStore.upsertCodeIndex({
+        repoPath,
+        filePath: relPath,
+        fileHash: currentHash,
+        symbolsJson: JSON.stringify(symbolCounts),
+        callsJson: JSON.stringify(fileEdges),
+        fanIn: 0, // Will be updated after full graph is built
+        fanOut: fileEdges.filter((e) => e.sourceFile !== e.targetFile).length,
+        indexedAt: new Date().toISOString(),
+      });
+    }
   }
+
+  // Clean up stale cache entries (files that were deleted/renamed)
+  if (activeStore) {
+    for (const [filePath] of cachedEntries) {
+      if (!currentFiles.has(filePath)) {
+        activeStore.deleteCodeIndex(repoPath, filePath);
+      }
+    }
+  }
+
+  // Record cache stats for timeline reporting
+  lastCacheStats = {
+    total: cacheHits + cacheMisses,
+    cached: cacheHits,
+    reparsed: cacheMisses,
+  };
 
   // Build file metrics
   const fileMetrics: FileMetrics[] = [];

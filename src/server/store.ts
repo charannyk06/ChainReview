@@ -8,6 +8,7 @@ import type {
   EventType,
   Evidence,
   FindingStatus,
+  CallGraphEdge,
 } from "./types";
 
 export interface ReviewRunSummary {
@@ -21,6 +22,20 @@ export interface ReviewRunSummary {
   findingsCount: number;
   criticalCount: number;
   highCount: number;
+}
+
+/** Cached code index entry for incremental call graph building */
+export interface CodeIndexEntry {
+  repoPath: string;
+  filePath: string;
+  fileHash: string;
+  /** JSON array of symbols defined in this file */
+  symbolsJson: string;
+  /** JSON array of call edges originating from this file */
+  callsJson: string;
+  fanIn: number;
+  fanOut: number;
+  indexedAt: string;
 }
 
 export interface Store {
@@ -44,6 +59,22 @@ export interface Store {
   getRepoFindings(repoPath: string): Finding[];
   /** Update finding status (active/dismissed/resolved) */
   updateFindingStatus(findingId: string, status: FindingStatus): void;
+  // ── Chat Messages (per-run persistence) ──
+  /** Save chat messages for a review run (replaces any existing) */
+  saveChatMessages(runId: string, messagesJson: string): void;
+  /** Get chat messages for a review run */
+  getChatMessages(runId: string): string | undefined;
+  // ── Code Index (call graph cache) ──
+  /** Get cached code index entry for a specific file */
+  getCodeIndex(repoPath: string, filePath: string): CodeIndexEntry | undefined;
+  /** Get all cached entries for a repo */
+  getCodeIndexForRepo(repoPath: string): CodeIndexEntry[];
+  /** Upsert a code index entry (insert or update on conflict) */
+  upsertCodeIndex(entry: CodeIndexEntry): void;
+  /** Delete a code index entry for a file that no longer exists */
+  deleteCodeIndex(repoPath: string, filePath: string): void;
+  /** Delete all code index entries for a repo */
+  clearCodeIndex(repoPath: string): void;
   close(): void;
 }
 
@@ -112,6 +143,24 @@ CREATE TABLE IF NOT EXISTS user_actions (
   patch_id TEXT,
   action TEXT NOT NULL,
   timestamp TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  run_id TEXT PRIMARY KEY REFERENCES review_runs(id),
+  messages_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS code_index (
+  repo_path TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  file_hash TEXT NOT NULL,
+  symbols_json TEXT NOT NULL DEFAULT '[]',
+  calls_json TEXT NOT NULL DEFAULT '[]',
+  fan_in INTEGER NOT NULL DEFAULT 0,
+  fan_out INTEGER NOT NULL DEFAULT 0,
+  indexed_at TEXT NOT NULL,
+  PRIMARY KEY (repo_path, file_path)
 );
 `;
 
@@ -198,6 +247,44 @@ export function createStore(dbPath: string): Store {
     updateFindingStatus: db.prepare(
       "UPDATE findings SET status = ? WHERE id = ?"
     ),
+    // Chat messages (per-run persistence)
+    saveChatMessages: db.prepare(`
+      INSERT INTO chat_messages (run_id, messages_json, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(run_id)
+      DO UPDATE SET messages_json = excluded.messages_json,
+                    updated_at = excluded.updated_at
+    `),
+    getChatMessages: db.prepare(
+      "SELECT messages_json FROM chat_messages WHERE run_id = ?"
+    ),
+    deleteChatMessages: db.prepare(
+      "DELETE FROM chat_messages WHERE run_id = ?"
+    ),
+    // Code index (call graph cache) statements
+    getCodeIndex: db.prepare(
+      "SELECT * FROM code_index WHERE repo_path = ? AND file_path = ?"
+    ),
+    getCodeIndexForRepo: db.prepare(
+      "SELECT * FROM code_index WHERE repo_path = ?"
+    ),
+    upsertCodeIndex: db.prepare(`
+      INSERT INTO code_index (repo_path, file_path, file_hash, symbols_json, calls_json, fan_in, fan_out, indexed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(repo_path, file_path)
+      DO UPDATE SET file_hash = excluded.file_hash,
+                    symbols_json = excluded.symbols_json,
+                    calls_json = excluded.calls_json,
+                    fan_in = excluded.fan_in,
+                    fan_out = excluded.fan_out,
+                    indexed_at = excluded.indexed_at
+    `),
+    deleteCodeIndex: db.prepare(
+      "DELETE FROM code_index WHERE repo_path = ? AND file_path = ?"
+    ),
+    clearCodeIndex: db.prepare(
+      "DELETE FROM code_index WHERE repo_path = ?"
+    ),
   };
 
   function now(): string {
@@ -246,6 +333,19 @@ export function createStore(dbPath: string): Store {
       diff: row.diff,
       validated: Boolean(row.validated),
       validationMessage: row.validation_message || undefined,
+    };
+  }
+
+  function rowToCodeIndex(row: any): CodeIndexEntry {
+    return {
+      repoPath: row.repo_path,
+      filePath: row.file_path,
+      fileHash: row.file_hash,
+      symbolsJson: row.symbols_json,
+      callsJson: row.calls_json,
+      fanIn: row.fan_in,
+      fanOut: row.fan_out,
+      indexedAt: row.indexed_at,
     };
   }
 
@@ -361,6 +461,7 @@ export function createStore(dbPath: string): Store {
         stmts.deleteRunUserActions.run(runId);
         stmts.deleteRunPatches.run(runId);
         stmts.deleteRunFindings.run(runId);
+        stmts.deleteChatMessages.run(runId);
         stmts.deleteRunRow.run(runId);
       });
       deleteAll();
@@ -376,6 +477,49 @@ export function createStore(dbPath: string): Store {
 
     updateFindingStatus(findingId: string, status: FindingStatus): void {
       stmts.updateFindingStatus.run(status, findingId);
+    },
+
+    // ── Chat Messages (per-run persistence) ──
+
+    saveChatMessages(runId: string, messagesJson: string): void {
+      stmts.saveChatMessages.run(runId, messagesJson, now());
+    },
+
+    getChatMessages(runId: string): string | undefined {
+      const row = stmts.getChatMessages.get(runId) as any;
+      return row?.messages_json;
+    },
+
+    // ── Code Index (call graph cache) ──
+
+    getCodeIndex(repoPath: string, filePath: string): CodeIndexEntry | undefined {
+      const row = stmts.getCodeIndex.get(repoPath, filePath) as any;
+      return row ? rowToCodeIndex(row) : undefined;
+    },
+
+    getCodeIndexForRepo(repoPath: string): CodeIndexEntry[] {
+      return (stmts.getCodeIndexForRepo.all(repoPath) as any[]).map(rowToCodeIndex);
+    },
+
+    upsertCodeIndex(entry: CodeIndexEntry): void {
+      stmts.upsertCodeIndex.run(
+        entry.repoPath,
+        entry.filePath,
+        entry.fileHash,
+        entry.symbolsJson,
+        entry.callsJson,
+        entry.fanIn,
+        entry.fanOut,
+        entry.indexedAt
+      );
+    },
+
+    deleteCodeIndex(repoPath: string, filePath: string): void {
+      stmts.deleteCodeIndex.run(repoPath, filePath);
+    },
+
+    clearCodeIndex(repoPath: string): void {
+      stmts.clearCodeIndex.run(repoPath);
     },
 
     close(): void {

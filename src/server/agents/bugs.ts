@@ -195,6 +195,40 @@ const TOOLS: AgentTool[] = [
     },
   },
   {
+    name: "crp_code_call_graph",
+    description: "Build function-level call graph to understand code flow — reveals which functions call which and identifies high fan-in hubs where bugs have maximum blast radius.",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Subdirectory to scope analysis to" },
+      },
+    },
+  },
+  {
+    name: "crp_code_symbol_lookup",
+    description: "Find the definition and all references for a symbol. Useful for tracing a buggy function to everywhere it's called.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "Symbol name to look up" },
+        file: { type: "string", description: "Specific file to search in first" },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "crp_code_impact_analysis",
+    description: "Compute blast radius of a file — find all downstream modules affected. Focus bug hunting on high-impact files.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "Relative file path to analyze impact for" },
+        depth: { type: "number", description: "Max traversal depth (default: 3)" },
+      },
+      required: ["file"],
+    },
+  },
+  {
     name: "emit_finding",
     description: "Report a bug finding. You MUST call this for each bug you discover. This is the ONLY way to report findings.",
     input_schema: {
@@ -292,28 +326,61 @@ ${sanitizeForPrompt(context.diffContent, 5000)}
 `;
   }
 
+  // Inject module criticality — bugs in high-fan-in files have widest blast radius
+  if (context.criticalFiles && context.criticalFiles.length > 0) {
+    initialMessage += `
+## High-Impact Modules (bugs here affect the most code — prioritize these)
+${context.criticalFiles
+  .slice(0, 10)
+  .map(
+    (f, i) =>
+      `${i + 1}. ${f.file} — Fan-in: ${f.fanIn}, Fan-out: ${f.fanOut} (${f.reason})`
+  )
+  .join("\n")}
+`;
+  }
+
+  // Inject blast radius for diff reviews
+  if (context.impactedModules && context.impactedModules.length > 0) {
+    initialMessage += `
+## Change Blast Radius
+Recently changed files affect these downstream modules — check for introduced bugs:
+${context.impactedModules
+  .slice(0, 10)
+  .map(
+    (m) =>
+      `- ${m.file} (distance: ${m.distance} hop${m.distance > 1 ? "s" : ""}, fan-in: ${m.fanIn})`
+  )
+  .join("\n")}
+`;
+  }
+
   if (context.priorFindings) {
     initialMessage += sanitizeForPrompt(context.priorFindings, 5000);
   }
 
   initialMessage += `
 
-NOW: Begin your deep investigation using ALL available tools. You have 7 powerful tools:
+NOW: Begin your deep investigation using ALL available tools. You have 10 powerful tools:
 1. crp_repo_tree — understand project structure, find files to investigate
 2. crp_repo_file — read files to examine code for bugs
 3. crp_repo_search — search for bug patterns (empty catches, loose equality, unhandled promises, null access)
 4. crp_repo_diff — check recent changes for newly introduced bugs
 5. crp_code_pattern_scan — run pattern scans for common bug patterns
 6. crp_exec_command — use git log, git blame for deeper analysis
-7. emit_finding — report each bug you find (REQUIRED for every bug)
+7. crp_code_call_graph — build call graph to trace code flow and find high-impact functions
+8. crp_code_symbol_lookup — find all usages of a buggy function
+9. crp_code_impact_analysis — compute how many modules a buggy file affects
+10. emit_finding — report each bug you find (REQUIRED for every bug)
 
 CRITICAL INSTRUCTIONS:
 - You MUST use at least 5-10 tool calls BEFORE emitting any findings
 - You MUST read the actual code before reporting any bug
 - You MUST call emit_finding for EVERY bug you discover — this is the ONLY way to report findings
 - Every finding MUST include real code evidence from files you read
+- START by investigating the highest-impact modules listed above
 - Search for these patterns: .then( without .catch(, empty catch blocks, == instead of ===, missing null checks, await in loops, JSON.parse without try/catch, missing await on promises
-- Start by getting the file tree, then searching for patterns, then reading suspicious files
+- Use crp_code_symbol_lookup to trace buggy functions to all call sites
 
 Begin your investigation now. Use tools aggressively.`;
 

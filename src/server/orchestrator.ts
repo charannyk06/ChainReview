@@ -1,5 +1,6 @@
 import { repoOpen, repoTree } from "./tools/repo";
 import { codeImportGraph, codePatternScan } from "./tools/code";
+import { codeCallGraph, codeImpactAnalysis, computeCriticalityScores, setGraphStore, lastCacheStats } from "./tools/graph";
 import { repoDiff } from "./tools/repo";
 import { runArchitectureAgent } from "./agents/architecture";
 import { runSecurityAgent } from "./agents/security";
@@ -17,6 +18,9 @@ import type {
   Finding,
   AuditEvent,
   ReviewCallbacks,
+  CallGraphResult,
+  CriticalFile,
+  ImpactedFile,
 } from "./types";
 
 export interface ReviewResult {
@@ -112,6 +116,44 @@ export async function runReview(
       });
     }
 
+    // ── Step 3.5: Build call graph + compute module criticality ──
+    // FastCode-inspired: function-level call graph gives agents structural
+    // understanding of the codebase — which files are architectural hubs,
+    // which functions call what, and where the highest blast-radius code lives.
+    // Uses SQLite cache for incremental indexing — only re-parses changed files.
+    let callGraph: CallGraphResult | undefined;
+    let criticalFiles: CriticalFile[] | undefined;
+
+    // Bind store for call graph caching
+    setGraphStore(store);
+
+    emitEvent("evidence_collected", undefined, {
+      kind: "pipeline_step",
+      step: "call_graph",
+      message: "Building function-level call graph...",
+    });
+
+    try {
+      callGraph = await codeCallGraph({});
+      criticalFiles = computeCriticalityScores(callGraph);
+
+      const topFiles = criticalFiles.slice(0, 3).map(f => f.file.split("/").pop()).join(", ");
+      const cacheInfo = lastCacheStats
+        ? ` (${lastCacheStats.reparsed} parsed, ${lastCacheStats.cached} from cache)`
+        : "";
+      emitEvent("evidence_collected", undefined, {
+        kind: "pipeline_step",
+        step: "call_graph",
+        message: `Call graph: ${callGraph.totalEdges} edges, ${callGraph.totalFunctions} functions${cacheInfo}. Top critical: ${topFiles}`,
+      });
+    } catch (err: any) {
+      emitEvent("evidence_collected", undefined, {
+        kind: "pipeline_step",
+        step: "call_graph",
+        warning: `Call graph build failed: ${err.message}`,
+      });
+    }
+
     // ── Step 4: Run Semgrep scan (non-blocking, 30s timeout with proper kill) ──
     emitEvent("evidence_collected", undefined, {
       kind: "pipeline_step",
@@ -184,6 +226,65 @@ export async function runReview(
       }
     }
 
+    // ── Step 5.5: Compute blast radius for diff changes ──
+    // When reviewing a diff, determine which downstream modules are affected
+    // by the changed files. This gives agents a clear "change impact" view.
+    let impactedModules: ImpactedFile[] | undefined;
+
+    if (diffContent && callGraph) {
+      try {
+        // Extract changed file paths from diff
+        const changedFiles = new Set<string>();
+        const diffLines = diffContent.split("\n");
+        for (const line of diffLines) {
+          const match = line.match(/^diff --git a\/(.*?) b\//);
+          if (match) changedFiles.add(match[1]);
+        }
+
+        if (changedFiles.size > 0) {
+          emitEvent("evidence_collected", undefined, {
+            kind: "pipeline_step",
+            step: "impact_analysis",
+            message: `Computing blast radius for ${changedFiles.size} changed file(s)...`,
+          });
+
+          const allImpacted = new Map<string, ImpactedFile>();
+          for (const file of changedFiles) {
+            try {
+              const impact = await codeImpactAnalysis({ file, depth: 3 });
+              for (const imp of impact.impactedFiles) {
+                // Deduplicate: keep the closest distance
+                const existing = allImpacted.get(imp.file);
+                if (!existing || imp.distance < existing.distance) {
+                  allImpacted.set(imp.file, imp);
+                }
+              }
+            } catch {
+              // Individual file impact failure is non-fatal
+            }
+          }
+
+          impactedModules = [...allImpacted.values()].sort(
+            (a, b) => a.distance - b.distance || b.fanIn - a.fanIn
+          );
+
+          if (impactedModules.length > 0) {
+            emitEvent("evidence_collected", undefined, {
+              kind: "pipeline_step",
+              step: "impact_analysis",
+              message: `Blast radius: ${impactedModules.length} module(s) affected by changes`,
+            });
+          }
+        }
+      } catch (err: any) {
+        emitEvent("evidence_collected", undefined, {
+          kind: "pipeline_step",
+          step: "impact_analysis",
+          warning: `Impact analysis failed: ${err.message}`,
+        });
+      }
+    }
+
     // ── Build prior findings context for dedup ──
     const priorActive = store.getRepoFindings(repoPath);
     let priorFindings: string | undefined;
@@ -209,6 +310,9 @@ export async function runReview(
       semgrepResults,
       diffContent,
       priorFindings,
+      callGraph,
+      criticalFiles,
+      impactedModules,
     };
 
     // ── Shared agent callback factory ──

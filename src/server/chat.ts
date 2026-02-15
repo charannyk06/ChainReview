@@ -135,6 +135,9 @@ const BASE_SYSTEM_PROMPT = `You are a code review assistant for ChainReview. Ans
 - **Search code** (crp_repo_search): Regex search across the codebase using ripgrep
 - **Git diff** (crp_repo_diff): View git changes (committed, staged, unstaged)
 - **Import graph** (crp_code_import_graph): Trace TypeScript/JS module dependencies via ts-morph
+- **Call graph** (crp_code_call_graph): Build function-level call graph with fan-in/fan-out metrics — find the most architecturally critical files
+- **Symbol lookup** (crp_code_symbol_lookup): Find where any symbol is defined and all its usages across the codebase
+- **Impact analysis** (crp_code_impact_analysis): Analyze the blast radius of changing a file — what would break?
 - **Pattern scan** (crp_code_pattern_scan): Run Semgrep static analysis for anti-patterns and security issues
 - **Shell commands** (crp_exec_command): Execute read-only commands (git log, blame, grep, find, etc.)
 - **Web search** (crp_web_search): Search for security advisories, CVEs, best practices, docs
@@ -204,6 +207,40 @@ const TOOLS = [
       properties: {
         path: { type: "string", description: "Subdirectory to analyze (relative to repo root)" },
       },
+    },
+  },
+  {
+    name: "crp_code_call_graph",
+    description: "Build a function-level call graph showing which functions call which, with fan-in/fan-out metrics per file. Fan-in = how many files depend on this file (high = critical). Use this to understand code architecture and find the most important files.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string", description: "Subdirectory to analyze (relative to repo root)" },
+      },
+    },
+  },
+  {
+    name: "crp_code_symbol_lookup",
+    description: "Find the definition and all references/usages of a symbol (function, class, variable) across the entire codebase. Answers 'where is X defined?' and 'what uses X?'",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        symbol: { type: "string", description: "Symbol name to look up" },
+        file: { type: "string", description: "Optional: file path to narrow the search" },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "crp_code_impact_analysis",
+    description: "Analyze the blast radius of changing a file — shows all files that transitively depend on it. Answers 'what would break if I change this file?'",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        file: { type: "string", description: "Relative file path to analyze" },
+        depth: { type: "number", description: "Max traversal depth (default: 3)" },
+      },
+      required: ["file"],
     },
   },
   {
@@ -633,6 +670,40 @@ const VALIDATOR_TOOLS = [
       properties: {
         path: { type: "string", description: "Subdirectory to analyze" },
       },
+    },
+  },
+  {
+    name: "crp_code_call_graph",
+    description: "Build function-level call graph to understand which functions call which and identify the most critical files (by fan-in/fan-out)",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string", description: "Subdirectory to analyze" },
+      },
+    },
+  },
+  {
+    name: "crp_code_symbol_lookup",
+    description: "Find definition and all usages of a symbol to verify if flagged code is actually used and where",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        symbol: { type: "string", description: "Symbol name to look up" },
+        file: { type: "string", description: "Optional file path to narrow search" },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "crp_code_impact_analysis",
+    description: "Analyze blast radius of a file — shows all files that depend on it. Use to understand if a fix in one file could affect others.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        file: { type: "string", description: "Relative file path to analyze" },
+        depth: { type: "number", description: "Max traversal depth (default: 3)" },
+      },
+      required: ["file"],
     },
   },
   {

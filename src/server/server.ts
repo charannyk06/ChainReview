@@ -365,6 +365,33 @@ server.tool(
   }
 );
 
+// ── Chat Message Persistence Tools ──
+
+server.tool(
+  "crp.review.save_chat_messages",
+  "Save chat messages for a review run (persists to SQLite for task history)",
+  {
+    runId: z.string().describe("Review run ID"),
+    messagesJson: z.string().describe("JSON-serialized chat messages array"),
+  },
+  async (args) => {
+    store.saveChatMessages(args.runId, args.messagesJson);
+    return { content: [{ type: "text" as const, text: JSON.stringify({ saved: true, runId: args.runId }) }] };
+  }
+);
+
+server.tool(
+  "crp.review.get_chat_messages",
+  "Get saved chat messages for a review run",
+  {
+    runId: z.string().describe("Review run ID"),
+  },
+  async (args) => {
+    const messagesJson = store.getChatMessages(args.runId);
+    return { content: [{ type: "text" as const, text: messagesJson || "[]" }] };
+  }
+);
+
 // ── Ensure Repo is Open ──
 // CRP tools (repo, code, exec) require an active repo path.
 // If the server process restarted or no review was run yet, we need to
