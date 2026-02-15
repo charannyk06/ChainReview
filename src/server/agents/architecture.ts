@@ -1,9 +1,5 @@
-import { runAgentLoop, type AgentTool } from "./base-agent";
-import { repoTree, repoFile, repoSearch, repoDiff } from "../tools/repo";
-import { codeImportGraph, codePatternScan } from "../tools/code";
-import { execCommand } from "../tools/exec";
-import { webSearch } from "../tools/web";
-import type { AgentContext, AgentFinding, AuditEvent } from "../types";
+import { runAgentLoop, createToolExecutor, routeStandardTool, sanitizeForPrompt, type AgentTool, type AgentCallbacks } from "./base-agent";
+import type { AgentContext, AgentFinding } from "../types";
 
 const SYSTEM_PROMPT = `You are the Architecture Agent in ChainReview, an advanced repo-scale AI code reviewer for TypeScript repositories.
 
@@ -136,41 +132,9 @@ const TOOLS: AgentTool[] = [
   },
 ];
 
-async function handleToolCall(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  switch (name) {
-    case "crp_repo_tree":
-      return repoTree(args as any);
-    case "crp_repo_file":
-      return repoFile(args as any);
-    case "crp_repo_search":
-      return repoSearch(args as any);
-    case "crp_repo_diff":
-      return repoDiff(args as any);
-    case "crp_code_import_graph":
-      return codeImportGraph(args as any);
-    case "crp_code_pattern_scan":
-      return codePatternScan(args as any);
-    case "crp_exec_command":
-      return execCommand(args as any);
-    case "crp_web_search":
-      return webSearch(args as any);
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
-}
-
 export async function runArchitectureAgent(
   context: AgentContext,
-  callbacks: {
-    onText: (text: string) => void;
-    onThinking?: (text: string) => void;
-    onEvent: (event: Omit<AuditEvent, "id" | "timestamp">) => void;
-    onToolCall: (tool: string, args: Record<string, unknown>) => void;
-    onToolResult: (tool: string, result: string) => void;
-  },
+  callbacks: AgentCallbacks,
   signal?: AbortSignal
 ): Promise<AgentFinding[]> {
   // Build user prompt with pre-collected evidence
@@ -218,13 +182,12 @@ ${sorted
   if (context.diffContent) {
     userPrompt += `
 Diff content (changes to review):
-${context.diffContent.slice(0, 5000)}
-${context.diffContent.length > 5000 ? "\n... (diff truncated)" : ""}
+${sanitizeForPrompt(context.diffContent, 5000)}
 `;
   }
 
   if (context.priorFindings) {
-    userPrompt += context.priorFindings;
+    userPrompt += sanitizeForPrompt(context.priorFindings, 5000);
   }
 
   userPrompt += `
@@ -246,13 +209,7 @@ DO NOT skip tool use. You MUST read at least 5-10 files and run multiple searche
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     tools: TOOLS,
-    onToolCall: async (name, args) => {
-      callbacks.onToolCall(name, args);
-      const result = await handleToolCall(name, args);
-      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
-      callbacks.onToolResult(name, resultStr);
-      return result;
-    },
+    onToolCall: createToolExecutor(routeStandardTool, callbacks),
     onText: callbacks.onText,
     onThinking: callbacks.onThinking,
     onEvent: callbacks.onEvent,

@@ -155,48 +155,70 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  /** Safely extract a string from an untrusted message field */
+  private _safeStr(value: unknown, maxLength = 500): string {
+    if (typeof value !== "string") return "";
+    // Strip control characters and limit length
+    return value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").slice(0, maxLength);
+  }
+
+  /** Safely extract a string array from an untrusted message field */
+  private _safeStrArray(value: unknown, maxItems = 10): string[] {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((v): v is string => typeof v === "string")
+      .slice(0, maxItems)
+      .map((s) => this._safeStr(s, 200));
+  }
+
   private async _handleMessage(message: Record<string, unknown>) {
     switch (message.type) {
-      case "startReview":
-        await this._startReview(message.mode as "repo" | "diff", message.path as string | undefined);
+      case "startReview": {
+        const mode = message.mode === "diff" ? "diff" : "repo";
+        await this._startReview(mode, this._safeStr(message.path, 1000) || undefined);
         break;
+      }
       case "chatQuery": {
-        const agents = message.agents as string[] | undefined;
-        if (agents && agents.length > 0) {
+        const agents = this._safeStrArray(message.agents);
+        if (agents.length > 0) {
           // Agents mentioned — trigger a full review run with those agents
-          await this._startReview("repo", message.targetPath as string | undefined, agents);
+          await this._startReview("repo", this._safeStr(message.targetPath, 1000) || undefined, agents);
         } else {
           // No agents — plain chat Q&A
-          await this._handleChatQuery(message.query as string);
+          const query = this._safeStr(message.query, 10000);
+          if (query) await this._handleChatQuery(query);
         }
         break;
       }
       case "requestPatch":
-        await this._requestPatch(message.findingId as string);
+        await this._requestPatch(this._safeStr(message.findingId, 100));
         break;
       case "applyPatch":
-        await this._applyPatch(message.patchId as string);
+        await this._applyPatch(this._safeStr(message.patchId, 100));
         break;
       case "dismissPatch":
-        await this._dismissPatch(message.patchId as string);
+        await this._dismissPatch(this._safeStr(message.patchId, 100));
         break;
       case "markFalsePositive":
-        await this._markFalsePositive(message.findingId as string);
+        await this._markFalsePositive(this._safeStr(message.findingId, 100));
         break;
       case "explainFinding":
-        await this._explainFinding(message.findingId as string);
+        await this._explainFinding(this._safeStr(message.findingId, 100));
         break;
       case "sendToValidator":
-        await this._sendToValidator(message.findingId as string);
+        await this._sendToValidator(this._safeStr(message.findingId, 100));
         break;
       case "sendToCodingAgent":
-        await this._sendToCodingAgent(message.findingId as string, message.agentId as string);
+        await this._sendToCodingAgent(this._safeStr(message.findingId, 100), this._safeStr(message.agentId, 50));
         break;
       case "cancelReview":
         this._cancelReview();
         break;
       case "openFile":
-        this._openFile(message.filePath as string, message.line as number | undefined);
+        this._openFile(
+          this._safeStr(message.filePath, 1000),
+          typeof message.line === "number" ? Math.max(0, Math.floor(message.line)) : undefined
+        );
         break;
       // ── MCP Manager ──
       case "openMCPManager":
@@ -212,23 +234,23 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         this._mcpUpdateServer(message.config as any);
         break;
       case "mcpRemoveServer":
-        this._mcpRemoveServer(message.serverId as string);
+        this._mcpRemoveServer(this._safeStr(message.serverId, 100));
         break;
       case "mcpToggleServer":
-        this._mcpToggleServer(message.serverId as string, message.enabled as boolean);
+        this._mcpToggleServer(this._safeStr(message.serverId, 100), message.enabled === true);
         break;
       case "mcpRefreshServer":
-        this._mcpRefreshServer(message.serverId as string);
+        this._mcpRefreshServer(this._safeStr(message.serverId, 100));
         break;
       // ── Task History ──
       case "getReviewHistory":
         this._getReviewHistory();
         break;
       case "deleteReviewRun":
-        this._deleteReviewRun(message.runId as string);
+        this._deleteReviewRun(this._safeStr(message.runId, 100));
         break;
       case "loadReviewRun":
-        await this._loadReviewRun(message.runId as string);
+        await this._loadReviewRun(this._safeStr(message.runId, 100));
         break;
       case "clearChat":
         this._clearPersistedChat();
@@ -1626,13 +1648,23 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
         const fs = await import("fs");
         const path = await import("path");
-        const { execSync } = await import("child_process");
+        const { spawnSync } = await import("child_process");
 
-        // Check if the CLI is available
+        // Validate CLI command name — only allow known safe alphanumeric names
+        if (!/^[a-zA-Z0-9_-]+$/.test(cliAgent.cmd)) {
+          vscode.window.showErrorMessage("ChainReview: Invalid CLI agent command name");
+          return;
+        }
+
+        // Check if the CLI is available using spawnSync with argument array (no shell injection)
         let cliAvailable = false;
         try {
-          execSync(`which ${cliAgent.cmd} 2>/dev/null || where ${cliAgent.cmd} 2>NUL`, { timeout: 5000 });
-          cliAvailable = true;
+          const whichResult = spawnSync(
+            process.platform === "win32" ? "where" : "which",
+            [cliAgent.cmd],
+            { timeout: 5000, encoding: "utf-8" }
+          );
+          cliAvailable = whichResult.status === 0;
         } catch {
           // CLI not in PATH
         }
@@ -1663,16 +1695,18 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
         // Build the command — pipe the prompt file into each CLI in interactive mode
         // so the agent actually executes changes (not print mode).
+        // Shell-escape the file path to prevent injection via crafted finding IDs
+        const escapedPath = promptFilePath.replace(/'/g, "'\\''");
         let shellCmd: string;
         if (agentId === "claude-code") {
           // Claude Code: pipe prompt via cat for interactive execution (NOT -p print mode)
-          shellCmd = `cat '${promptFilePath}' | claude --verbose`;
+          shellCmd = `cat '${escapedPath}' | claude --verbose`;
         } else if (agentId === "codex-cli") {
           // Codex CLI: pipe prompt for interactive execution
-          shellCmd = `cat '${promptFilePath}' | codex`;
+          shellCmd = `cat '${escapedPath}' | codex`;
         } else {
           // Gemini CLI: pipe prompt for interactive execution
-          shellCmd = `cat '${promptFilePath}' | gemini`;
+          shellCmd = `cat '${escapedPath}' | gemini`;
         }
         terminal.sendText(shellCmd);
 
@@ -1941,6 +1975,30 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     this._connectMCPServer(serverId);
   }
 
+  /** Allowlist of known-safe MCP server commands */
+  private static readonly MCP_COMMAND_ALLOWLIST = new Set([
+    "node", "npx", "tsx", "ts-node",
+    "python", "python3", "pip", "pipx", "uvx",
+    "deno", "bun",
+    "docker",
+    "mcp-server-filesystem", "mcp-server-fetch", "mcp-server-memory",
+    "mcp-server-brave-search", "mcp-server-github", "mcp-server-gitlab",
+    "mcp-server-postgres", "mcp-server-sqlite", "mcp-server-redis",
+    "mcp-server-puppeteer", "mcp-server-sequential-thinking",
+  ]);
+
+  private _validateMCPCommand(command: string): { valid: boolean; reason?: string } {
+    // Must be alphanumeric with hyphens/underscores only — no paths, no shell metacharacters
+    if (!/^[a-zA-Z0-9_.-]+$/.test(command)) {
+      return { valid: false, reason: `Invalid command name "${command}" — only alphanumeric characters, dots, hyphens, and underscores are allowed` };
+    }
+    // Check allowlist
+    if (!ReviewCockpitProvider.MCP_COMMAND_ALLOWLIST.has(command)) {
+      return { valid: false, reason: `Command "${command}" is not in the MCP server allowlist. Allowed: ${Array.from(ReviewCockpitProvider.MCP_COMMAND_ALLOWLIST).join(", ")}` };
+    }
+    return { valid: true };
+  }
+
   private async _connectMCPServer(serverId: string) {
     const server = this._mcpServers.find((s) => s.id === serverId);
     if (!server) return;
@@ -1950,16 +2008,22 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     this._sendMCPServers();
 
     try {
-      // Verify the command exists on the system before marking connected.
-      // For a full implementation, we'd use the MCP SDK to establish a real connection.
+      // Validate the command against our allowlist before executing anything
+      const cmdValidation = this._validateMCPCommand(server.command);
+      if (!cmdValidation.valid) {
+        throw new Error(cmdValidation.reason);
+      }
+
+      // Verify the command exists on the system using argument array (no shell injection)
       const { spawnSync } = await import("child_process");
-      const result = spawnSync("which", [server.command], {
-        timeout: 5000,
-        encoding: "utf-8",
-      });
+      const result = spawnSync(
+        process.platform === "win32" ? "where" : "which",
+        [server.command],
+        { timeout: 5000, encoding: "utf-8" }
+      );
 
       if (result.status !== 0) {
-        throw new Error(`Command "${server.command}" not found`);
+        throw new Error(`Command "${server.command}" not found in PATH`);
       }
 
       // Mark as connected (in a real implementation, we'd maintain the MCP connection)

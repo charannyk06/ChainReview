@@ -5,12 +5,108 @@ import type {
   TextBlock,
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
+import { repoTree, repoFile, repoSearch, repoDiff } from "../tools/repo";
+import { codeImportGraph, codePatternScan } from "../tools/code";
+import { execCommand } from "../tools/exec";
+import { webSearch } from "../tools/web";
 import type { AgentName, AgentFinding, AuditEvent } from "../types";
+
+/**
+ * Sanitize user-controlled text before embedding in LLM prompts.
+ * Prevents prompt injection by:
+ * 1. Escaping XML-like tags that could break structured prompt boundaries
+ * 2. Truncating excessively long strings that could push instructions out of context
+ * 3. Removing control characters
+ */
+export function sanitizeForPrompt(text: string, maxLength = 2000): string {
+  if (!text) return "";
+  // Remove control characters except newline and tab
+  let sanitized = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  // Escape XML/HTML-like tags that could break prompt structure
+  // Specifically neutralize </findings>, </system>, etc.
+  sanitized = sanitized.replace(/<\/?([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/g, "‹$1›");
+  // Truncate to prevent context overflow attacks
+  if (sanitized.length > maxLength) {
+    sanitized = sanitized.slice(0, maxLength) + "… [truncated]";
+  }
+  return sanitized;
+}
 
 export interface AgentTool {
   name: string;
   description: string;
   input_schema: Record<string, unknown>;
+}
+
+/** Standard callback interface used by all agents with runAgentLoop */
+export interface AgentCallbacks {
+  onText: (text: string) => void;
+  onThinking?: (text: string) => void;
+  onEvent: (event: Omit<AuditEvent, "id" | "timestamp">) => void;
+  onToolCall: (tool: string, args: Record<string, unknown>) => void;
+  onToolResult: (tool: string, result: string) => void;
+}
+
+/** Tool handler function — maps tool name + args to a result */
+export type ToolHandler = (name: string, args: Record<string, unknown>) => Promise<unknown>;
+
+/**
+ * Create an onToolCall wrapper for runAgentLoop that unifies:
+ * 1. Emitting onToolCall callback (tool_call_start)
+ * 2. Executing the tool via the handler
+ * 3. Emitting onToolResult callback (tool_call_end)
+ * 4. Returning the result to the agent loop
+ *
+ * Error handling is consistent: onToolResult fires with the error message,
+ * then the error re-throws for runAgentLoop to mark as is_error.
+ */
+export function createToolExecutor(
+  handler: ToolHandler,
+  callbacks: Pick<AgentCallbacks, "onToolCall" | "onToolResult">,
+): (name: string, args: Record<string, unknown>) => Promise<unknown> {
+  return async (name, args) => {
+    callbacks.onToolCall(name, args);
+    try {
+      const result = await handler(name, args);
+      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
+      callbacks.onToolResult(name, resultStr);
+      return result;
+    } catch (err: any) {
+      callbacks.onToolResult(name, `Error: ${err.message}`);
+      throw err;
+    }
+  };
+}
+
+/**
+ * Route standard CRP tool calls to their backend implementations.
+ * Handles the 8 tools common to all agents. Agents with additional
+ * tools should handle those first, then fall through to this function.
+ */
+export async function routeStandardTool(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  switch (name) {
+    case "crp_repo_tree":
+      return repoTree(args as any);
+    case "crp_repo_file":
+      return repoFile(args as any);
+    case "crp_repo_search":
+      return repoSearch(args as any);
+    case "crp_repo_diff":
+      return repoDiff(args as any);
+    case "crp_code_import_graph":
+      return codeImportGraph(args as any);
+    case "crp_code_pattern_scan":
+      return codePatternScan(args as any);
+    case "crp_exec_command":
+      return execCommand(args as any);
+    case "crp_web_search":
+      return webSearch(args as any);
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
 }
 
 export interface AgentLoopOptions {

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { ReviewCockpitProvider } from "./webview-provider";
-import { CrpClient } from "./mcp-client";
+import { CrpClient, migrateKeysToSecretStorage } from "./mcp-client";
 
 let crpClient: CrpClient | undefined;
 
@@ -33,15 +33,20 @@ async function startCrpServer(extensionPath: string, attempt = 1): Promise<CrpCl
 }
 
 export async function activate(context: vscode.ExtensionContext) {
+  // Migrate any plain-text API keys from settings.json to VS Code SecretStorage
+  await migrateKeysToSecretStorage(context.secrets).catch((err) => {
+    console.warn("ChainReview: Key migration to SecretStorage failed:", err);
+  });
+
   // Initialize CRP MCP client with retry
   try {
     crpClient = await startCrpServer(context.extensionPath);
 
-    // After successful connect, check if API key was found
-    // (the client logs a warning to stderr, but also surface it to the user)
+    // After successful connect, check if API key was found from any source
     const config = vscode.workspace.getConfiguration("chainreview");
     const hasSettingKey = !!config.get<string>("anthropicApiKey")?.trim();
     const hasEnvKey = !!process.env.ANTHROPIC_API_KEY;
+    const hasSecretKey = !!(await context.secrets.get("chainreview.ANTHROPIC_API_KEY"));
     const hasKeyFile = (() => {
       try {
         const home = process.env.HOME || process.env.USERPROFILE || "";
@@ -59,7 +64,7 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch { return false; }
     })();
 
-    if (!hasSettingKey && !hasEnvKey && !hasKeyFile && !hasEnvFile) {
+    if (!hasSettingKey && !hasEnvKey && !hasSecretKey && !hasKeyFile && !hasEnvFile) {
       vscode.window.showWarningMessage(
         "ChainReview: No Anthropic API key found. Set it in Settings → chainreview.anthropicApiKey, or in a .env file, or in ~/.anthropic/api_key. LLM features won't work without it.",
         "Open Settings"

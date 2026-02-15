@@ -139,11 +139,13 @@ export async function repoFile(args: {
   const repoPath = getActiveRepoPath();
   const filePath = path.resolve(repoPath, args.path);
 
-  // Secure path traversal check using path.relative
-  // This prevents bypasses like /tmp/repo2 passing when repoPath is /tmp/repo
-  const relative = path.relative(repoPath, filePath);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error("Path traversal detected");
+  // Secure path traversal check: resolved path must be strictly within repoPath.
+  // We normalize both paths and use startsWith on the resolved + separator to prevent
+  // bypasses like /tmp/repo2 passing when repoPath is /tmp/repo.
+  const normalizedRepo = path.resolve(repoPath) + path.sep;
+  const normalizedFile = path.resolve(filePath);
+  if (!normalizedFile.startsWith(normalizedRepo) && normalizedFile !== path.resolve(repoPath)) {
+    throw new Error("Path traversal detected: file is outside repository root");
   }
 
   if (!fs.existsSync(filePath)) {
