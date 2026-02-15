@@ -12,7 +12,6 @@ import {
   SendIcon,
   ShieldAlertIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { CODING_AGENTS } from "@/lib/constants";
 import { CategoryFilter } from "./CategoryFilter";
 import { FindingCard } from "./FindingCard";
@@ -30,7 +29,6 @@ interface FindingsGridProps {
   onExplain?: (findingId: string) => void;
   onSendToCodingAgent?: (findingId: string, agentId: string) => void;
   onReReview?: () => void;
-  className?: string;
 }
 
 export function FindingsGrid({
@@ -43,12 +41,12 @@ export function FindingsGrid({
   onExplain,
   onSendToCodingAgent,
   onReReview,
-  className,
 }: FindingsGridProps) {
   const [filter, setFilter] = useState<FilterOption>("all");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchHandoffOpen, setBatchHandoffOpen] = useState(false);
+  const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
   const batchHandoffRef = useRef<HTMLDivElement>(null);
 
   // Close batch handoff dropdown on outside click
@@ -76,7 +74,6 @@ export function FindingsGrid({
     return c;
   }, [findings]);
 
-  // Severity distribution for the summary bar
   const severityCounts = useMemo(() => {
     const c = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
     for (const f of findings) {
@@ -93,22 +90,14 @@ export function FindingsGrid({
   const toggleSelect = (findingId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(findingId)) {
-        next.delete(findingId);
-      } else {
-        next.add(findingId);
-      }
+      if (next.has(findingId)) next.delete(findingId);
+      else next.add(findingId);
       return next;
     });
   };
 
-  const selectAll = () => {
-    setSelectedIds(new Set(filtered.map((f) => f.id)));
-  };
-
-  const deselectAll = () => {
-    setSelectedIds(new Set());
-  };
+  const selectAll = () => setSelectedIds(new Set(filtered.map((f) => f.id)));
+  const deselectAll = () => setSelectedIds(new Set());
 
   const exitSelectionMode = () => {
     setSelectionMode(false);
@@ -128,11 +117,20 @@ export function FindingsGrid({
 
   if (findings.length === 0) {
     return (
-      <div className={cn("h-full flex flex-col items-center justify-center gap-4 text-center px-10", className)}>
-        <CheckCircleIcon className="size-8 text-emerald-400/40" />
+      <div style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 16,
+        textAlign: "center",
+        padding: "0 40px",
+      }}>
+        <CheckCircleIcon style={{ width: 32, height: 32, color: "rgba(52,211,153,0.4)" }} />
         <div>
-          <p className="text-sm font-semibold text-[var(--cr-text-primary)]">All clear</p>
-          <p className="text-[12px] text-[var(--cr-text-muted)] mt-1.5 max-w-[220px]">
+          <p style={{ fontSize: 14, fontWeight: 600, color: "var(--cr-text-primary)" }}>All clear</p>
+          <p style={{ fontSize: 12, color: "var(--cr-text-muted)", marginTop: 6, maxWidth: 220 }}>
             No findings detected. Run a review to discover potential issues in your codebase.
           </p>
         </div>
@@ -141,20 +139,20 @@ export function FindingsGrid({
   }
 
   return (
-    <div className={cn("h-full flex flex-col", className)}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       {/* ═══ Summary Header ═══ */}
       <div style={{ padding: "16px 16px 10px 16px" }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <ShieldAlertIcon className="size-3.5 text-[var(--cr-text-tertiary)] shrink-0" />
-              <span className="text-[13px] font-semibold text-[var(--cr-text-primary)]">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <ShieldAlertIcon style={{ width: 14, height: 14, color: "var(--cr-text-tertiary)", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--cr-text-primary)" }}>
                 {findings.length} Finding{findings.length !== 1 ? "s" : ""}
               </span>
             </div>
 
-            {/* Severity distribution — plain muted text */}
-            <span className="text-[10px] text-[var(--cr-text-ghost)] font-mono tabular-nums">
+            {/* Severity distribution */}
+            <span style={{ fontSize: 10, color: "var(--cr-text-ghost)", fontFamily: "var(--cr-font-mono)" }}>
               {[
                 severityCounts.critical > 0 && `${severityCounts.critical}C`,
                 severityCounts.high > 0 && `${severityCounts.high}H`,
@@ -164,33 +162,19 @@ export function FindingsGrid({
             </span>
           </div>
 
-          {/* Right-aligned action buttons */}
-          <div className="flex items-center gap-2">
+          {/* Right actions */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
-              onClick={() => {
-                if (selectionMode) {
-                  exitSelectionMode();
-                } else {
-                  setSelectionMode(true);
-                }
-              }}
-              className={cn(
-                "cr-btn cr-btn-sm",
-                selectionMode
-                  ? "cr-btn-indigo"
-                  : "cr-btn-secondary"
-              )}
+              onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+              className={selectionMode ? "cr-btn cr-btn-sm cr-btn-indigo" : "cr-btn cr-btn-sm cr-btn-secondary"}
             >
-              <ListChecksIcon className="size-3.5" />
+              <ListChecksIcon style={{ width: 14, height: 14 }} />
               {selectionMode ? "Exit" : "Selection Mode"}
             </button>
 
             {onReReview && (
-              <button
-                onClick={onReReview}
-                className="cr-btn cr-btn-sm cr-btn-secondary"
-              >
-                <RefreshCwIcon className="size-3.5" />
+              <button onClick={onReReview} className="cr-btn cr-btn-sm cr-btn-secondary">
+                <RefreshCwIcon style={{ width: 14, height: 14 }} />
                 Re-Review
               </button>
             )}
@@ -199,12 +183,8 @@ export function FindingsGrid({
       </div>
 
       {/* ═══ Category Filter ═══ */}
-      <div style={{ padding: "8px 16px" }} className="border-b border-[var(--cr-border-subtle)]">
-        <CategoryFilter
-          active={filter}
-          onChange={setFilter}
-          counts={counts}
-        />
+      <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--cr-border-subtle)" }}>
+        <CategoryFilter active={filter} onChange={setFilter} counts={counts} />
       </div>
 
       {/* ═══ Selection Toolbar ═══ */}
@@ -215,35 +195,31 @@ export function FindingsGrid({
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="overflow-hidden"
+            style={{ overflow: "hidden" }}
           >
-            <div style={{ padding: "8px 16px" }} className="flex items-center gap-2.5 border-b border-[var(--cr-border-subtle)]">
-              <span className="text-[11px] text-indigo-300 font-semibold tabular-nums">
+            <div style={{
+              padding: "8px 16px",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              borderBottom: "1px solid var(--cr-border-subtle)",
+            }}>
+              <span style={{ fontSize: 11, color: "#a5b4fc", fontWeight: 600 }}>
                 {selectedIds.size} selected
               </span>
 
-              <button
-                onClick={selectAll}
-                className="cr-btn cr-btn-xs cr-btn-indigo"
-              >
-                All
-              </button>
-              <button
-                onClick={deselectAll}
-                className="cr-btn cr-btn-xs cr-btn-ghost"
-              >
-                None
-              </button>
+              <button onClick={selectAll} className="cr-btn cr-btn-xs cr-btn-indigo">All</button>
+              <button onClick={deselectAll} className="cr-btn cr-btn-xs cr-btn-ghost">None</button>
 
               {selectedIds.size > 0 && onSendToCodingAgent && (
-                <div className="relative ml-auto" ref={batchHandoffRef}>
+                <div style={{ position: "relative", marginLeft: "auto" }} ref={batchHandoffRef}>
                   <button
                     onClick={() => setBatchHandoffOpen((p) => !p)}
                     className="cr-btn cr-btn-sm cr-btn-orange"
                   >
-                    <SendIcon className="size-3" />
+                    <SendIcon style={{ width: 12, height: 12 }} />
                     Send {selectedIds.size} to
-                    <ArrowRightIcon className="size-3" />
+                    <ArrowRightIcon style={{ width: 12, height: 12 }} />
                   </button>
                   <AnimatePresence>
                     {batchHandoffOpen && (
@@ -252,45 +228,84 @@ export function FindingsGrid({
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -4, scale: 0.95 }}
                         transition={{ duration: 0.15 }}
-                        className="absolute bottom-full right-0 mb-2 w-60 rounded-lg border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] shadow-xl shadow-black/40 z-50 overflow-hidden"
+                        style={{
+                          position: "absolute",
+                          bottom: "100%",
+                          right: 0,
+                          marginBottom: 8,
+                          width: 240,
+                          borderRadius: 8,
+                          border: "1px solid var(--cr-border-strong)",
+                          background: "var(--cr-bg-secondary)",
+                          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                          zIndex: 50,
+                          overflow: "hidden",
+                        }}
                       >
-                        <div className="py-1.5">
+                        <div style={{ padding: "6px 0" }}>
                           {CODING_AGENTS.map((agent) => {
                             if (agent.separator) {
                               return (
-                                <div
-                                  key={agent.id}
-                                  className="border-t border-[var(--cr-border-subtle)] my-1.5"
-                                />
+                                <div key={agent.id} style={{
+                                  borderTop: "1px solid var(--cr-border-subtle)",
+                                  margin: "6px 0",
+                                }} />
                               );
                             }
+                            const isHovered = hoveredAgentId === agent.id;
                             return (
                               <button
                                 key={agent.id}
                                 onClick={() => handleBatchHandoff(agent.id)}
-                                className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-[var(--cr-bg-hover)] transition-colors cursor-pointer"
+                                onMouseEnter={() => setHoveredAgentId(agent.id)}
+                                onMouseLeave={() => setHoveredAgentId(null)}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 12,
+                                  width: "100%",
+                                  padding: "10px 16px",
+                                  textAlign: "left",
+                                  background: isHovered ? "var(--cr-bg-hover)" : "transparent",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  transition: "background 100ms ease",
+                                }}
                               >
                                 {agent.icon ? (
                                   <img
                                     src={agent.icon}
                                     alt=""
-                                    className="size-5 rounded"
+                                    style={{ width: 20, height: 20, borderRadius: 4 }}
                                     onError={(e) => {
                                       (e.target as HTMLImageElement).style.display = "none";
                                     }}
                                   />
                                 ) : agent.id === "clipboard" ? (
-                                  <ClipboardCopyIcon className="size-4 text-[var(--cr-text-muted)]" />
+                                  <ClipboardCopyIcon style={{ width: 16, height: 16, color: "var(--cr-text-muted)" }} />
                                 ) : agent.id === "export-markdown" ? (
-                                  <ExternalLinkIcon className="size-4 text-[var(--cr-text-muted)]" />
+                                  <ExternalLinkIcon style={{ width: 16, height: 16, color: "var(--cr-text-muted)" }} />
                                 ) : agent.id === "config-more" ? (
-                                  <SettingsIcon className="size-4 text-[var(--cr-text-muted)]" />
+                                  <SettingsIcon style={{ width: 16, height: 16, color: "var(--cr-text-muted)" }} />
                                 ) : null}
-                                <span className={cn("text-[12px] font-medium flex-1", agent.color)}>
+                                <span style={{
+                                  fontSize: 12,
+                                  fontWeight: 500,
+                                  flex: 1,
+                                  color: agent.color?.includes("red") ? "#fca5a5"
+                                       : agent.color?.includes("amber") ? "#fcd34d"
+                                       : agent.color?.includes("blue") ? "#93c5fd"
+                                       : agent.color?.includes("emerald") ? "#6ee7b7"
+                                       : "#e5e5e5",
+                                }}>
                                   {agent.label}
                                 </span>
                                 {agent.suffix && (
-                                  <span className="text-[10px] text-[var(--cr-text-ghost)] font-mono">
+                                  <span style={{
+                                    fontSize: 10,
+                                    color: "var(--cr-text-ghost)",
+                                    fontFamily: "var(--cr-font-mono)",
+                                  }}>
                                     {agent.suffix}
                                   </span>
                                 )}
@@ -306,9 +321,26 @@ export function FindingsGrid({
 
               <button
                 onClick={exitSelectionMode}
-                className="p-1 text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] transition-colors ml-1 cursor-pointer rounded-md hover:bg-[var(--cr-bg-hover)]"
+                style={{
+                  padding: 4,
+                  color: "var(--cr-text-muted)",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  borderRadius: 6,
+                  marginLeft: 4,
+                  transition: "all 150ms ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--cr-text-secondary)";
+                  e.currentTarget.style.background = "var(--cr-bg-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--cr-text-muted)";
+                  e.currentTarget.style.background = "transparent";
+                }}
               >
-                <XIcon className="size-3.5" />
+                <XIcon style={{ width: 14, height: 14 }} />
               </button>
             </div>
           </motion.div>
@@ -316,8 +348,8 @@ export function FindingsGrid({
       </AnimatePresence>
 
       {/* ═══ Findings List ═══ */}
-      <div className="flex-1 overflow-y-auto cr-scrollbar">
-        <div style={{ padding: "8px 0" }} className="flex flex-col">
+      <div style={{ flex: 1, overflowY: "auto" }} className="cr-scrollbar">
+        <div style={{ padding: "8px 0", display: "flex", flexDirection: "column" }}>
           {filtered.map((finding, i) => (
             <motion.div
               key={finding.id}
