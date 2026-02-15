@@ -5,8 +5,11 @@ import {
   PlusIcon,
   SparklesIcon,
   PlugIcon,
+  ServerIcon,
+  WrenchIcon,
+  GlobeIcon,
+  ShieldCheckIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { MCPServerCard } from "./MCPServerCard";
 import { MCPEditor } from "./MCPEditor";
 import type { MCPServerInfo, MCPServerConfig } from "@/lib/types";
@@ -24,6 +27,14 @@ interface MCPManagerPanelProps {
   className?: string;
 }
 
+const CRP_TOOLS = [
+  { name: "repo", icon: "📁" },
+  { name: "code", icon: "🔍" },
+  { name: "patch", icon: "🩹" },
+  { name: "review", icon: "📝" },
+  { name: "chat", icon: "💬" },
+];
+
 export function MCPManagerPanel({
   servers,
   onClose,
@@ -32,7 +43,6 @@ export function MCPManagerPanel({
   onRemoveServer,
   onToggleServer,
   onRefreshServer,
-  className,
 }: MCPManagerPanelProps) {
   const [view, setView] = useState<PanelView>("list");
   const [editingServer, setEditingServer] = useState<MCPServerInfo | null>(null);
@@ -66,7 +76,7 @@ export function MCPManagerPanel({
   }, []);
 
   return (
-    <div className={cn("flex flex-col h-full bg-[var(--cr-bg-root)]", className)}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#0f0f0f" }}>
       <AnimatePresence mode="wait">
         {view === "list" ? (
           <motion.div
@@ -75,142 +85,314 @@ export function MCPManagerPanel({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="flex flex-col h-full"
+            style={{ display: "flex", flexDirection: "column", height: "100%" }}
           >
-            {/* Header */}
-            <div style={{ padding: "12px 16px" }} className="relative border-b border-[var(--cr-border)] bg-gradient-to-b from-[var(--cr-bg-secondary)] to-[var(--cr-bg-primary)] shrink-0">
-              {/* Background decoration */}
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(99,102,241,0.05),transparent_50%)]" />
-              
-              <div className="relative flex items-center gap-3">
-                <motion.button
-                  whileHover={{ scale: 1.05, x: -2 }}
-                  whileTap={{ scale: 0.95 }}
+            {/* ── Header ── */}
+            <div style={{
+              padding: "14px 16px",
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+              background: "linear-gradient(180deg, #1a1a1a 0%, #161616 100%)",
+              flexShrink: 0,
+              position: "relative",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button
                   onClick={onClose}
-                  className="size-8 flex items-center justify-center rounded-lg text-[var(--cr-text-muted)] hover:text-[var(--cr-text-primary)] hover:bg-[var(--cr-bg-hover)] transition-colors"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "transparent",
+                    color: "#525252",
+                    cursor: "pointer",
+                    transition: "all 150ms ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "#e5e5e5";
+                    e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "#525252";
+                    e.currentTarget.style.background = "transparent";
+                  }}
                 >
-                  <ArrowLeftIcon className="size-4" />
-                </motion.button>
-                
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-[14px] font-semibold text-[var(--cr-text-primary)] flex items-center gap-2">
-                    <PlugIcon className="size-4 text-indigo-400" />
-                    MCP Servers
-                  </h2>
-                  <p className="text-[10px] text-[var(--cr-text-muted)] mt-0.5">
-                    Extend ChainReview with external tools
+                  <ArrowLeftIcon style={{ width: 16, height: 16 }} />
+                </button>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <ServerIcon style={{ width: 16, height: 16, color: "#818cf8" }} />
+                    <h2 style={{ fontSize: 14, fontWeight: 700, color: "#e5e5e5", margin: 0, lineHeight: 1 }}>
+                      MCP Servers
+                    </h2>
+                  </div>
+                  <p style={{ fontSize: 10, color: "#525252", marginTop: 4, fontWeight: 500 }}>
+                    Extend ChainReview with external tools & capabilities
                   </p>
                 </div>
-                
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+
+                <button
                   onClick={handleAddNew}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white text-[11px] font-medium rounded-lg shadow-lg shadow-indigo-500/20 transition-all duration-200"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 14px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(99,102,241,0.3)",
+                    background: "linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.10) 100%)",
+                    color: "#a5b4fc",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all 200ms ease",
+                    lineHeight: 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.18) 100%)";
+                    e.currentTarget.style.borderColor = "rgba(99,102,241,0.45)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.10) 100%)";
+                    e.currentTarget.style.borderColor = "rgba(99,102,241,0.3)";
+                  }}
                 >
-                  <PlusIcon className="size-3.5" />
+                  <PlusIcon style={{ width: 14, height: 14 }} />
                   Add Server
-                </motion.button>
+                </button>
               </div>
             </div>
 
-            {/* Server List */}
-            <div className="flex-1 overflow-y-auto cr-scrollbar">
-              <div style={{ padding: 16 }} className="space-y-2">
-                {/* Built-in CRP Server (premium card) */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.05 }}
-                  className="relative rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 via-[var(--cr-bg-secondary)] to-emerald-500/5 overflow-hidden"
-                >
-                  {/* Glow effect */}
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,rgba(52,211,153,0.1),transparent_50%)]" />
-                  
-                  <div className="relative p-4">
-                    <div className="flex items-start gap-3">
+            {/* ── Server List ── */}
+            <div style={{ flex: 1, overflowY: "auto", padding: 16 }} className="cr-scrollbar">
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+                {/* ── Built-in CRP Server Card — Premium ── */}
+                <div style={{
+                  borderRadius: 14,
+                  border: "1px solid rgba(52,211,153,0.18)",
+                  background: "linear-gradient(135deg, rgba(52,211,153,0.05) 0%, #1c1c1c 50%, rgba(52,211,153,0.03) 100%)",
+                  overflow: "hidden",
+                  position: "relative",
+                }}>
+                  {/* Subtle top glow */}
+                  <div style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 1,
+                    background: "linear-gradient(90deg, transparent 0%, rgba(52,211,153,0.3) 50%, transparent 100%)",
+                  }} />
+
+                  <div style={{ padding: 16, position: "relative" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
                       {/* Icon */}
-                      <div className="relative">
-                        <div className="size-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                          <SparklesIcon className="size-5 text-white" />
+                      <div style={{ position: "relative" }}>
+                        <div style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 12,
+                          background: "linear-gradient(135deg, #34d399 0%, #10b981 100%)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: "0 4px 12px rgba(52,211,153,0.20)",
+                        }}>
+                          <SparklesIcon style={{ width: 22, height: 22, color: "white" }} />
                         </div>
-                        <span className="absolute -bottom-1 -right-1 size-4 rounded-full bg-emerald-400 border-2 border-[var(--cr-bg-secondary)] flex items-center justify-center">
-                          <span className="size-1.5 rounded-full bg-white" />
+                        {/* Connected dot */}
+                        <span style={{
+                          position: "absolute",
+                          bottom: -2,
+                          right: -2,
+                          width: 14,
+                          height: 14,
+                          borderRadius: "50%",
+                          background: "#34d399",
+                          border: "2.5px solid #1c1c1c",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "white" }} />
                         </span>
                       </div>
-                      
+
                       {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-[13px] font-semibold text-[var(--cr-text-primary)]">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#e5e5e5", margin: 0, lineHeight: 1 }}>
                             ChainReview CRP Server
                           </h3>
-                          <span className="text-[9px] font-semibold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          <span style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            color: "#34d399",
+                            background: "rgba(52,211,153,0.12)",
+                            padding: "2px 8px",
+                            borderRadius: 9999,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                            lineHeight: 1.3,
+                          }}>
                             Built-in
                           </span>
                         </div>
-                        <p className="text-[11px] text-[var(--cr-text-muted)] mt-1">
-                          Core review, chat, search, and patch tools
+                        <p style={{ fontSize: 11, color: "#737373", marginTop: 4 }}>
+                          Core review, search, patch, and analysis tools
                         </p>
-                        
+
                         {/* Tool badges */}
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {["repo", "code", "patch", "review", "chat"].map((tool) => (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 10 }}>
+                          {CRP_TOOLS.map((tool) => (
                             <span
-                              key={tool}
-                              className="text-[9px] font-medium text-emerald-400/80 bg-emerald-500/10 px-2 py-0.5 rounded-md"
+                              key={tool.name}
+                              style={{
+                                fontSize: 9,
+                                fontWeight: 600,
+                                color: "rgba(52,211,153,0.8)",
+                                background: "rgba(52,211,153,0.08)",
+                                border: "1px solid rgba(52,211,153,0.10)",
+                                padding: "3px 8px",
+                                borderRadius: 6,
+                                lineHeight: 1,
+                              }}
                             >
-                              crp.{tool}
+                              crp.{tool.name}
                             </span>
                           ))}
-                          <span className="text-[9px] font-medium text-[var(--cr-text-muted)] bg-[var(--cr-bg-tertiary)] px-2 py-0.5 rounded-md">
+                          <span style={{
+                            fontSize: 9,
+                            fontWeight: 600,
+                            color: "#525252",
+                            background: "rgba(255,255,255,0.03)",
+                            border: "1px solid rgba(255,255,255,0.06)",
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            lineHeight: 1,
+                          }}>
                             +15 more
                           </span>
                         </div>
                       </div>
-                      
-                      {/* Status */}
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 rounded-full">
-                        <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        <span className="text-[10px] font-medium text-emerald-400">
+
+                      {/* Status pill */}
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "5px 10px",
+                        borderRadius: 9999,
+                        background: "rgba(52,211,153,0.08)",
+                        border: "1px solid rgba(52,211,153,0.12)",
+                        flexShrink: 0,
+                      }}>
+                        <span style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          background: "#34d399",
+                          boxShadow: "0 0 6px rgba(52,211,153,0.4)",
+                        }} />
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "#34d399", lineHeight: 1 }}>
                           Connected
                         </span>
                       </div>
                     </div>
                   </div>
-                </motion.div>
+                </div>
 
-                {/* Empty state for user servers */}
+                {/* ── Section divider ── */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+                  <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.04)" }} />
+                  <span style={{ fontSize: 9, fontWeight: 600, color: "#404040", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    External Servers
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.04)" }} />
+                </div>
+
+                {/* ── User-added servers or empty state ── */}
                 {servers.length === 0 ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="relative mt-4 rounded-xl border border-dashed border-[var(--cr-border)] bg-[var(--cr-bg-secondary)]/30 p-6"
-                  >
-                    <div className="flex flex-col items-center text-center">
-                      <div className="size-12 rounded-2xl bg-gradient-to-br from-indigo-500/10 to-violet-500/10 border border-indigo-500/10 flex items-center justify-center mb-3">
-                        <PlugIcon className="size-6 text-indigo-400/60" />
+                  <div style={{
+                    borderRadius: 14,
+                    border: "1px dashed rgba(255,255,255,0.08)",
+                    background: "#161616",
+                    padding: "32px 24px",
+                  }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+                      {/* Icon group */}
+                      <div style={{ display: "flex", alignItems: "center", gap: -8, marginBottom: 16 }}>
+                        <div style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 12,
+                          background: "rgba(99,102,241,0.08)",
+                          border: "1px solid rgba(99,102,241,0.12)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}>
+                          <PlugIcon style={{ width: 18, height: 18, color: "rgba(99,102,241,0.5)" }} />
+                        </div>
                       </div>
-                      <p className="text-[12px] font-medium text-[var(--cr-text-secondary)] mb-1">
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "#a3a3a3", marginBottom: 4 }}>
                         No External Servers
                       </p>
-                      <p className="text-[11px] text-[var(--cr-text-muted)] leading-relaxed max-w-[220px] mb-4">
-                        Add MCP servers to extend ChainReview with additional tools and capabilities
+                      <p style={{ fontSize: 11, color: "#525252", lineHeight: 1.5, maxWidth: 240, marginBottom: 16 }}>
+                        Connect MCP servers to give review agents access to additional tools, databases, and APIs
                       </p>
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
+
+                      {/* Feature list */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 220, marginBottom: 20 }}>
+                        {[
+                          { icon: WrenchIcon, text: "Custom analysis tools", color: "#818cf8" },
+                          { icon: GlobeIcon, text: "External API integrations", color: "#60a5fa" },
+                          { icon: ShieldCheckIcon, text: "Security scanners", color: "#34d399" },
+                        ].map(({ icon: Icon, text, color }) => (
+                          <div key={text} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <Icon style={{ width: 12, height: 12, color, flexShrink: 0 }} />
+                            <span style={{ fontSize: 10, color: "#737373", fontWeight: 500 }}>{text}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
                         onClick={handleAddNew}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-indigo-500/10 to-violet-500/10 hover:from-indigo-500/20 hover:to-violet-500/20 border border-indigo-500/20 text-indigo-400 text-[11px] font-medium rounded-lg transition-all duration-200"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "9px 18px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(99,102,241,0.25)",
+                          background: "linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(139,92,246,0.06) 100%)",
+                          color: "#a5b4fc",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          transition: "all 200ms ease",
+                          lineHeight: 1,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "linear-gradient(135deg, rgba(99,102,241,0.20) 0%, rgba(139,92,246,0.14) 100%)";
+                          e.currentTarget.style.borderColor = "rgba(99,102,241,0.40)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(139,92,246,0.06) 100%)";
+                          e.currentTarget.style.borderColor = "rgba(99,102,241,0.25)";
+                        }}
                       >
-                        <PlusIcon className="size-3.5" />
+                        <PlusIcon style={{ width: 14, height: 14 }} />
                         Add MCP Server
-                      </motion.button>
+                      </button>
                     </div>
-                  </motion.div>
+                  </div>
                 ) : (
-                  /* User-added servers */
                   <AnimatePresence>
                     {servers.map((server, idx) => (
                       <motion.div
@@ -233,10 +415,16 @@ export function MCPManagerPanel({
               </div>
             </div>
 
-            {/* Footer */}
-            <div style={{ padding: "12px 16px" }} className="border-t border-[var(--cr-border-subtle)] bg-[var(--cr-bg-secondary)]/30 shrink-0">
-              <p className="text-[10px] text-[var(--cr-text-muted)] leading-relaxed">
-                <span className="text-indigo-400 font-medium">MCP</span> servers provide additional tools for code review agents via the Model Context Protocol.
+            {/* ── Footer ── */}
+            <div style={{
+              padding: "10px 16px",
+              borderTop: "1px solid rgba(255,255,255,0.04)",
+              background: "#131313",
+              flexShrink: 0,
+            }}>
+              <p style={{ fontSize: 10, color: "#404040", lineHeight: 1.5 }}>
+                <span style={{ color: "#818cf8", fontWeight: 600 }}>MCP</span>{" "}
+                servers provide additional tools via the Model Context Protocol.
               </p>
             </div>
           </motion.div>
@@ -247,7 +435,7 @@ export function MCPManagerPanel({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
             transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="flex flex-col h-full"
+            style={{ display: "flex", flexDirection: "column", height: "100%" }}
           >
             <MCPEditor
               initialConfig={editingServer?.config || null}

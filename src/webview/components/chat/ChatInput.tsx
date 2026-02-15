@@ -82,33 +82,69 @@ export function ChatInput({
   const hasContent = currentText.trim().length > 0;
 
   return (
-    <div style={{ padding: "0 12px 12px 12px" }} className={cn("flex-shrink-0", className)}>
-      {/* ── Review Status Bar (above input, separate from the card) ── */}
+    <div style={{ padding: "0 12px 12px 12px", flexShrink: 0 }} className={cn(className)}>
+      {/* ── Review Status Bar ── */}
       {isReviewing && (
         <div
-          style={{ padding: "8px 12px", marginBottom: 8 }}
-          className="flex items-center justify-between rounded-xl bg-[var(--cr-accent-subtle)] border border-[var(--cr-border-subtle)]"
+          style={{
+            padding: "8px 12px",
+            marginBottom: 8,
+            borderRadius: 12,
+            background: "rgba(99,102,241,0.06)",
+            border: "1px solid rgba(99,102,241,0.12)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
         >
-          <div className="flex items-center gap-2">
-            <LoaderCircleIcon className="size-3.5 text-[var(--cr-accent)] animate-spin" />
-            <span className="text-[11px] text-[var(--cr-accent-hover)] font-medium">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <LoaderCircleIcon
+              style={{
+                width: 14,
+                height: 14,
+                color: "#818cf8",
+                animation: "spin 1s linear infinite",
+              }}
+            />
+            <span style={{ fontSize: 11, color: "#a5b4fc", fontWeight: 600 }}>
               Agents are reviewing...
             </span>
           </div>
           {onCancelReview && (
             <button
               onClick={onCancelReview}
-              style={{ padding: "3px 10px" }}
-              className="flex items-center gap-1.5 text-[10px] font-semibold rounded-lg bg-red-500/15 text-red-400 border border-red-500/25 hover:bg-red-500/25 transition-colors"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 12px",
+                fontSize: 10,
+                fontWeight: 700,
+                borderRadius: 8,
+                border: "1px solid rgba(239,68,68,0.25)",
+                background: "rgba(239,68,68,0.10)",
+                color: "#f87171",
+                cursor: "pointer",
+                transition: "all 150ms ease",
+                lineHeight: 1,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(239,68,68,0.20)";
+                e.currentTarget.style.borderColor = "rgba(239,68,68,0.40)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(239,68,68,0.10)";
+                e.currentTarget.style.borderColor = "rgba(239,68,68,0.25)";
+              }}
             >
-              <SquareIcon className="size-2.5 fill-current" />
+              <SquareIcon style={{ width: 8, height: 8, fill: "currentColor" }} />
               Stop
             </button>
           )}
         </div>
       )}
 
-      {/* ── Input Card — Claude Code style ── */}
+      {/* ── Input Card ── */}
       <div
         style={{
           borderRadius: 16,
@@ -134,23 +170,46 @@ export function ChatInput({
           onChange={handleChange}
         />
 
-        {/* ── Divider line ── */}
-        <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "0" }} />
+        {/* Divider */}
+        <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
 
         {/* ── Toolbar row ── */}
         <div
-          style={{ padding: "6px 10px" }}
-          className="flex items-center justify-between"
+          style={{ padding: "6px 10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}
         >
           {/* Left: action buttons */}
-          <div className="flex items-center gap-0.5">
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
             {onStartRepoReview && !isReviewing && (
               <button
                 onClick={handleRepoReview}
                 disabled={disabled}
                 title="Full repo review"
-                style={{ padding: "5px 8px", borderRadius: 8 }}
-                className="flex items-center gap-1.5 text-[10.5px] font-medium text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] hover:bg-white/[0.04] transition-colors disabled:opacity-35"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "5px 8px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "transparent",
+                  color: "#525252",
+                  fontSize: 10.5,
+                  fontWeight: 500,
+                  cursor: disabled ? "default" : "pointer",
+                  transition: "all 150ms ease",
+                  opacity: disabled ? 0.35 : 1,
+                  lineHeight: 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!disabled) {
+                    e.currentTarget.style.color = "#a3a3a3";
+                    e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#525252";
+                  e.currentTarget.style.background = "transparent";
+                }}
               >
                 <FolderSearchIcon style={{ width: 14, height: 14 }} />
                 Repo
@@ -161,8 +220,32 @@ export function ChatInput({
                 onClick={handleDiffReview}
                 disabled={disabled}
                 title="Review git diff"
-                style={{ padding: "5px 8px", borderRadius: 8 }}
-                className="flex items-center gap-1.5 text-[10.5px] font-medium text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] hover:bg-white/[0.04] transition-colors disabled:opacity-35"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "5px 8px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "transparent",
+                  color: "#525252",
+                  fontSize: 10.5,
+                  fontWeight: 500,
+                  cursor: disabled ? "default" : "pointer",
+                  transition: "all 150ms ease",
+                  opacity: disabled ? 0.35 : 1,
+                  lineHeight: 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!disabled) {
+                    e.currentTarget.style.color = "#a3a3a3";
+                    e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#525252";
+                  e.currentTarget.style.background = "transparent";
+                }}
               >
                 <GitCompareArrowsIcon style={{ width: 14, height: 14 }} />
                 Diff
@@ -170,18 +253,14 @@ export function ChatInput({
             )}
           </div>
 
-          {/* Right: hints + send */}
-          <div className="flex items-center gap-2">
+          {/* Right: hints + send/stop */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {!isReviewing && !hasContent && (
-              <span className="text-[10px] text-[var(--cr-text-ghost)] select-none">
+              <span style={{ fontSize: 10, color: "#404040", userSelect: "none" }}>
                 @ agents
               </span>
             )}
-            {/* Slash hint */}
-            {!isReviewing && !hasContent && (
-              <span className="text-[10px] text-[var(--cr-text-ghost)] select-none">/</span>
-            )}
-            {/* Send button */}
+            {/* Send / Stop button */}
             <button
               onClick={isReviewing && onCancelReview ? onCancelReview : handleSubmit}
               disabled={!isReviewing && (disabled || !hasContent)}
@@ -208,7 +287,7 @@ export function ChatInput({
               }}
             >
               {isReviewing ? (
-                <SquareIcon style={{ width: 12, height: 12 }} className="fill-current" />
+                <SquareIcon style={{ width: 12, height: 12, fill: "currentColor" }} />
               ) : (
                 <ArrowUpIcon style={{ width: 16, height: 16 }} strokeWidth={2.5} />
               )}

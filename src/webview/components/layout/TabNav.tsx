@@ -1,5 +1,4 @@
 import { motion } from "motion/react";
-import { cn } from "@/lib/utils";
 import {
   MessageSquareIcon,
   AlertTriangleIcon,
@@ -15,7 +14,7 @@ interface TabNavProps {
   eventsCount?: number;
 }
 
-const TABS: { id: TabId; label: string; Icon: React.FC<{ className?: string }> }[] = [
+const TABS: { id: TabId; label: string; Icon: React.FC<{ style?: React.CSSProperties }> }[] = [
   { id: "chat", label: "Chat", Icon: MessageSquareIcon },
   { id: "findings", label: "Findings", Icon: AlertTriangleIcon },
   { id: "timeline", label: "Timeline", Icon: ClockIcon },
@@ -34,7 +33,12 @@ export function TabNav({
   };
 
   return (
-    <div className="flex border-b border-[var(--cr-border)] bg-[var(--cr-bg-primary)] shrink-0">
+    <div style={{
+      display: "flex",
+      borderBottom: "1px solid rgba(255,255,255,0.06)",
+      background: "#161616",
+      flexShrink: 0,
+    }}>
       {TABS.map((tab) => {
         const badge = getBadge(tab.id);
         const isActive = activeTab === tab.id;
@@ -42,32 +46,58 @@ export function TabNav({
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            className={cn(
-              "relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-all duration-150",
-              isActive
-                ? "text-[var(--cr-text-primary)]"
-                : "text-[var(--cr-text-muted)] hover:text-[var(--cr-text-tertiary)]"
-            )}
+            style={{
+              position: "relative",
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              padding: "10px 12px",
+              fontSize: 12,
+              fontWeight: 500,
+              border: "none",
+              background: "transparent",
+              color: isActive ? "#e5e5e5" : "#525252",
+              cursor: "pointer",
+              transition: "all 150ms ease",
+              lineHeight: 1,
+            }}
           >
-            <tab.Icon className={cn(
-              "size-4 transition-colors",
-              isActive ? "text-[var(--cr-accent)]" : "text-current"
-            )} />
+            <tab.Icon style={{
+              width: 15,
+              height: 15,
+              color: isActive ? "#818cf8" : "currentColor",
+              transition: "color 150ms ease",
+            }} />
             <span>{tab.label}</span>
             {badge !== null && (
-              <span className={cn(
-                "text-[10px] font-semibold min-w-[18px] text-center px-1.5 py-0.5 rounded-full leading-snug",
-                isActive
-                  ? "bg-[var(--cr-accent-muted)] text-[var(--cr-accent-hover)]"
-                  : "bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-muted)]"
-              )}>
+              <span style={{
+                fontSize: 10,
+                fontWeight: 600,
+                minWidth: 18,
+                textAlign: "center",
+                padding: "2px 6px",
+                borderRadius: 9999,
+                lineHeight: 1.2,
+                background: isActive ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.04)",
+                color: isActive ? "#a5b4fc" : "#525252",
+              }}>
                 {badge}
               </span>
             )}
             {isActive && (
               <motion.div
                 layoutId="active-tab-indicator"
-                className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-[var(--cr-accent)]"
+                style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 8,
+                  right: 8,
+                  height: 2,
+                  borderRadius: 9999,
+                  background: "#6366f1",
+                }}
                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
               />
             )}
