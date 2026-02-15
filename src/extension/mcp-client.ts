@@ -412,6 +412,21 @@ export class CrpClient {
     return JSON.parse(result);
   }
 
+  // ── Chat Message Persistence ──
+
+  async saveChatMessages(runId: string, messages: unknown[]): Promise<{ saved: boolean }> {
+    const result = await this.callTool("crp.review.save_chat_messages", {
+      runId,
+      messagesJson: JSON.stringify(messages),
+    });
+    return JSON.parse(result);
+  }
+
+  async getChatMessages(runId: string): Promise<unknown[]> {
+    const result = await this.callTool("crp.review.get_chat_messages", { runId });
+    return JSON.parse(result);
+  }
+
   // ── Chat Query ──
 
   async chatQuery(

@@ -1289,7 +1289,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       .map((ev) => `- \`${ev.filePath}\` (lines ${ev.startLine}–${ev.endLine})`)
       .join("\n");
     const userTicket = [
-      `✨ **Explain Finding**`,
+      `🧠 **Explain Finding**`,
       ``,
       `**${finding.title}**`,
       `**Severity:** ${finding.severity.toUpperCase()} · **Category:** ${finding.category} · **Confidence:** ${Math.round(finding.confidence * 100)}%`,
@@ -1298,31 +1298,60 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       ``,
       `**Evidence:**`,
       evidenceList,
+      ``,
+      `*Invoking Explainer Agent to break this down...*`,
     ].join("\n");
 
     this.postMessage({ type: "injectUserMessage", text: userTicket });
 
-    // Build an investigation prompt so the LLM actively researches the finding
+    // Build an investigation prompt so the Explainer Agent actively researches the finding
+    // and breaks it down in simple, non-technical terms
     const evidenceSummary = finding.evidence
       .map((ev) => `  - ${ev.filePath}:${ev.startLine}-${ev.endLine}`)
       .join("\n");
 
+    const codeSnippets = finding.evidence
+      .filter((ev) => ev.snippet)
+      .map((ev) => `\`\`\`\n// ${ev.filePath}:${ev.startLine}\n${ev.snippet}\n\`\`\``)
+      .join("\n\n");
+
     const query = [
-      `Explain this code review finding in detail. Investigate the code and provide a thorough analysis:`,
+      `🧠 **[Explainer Agent]** — Break down this finding in simple, clear language that any developer can understand.`,
+      ``,
+      `You are acting as the **Explainer Agent**. Your job is NOT to just repeat the finding — you must:`,
+      `1. **Read the actual code** at the evidence locations to understand the real context`,
+      `2. **Explain the problem** like you're teaching a junior developer — use analogies and plain English`,
+      `3. **Show what could go wrong** with a concrete example scenario (e.g., "If a user sends X, then Y happens because...")`,
+      `4. **Rate the real-world risk** — is this a "your house is on fire" issue or a "you should clean up someday" issue?`,
+      `5. **Give a clear fix** with a before/after code example`,
+      ``,
+      `---`,
       ``,
       `**Finding:** ${finding.title}`,
       `**Severity:** ${finding.severity.toUpperCase()} | **Confidence:** ${Math.round(finding.confidence * 100)}%`,
       `**Agent:** ${finding.agent} | **Category:** ${finding.category}`,
+      ``,
       `**Description:** ${finding.description}`,
       ``,
       `**Evidence locations:**`,
       evidenceSummary,
+      codeSnippets ? `\n**Code snippets from evidence:**\n${codeSnippets}` : ``,
       ``,
-      `Please read the relevant files, understand the context, and explain:`,
-      `1. What exactly is the issue and why it matters`,
-      `2. The potential impact and risk`,
-      `3. Whether this is a true positive or could be a false positive`,
-      `4. Suggested fix or mitigation`,
+      `---`,
+      ``,
+      `**Instructions:** Read the files above, then explain in this format:`,
+      ``,
+      `## 🔍 What's the problem?`,
+      `(Plain English explanation — no jargon. Use an analogy if helpful.)`,
+      ``,
+      `## 💥 What could go wrong?`,
+      `(A specific, realistic scenario showing the bug in action.)`,
+      ``,
+      `## ⚡ How serious is this?`,
+      `(Honest assessment: critical/important/minor, and why.)`,
+      ``,
+      `## 🔧 How to fix it`,
+      `(Concrete code change — show before and after.)`,
     ].join("\n");
 
     // Trigger an actual chat query — the LLM will investigate with tool calls
@@ -1696,7 +1725,8 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         const filePath = path.join(chainReviewDir, fileName);
         fs.writeFileSync(filePath, prompt, "utf-8");
         const uri = vscode.Uri.file(filePath);
-        await vscode.workspace.openTextDocument(uri).then((doc) => vscode.window.showTextDocument(doc));
+        const doc = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(doc);
         vscode.window.showInformationMessage(`ChainReview: Finding exported to .chainreview/${fileName}`);
       } catch (err: any) {
         await vscode.env.clipboard.writeText(prompt);
@@ -1892,10 +1922,11 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (!this._crpClient?.isConnected()) return;
 
     try {
-      // Get findings and events for this run
-      const [findings, events] = await Promise.all([
+      // Get findings, events, and chat messages for this run
+      const [findings, events, chatMessages] = await Promise.all([
         this._crpClient.getFindings(runId),
         this._crpClient.getEvents(runId),
+        this._crpClient.getChatMessages(runId).catch(() => [] as unknown[]),
       ]);
 
       if (!Array.isArray(findings) || !Array.isArray(events)) {
@@ -1916,6 +1947,13 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       // Send all events
       for (const event of events) {
         this.postMessage({ type: "addEvent", event });
+      }
+
+      // Restore chat messages from SQLite (per-run persistence)
+      if (Array.isArray(chatMessages) && chatMessages.length > 0) {
+        this.postMessage({ type: "restoreMessages", messages: chatMessages });
+        // Also update workspaceState so _restorePersistedState picks them up on panel reload
+        this._context?.workspaceState.update("chainreview.chatMessages", chatMessages);
       }
 
       // Mark complete
@@ -2183,6 +2221,13 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (!this._context) return;
     try {
       this._context.workspaceState.update("chainreview.chatMessages", messages);
+
+      // Also persist to SQLite for task history recall (per-run)
+      if (this._currentRunId && this._crpClient?.isConnected()) {
+        this._crpClient.saveChatMessages(this._currentRunId, messages).catch((err: any) => {
+          console.error("ChainReview: Failed to persist chat messages to SQLite:", err.message);
+        });
+      }
     } catch (err: any) {
       console.error("ChainReview: Failed to persist chat messages:", err.message);
     }
