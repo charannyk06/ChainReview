@@ -55,7 +55,7 @@ type Action =
   | { type: "HISTORY_SET"; runs: ReviewRunSummary[] }
   | { type: "HISTORY_DELETE_RUN"; runId: string }
   | { type: "RESTORE_MESSAGES"; messages: ConversationMessage[] }
-  | { type: "RESTORE_REVIEW_STATE"; findings: Finding[]; events: AuditEvent[]; status: ReviewStatus; mode?: ReviewMode }
+  | { type: "RESTORE_REVIEW_STATE"; findings: Finding[]; events: AuditEvent[]; status: ReviewStatus; mode?: ReviewMode; validationVerdicts?: Record<string, ValidationResult> }
   | { type: "CLEAR_CHAT" };
 
 function reducer(state: ReviewState, action: Action): ReviewState {
@@ -238,7 +238,7 @@ function reducer(state: ReviewState, action: Action): ReviewState {
       return { ...state, status: "error", error: action.error };
 
     case "RESET":
-      return { ...initialState, mcpServers: state.mcpServers, validationVerdicts: {}, validatingFindings: new Set() };
+      return { ...initialState, mcpServers: state.mcpServers, validationVerdicts: state.validationVerdicts, validatingFindings: new Set() };
 
     // ── Finding Validation ──
     case "FINDING_VALIDATING": {
@@ -312,23 +312,31 @@ function reducer(state: ReviewState, action: Action): ReviewState {
 
     // ── State Restoration ──
     case "RESTORE_MESSAGES":
-      // Only restore if currently idle (don't overwrite an active session)
-      if (state.status !== "idle") return state;
+      // Always restore messages — merge if active session has none yet,
+      // skip only if current session already has messages (to avoid duplication)
+      if (state.messages.length > 0) return state;
       return {
         ...state,
-        status: "chatting",
+        status: state.status === "idle" ? "chatting" : state.status,
         messages: action.messages,
       };
 
     case "RESTORE_REVIEW_STATE": {
-      if (state.status !== "idle" && state.status !== "chatting") return state;
+      // Allow restore unless a review is actively running right now
+      if (state.status === "running") return state;
       const restoredStatus: ReviewStatus = action.status === "running" ? "complete" : (action.status as ReviewStatus);
+      // Don't downgrade status: if we're already chatting, don't go back to idle
+      const effectiveStatus = (restoredStatus === "idle" && state.status !== "idle") ? state.status : restoredStatus;
       return {
         ...state,
-        status: restoredStatus,
-        mode: action.mode,
-        findings: action.findings,
-        events: action.events,
+        status: effectiveStatus,
+        mode: action.mode || state.mode,
+        findings: action.findings.length > 0 ? action.findings : state.findings,
+        events: action.events.length > 0 ? action.events : state.events,
+        validationVerdicts: {
+          ...state.validationVerdicts,
+          ...(action.validationVerdicts || {}),
+        },
       };
     }
 
@@ -432,6 +440,7 @@ export function useReviewState() {
           events: msg.events,
           status: msg.status as ReviewStatus,
           mode: msg.mode as ReviewMode | undefined,
+          validationVerdicts: (msg as any).validationVerdicts,
         });
         break;
 

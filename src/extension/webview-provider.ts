@@ -66,6 +66,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _currentRunId?: string;
   private _findings: Finding[] = [];
+  private _validationVerdicts: Record<string, { verdict: string; reasoning: string }> = {};
   private _blockCounter = 0;
   /** Track running tool_call block IDs per-agent for parallel routing */
   private _lastRunningToolBlockIds: Record<string, string> = {};
@@ -129,7 +130,18 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       });
     });
 
-    // Restore persisted state when webview becomes visible
+    // Persist chat messages when panel visibility changes (tab switch, panel hide)
+    webviewView.onDidChangeVisibility(() => {
+      if (!webviewView.visible) {
+        // Panel is being hidden — request messages for persistence
+        this.postMessage({ type: "requestPersistMessages" });
+      } else {
+        // Panel became visible again — restore state
+        this._restorePersistedState();
+      }
+    });
+
+    // Restore persisted state when webview first loads
     this._restorePersistedState();
   }
 
@@ -1384,6 +1396,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         reasoning: result.reasoning,
       });
 
+      // Persist verdict so it survives panel reloads
+      this._validationVerdicts[findingId] = { verdict: result.verdict, reasoning: result.reasoning };
+      this._persistValidationVerdicts();
+
       vscode.window.showInformationMessage(`ChainReview: Verification result — ${verdictLabel[result.verdict] || result.verdict}`);
     } catch (err: any) {
       const errMsg = err.message || "Unknown error";
@@ -2016,12 +2032,21 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _persistReviewState(state: { findings: unknown[]; events: unknown[]; status: string; mode?: string; runId?: string }) {
+  private _persistReviewState(state: { findings: unknown[]; events: unknown[]; status: string; mode?: string; runId?: string; validationVerdicts?: Record<string, unknown> }) {
     if (!this._context) return;
     try {
       this._context.workspaceState.update("chainreview.reviewState", state);
     } catch (err: any) {
       console.error("ChainReview: Failed to persist review state:", err.message);
+    }
+  }
+
+  private _persistValidationVerdicts() {
+    if (!this._context) return;
+    try {
+      this._context.workspaceState.update("chainreview.validationVerdicts", this._validationVerdicts);
+    } catch (err: any) {
+      console.error("ChainReview: Failed to persist validation verdicts:", err.message);
     }
   }
 
@@ -2031,11 +2056,19 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     // Small delay to ensure webview is ready to receive messages
     setTimeout(() => {
       try {
+        // Restore chat messages
         const messages = this._context!.workspaceState.get<unknown[]>("chainreview.chatMessages");
         if (messages && messages.length > 0) {
           this.postMessage({ type: "restoreMessages", messages });
         }
 
+        // Restore validation verdicts into memory
+        const verdicts = this._context!.workspaceState.get<Record<string, { verdict: string; reasoning: string }>>("chainreview.validationVerdicts");
+        if (verdicts) {
+          this._validationVerdicts = verdicts;
+        }
+
+        // Restore review state (findings, events, status) + merge verdicts
         const reviewState = this._context!.workspaceState.get<{
           findings: unknown[];
           events: unknown[];
@@ -2047,7 +2080,20 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
           if (reviewState.runId) {
             this._currentRunId = reviewState.runId;
           }
-          this.postMessage({ type: "restoreReviewState", ...reviewState });
+          this.postMessage({
+            type: "restoreReviewState",
+            ...reviewState,
+            validationVerdicts: this._validationVerdicts,
+          });
+        } else if (Object.keys(this._validationVerdicts).length > 0) {
+          // Even without a review state, restore verdicts alone
+          this.postMessage({
+            type: "restoreReviewState",
+            findings: [],
+            events: [],
+            status: "idle",
+            validationVerdicts: this._validationVerdicts,
+          });
         }
       } catch (err: any) {
         console.error("ChainReview: Failed to restore persisted state:", err.message);
@@ -2057,8 +2103,8 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   private _clearPersistedChat() {
     if (!this._context) return;
+    // Only clear chat messages — keep review state and verdicts
     this._context.workspaceState.update("chainreview.chatMessages", undefined);
-    this._context.workspaceState.update("chainreview.reviewState", undefined);
   }
 
   // ── Webview HTML ──
