@@ -143,7 +143,7 @@ export function FindingsGrid({
   return (
     <div className={cn("h-full flex flex-col", className)}>
       {/* ═══ Summary Header ═══ */}
-      <div className="px-4 pt-4 pb-2.5">
+      <div style={{ padding: "16px 16px 10px 16px" }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
@@ -199,7 +199,7 @@ export function FindingsGrid({
       </div>
 
       {/* ═══ Category Filter ═══ */}
-      <div className="px-4 py-2 border-b border-[var(--cr-border-subtle)]">
+      <div style={{ padding: "8px 16px" }} className="border-b border-[var(--cr-border-subtle)]">
         <CategoryFilter
           active={filter}
           onChange={setFilter}
@@ -217,7 +217,7 @@ export function FindingsGrid({
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="flex items-center gap-2.5 px-4 py-2 border-b border-[var(--cr-border-subtle)]">
+            <div style={{ padding: "8px 16px" }} className="flex items-center gap-2.5 border-b border-[var(--cr-border-subtle)]">
               <span className="text-[11px] text-indigo-300 font-semibold tabular-nums">
                 {selectedIds.size} selected
               </span>
@@ -317,7 +317,7 @@ export function FindingsGrid({
 
       {/* ═══ Findings List ═══ */}
       <div className="flex-1 overflow-y-auto cr-scrollbar">
-        <div className="flex flex-col px-4 py-2">
+        <div style={{ padding: "8px 16px" }} className="flex flex-col">
           {filtered.map((finding, i) => (
             <motion.div
               key={finding.id}

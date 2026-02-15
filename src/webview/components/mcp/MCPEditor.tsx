@@ -116,7 +116,7 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
       className="flex flex-col h-full"
     >
       {/* Header */}
-      <div className="relative px-4 py-3 border-b border-[var(--cr-border)] bg-gradient-to-b from-[var(--cr-bg-secondary)] to-[var(--cr-bg-primary)] shrink-0">
+      <div style={{ padding: "12px 16px" }} className="relative border-b border-[var(--cr-border)] bg-gradient-to-b from-[var(--cr-bg-secondary)] to-[var(--cr-bg-primary)] shrink-0">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,rgba(99,102,241,0.05),transparent_50%)]" />
         
         <div className="relative flex items-center justify-between">
@@ -145,7 +145,7 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
       </div>
 
       {/* Mode toggle */}
-      <div className="px-4 pt-4 pb-2">
+      <div style={{ padding: "16px 16px 8px 16px" }}>
         <div className="flex gap-1 bg-[var(--cr-bg-root)] border border-[var(--cr-border-subtle)] rounded-xl p-1">
           <button
             onClick={() => setJsonMode(false)}
@@ -175,7 +175,7 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto cr-scrollbar px-4 py-2">
+      <div style={{ padding: "8px 16px" }} className="flex-1 overflow-y-auto cr-scrollbar">
         <AnimatePresence mode="wait">
           {jsonMode ? (
             <motion.div
@@ -378,7 +378,7 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-[var(--cr-border)] bg-[var(--cr-bg-secondary)]/30 shrink-0">
+      <div style={{ padding: "12px 16px" }} className="flex items-center justify-between gap-3 border-t border-[var(--cr-border)] bg-[var(--cr-bg-secondary)]/30 shrink-0">
         <p className="text-[9px] text-[var(--cr-text-muted)]">
           {canSave ? "Ready to save" : "Fill required fields"}
         </p>

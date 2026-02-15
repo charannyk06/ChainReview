@@ -122,7 +122,7 @@ export function ChatContainer({
       >
         {/* Spacer pushes messages toward the bottom when there are few */}
         <div className="flex flex-col min-h-full justify-end">
-          <div className="flex flex-col gap-2 pb-4 pt-4 mx-3">
+          <div style={{ margin: "0 12px", paddingTop: 16, paddingBottom: 16 }} className="flex flex-col gap-2">
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}

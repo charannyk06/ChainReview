@@ -11,8 +11,9 @@ interface HeaderProps {
 export function Header({ onNewThread, onOpenMCPManager, onOpenHistory, className }: HeaderProps) {
   return (
     <div
+      style={{ padding: "8px 16px" }}
       className={cn(
-        "flex items-center gap-2.5 px-4 py-2 border-b shrink-0",
+        "flex items-center gap-2.5 border-b shrink-0",
         "border-[var(--cr-border)] bg-[var(--cr-bg-primary)]",
         className
       )}
