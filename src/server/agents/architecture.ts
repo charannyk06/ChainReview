@@ -1,9 +1,5 @@
-import { runAgentLoop, type AgentTool } from "./base-agent";
-import { repoTree, repoFile, repoSearch, repoDiff } from "../tools/repo";
-import { codeImportGraph, codePatternScan } from "../tools/code";
-import { execCommand } from "../tools/exec";
-import { webSearch } from "../tools/web";
-import type { AgentContext, AgentFinding, AuditEvent } from "../types";
+import { runAgentLoop, createToolExecutor, routeStandardTool, sanitizeForPrompt, type AgentTool, type AgentCallbacks } from "./base-agent";
+import type { AgentContext, AgentFinding } from "../types";
 
 const SYSTEM_PROMPT = `You are the Architecture Agent in ChainReview, an advanced repo-scale AI code reviewer for TypeScript repositories.
 
@@ -134,43 +130,45 @@ const TOOLS: AgentTool[] = [
       required: ["query"],
     },
   },
+  {
+    name: "crp_code_call_graph",
+    description: "Build function-level call graph showing which functions call which, with fan-in/fan-out metrics per file. Essential for finding architectural hubs and tightly-coupled modules.",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Subdirectory to scope analysis to" },
+      },
+    },
+  },
+  {
+    name: "crp_code_symbol_lookup",
+    description: "Find the definition and all references for a specific symbol (function, class, variable). Shows where it's defined, how it's used, and if it's exported.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "Symbol name to look up" },
+        file: { type: "string", description: "Specific file to search in first" },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "crp_code_impact_analysis",
+    description: "Compute the blast radius of changing a file — find all downstream modules affected via reverse call graph traversal. Great for evaluating change risk.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "Relative file path to analyze impact for" },
+        depth: { type: "number", description: "Max traversal depth (default: 3)" },
+      },
+      required: ["file"],
+    },
+  },
 ];
-
-async function handleToolCall(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  switch (name) {
-    case "crp_repo_tree":
-      return repoTree(args as any);
-    case "crp_repo_file":
-      return repoFile(args as any);
-    case "crp_repo_search":
-      return repoSearch(args as any);
-    case "crp_repo_diff":
-      return repoDiff(args as any);
-    case "crp_code_import_graph":
-      return codeImportGraph(args as any);
-    case "crp_code_pattern_scan":
-      return codePatternScan(args as any);
-    case "crp_exec_command":
-      return execCommand(args as any);
-    case "crp_web_search":
-      return webSearch(args as any);
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
-}
 
 export async function runArchitectureAgent(
   context: AgentContext,
-  callbacks: {
-    onText: (text: string) => void;
-    onThinking?: (text: string) => void;
-    onEvent: (event: Omit<AuditEvent, "id" | "timestamp">) => void;
-    onToolCall: (tool: string, args: Record<string, unknown>) => void;
-    onToolResult: (tool: string, result: string) => void;
-  },
+  callbacks: AgentCallbacks,
   signal?: AbortSignal
 ): Promise<AgentFinding[]> {
   // Build user prompt with pre-collected evidence
@@ -215,21 +213,61 @@ ${sorted
 `;
   }
 
+  // Inject module criticality ranking from call graph analysis
+  if (context.criticalFiles && context.criticalFiles.length > 0) {
+    userPrompt += `
+## Module Criticality (ranked by architectural importance — fan-in/fan-out scoring)
+These are the most architecturally significant files. Prioritize investigating these:
+${context.criticalFiles
+  .slice(0, 15)
+  .map(
+    (f, i) =>
+      `${i + 1}. ${f.file} — Score: ${Math.round(f.score * 100)}%, Fan-in: ${f.fanIn}, Fan-out: ${f.fanOut} (${f.reason})`
+  )
+  .join("\n")}
+`;
+  }
+
+  // Inject call graph summary
+  if (context.callGraph) {
+    userPrompt += `
+Call Graph Summary:
+- Total functions: ${context.callGraph.totalFunctions}
+- Total call edges: ${context.callGraph.totalEdges}
+- Use crp_code_call_graph, crp_code_symbol_lookup, and crp_code_impact_analysis for deeper investigation.
+`;
+  }
+
+  // Inject blast radius for diff mode
+  if (context.impactedModules && context.impactedModules.length > 0) {
+    userPrompt += `
+## Change Blast Radius
+The diff touches files that affect these downstream modules:
+${context.impactedModules
+  .slice(0, 15)
+  .map(
+    (m) =>
+      `- ${m.file} (distance: ${m.distance} hop${m.distance > 1 ? "s" : ""}, fan-in: ${m.fanIn}${m.affectedSymbols.length > 0 ? `, symbols: ${m.affectedSymbols.join(", ")}` : ""})`
+  )
+  .join("\n")}
+Focus your review on these affected modules — changes here have the widest impact.
+`;
+  }
+
   if (context.diffContent) {
     userPrompt += `
 Diff content (changes to review):
-${context.diffContent.slice(0, 5000)}
-${context.diffContent.length > 5000 ? "\n... (diff truncated)" : ""}
+${sanitizeForPrompt(context.diffContent, 5000)}
 `;
   }
 
   if (context.priorFindings) {
-    userPrompt += context.priorFindings;
+    userPrompt += sanitizeForPrompt(context.priorFindings, 5000);
   }
 
   userPrompt += `
 
-NOW: Begin your deep investigation using ALL available tools. You have 8 powerful tools:
+NOW: Begin your deep investigation using ALL available tools. You have 11 powerful tools:
 1. crp_repo_tree — understand project structure
 2. crp_repo_file — read entry points, config files, core modules
 3. crp_repo_search — find patterns across the codebase (import patterns, error handling, etc.)
@@ -238,6 +276,11 @@ NOW: Begin your deep investigation using ALL available tools. You have 8 powerfu
 6. crp_code_pattern_scan — run Semgrep to find anti-patterns and code smells
 7. crp_exec_command — run git log, git blame, wc, find for deeper analysis
 8. crp_web_search — verify best practices and design patterns
+9. crp_code_call_graph — build function-level call graph with fan-in/fan-out
+10. crp_code_symbol_lookup — find definition + all references for any symbol
+11. crp_code_impact_analysis — compute blast radius for any file
+
+START by investigating the highest-criticality files listed above. Use crp_code_symbol_lookup to trace key functions, and crp_code_impact_analysis to evaluate change risk.
 
 DO NOT skip tool use. You MUST read at least 5-10 files and run multiple searches before producing your findings. Every finding MUST include evidence from files you actually read — never guess.`;
 
@@ -246,13 +289,7 @@ DO NOT skip tool use. You MUST read at least 5-10 files and run multiple searche
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     tools: TOOLS,
-    onToolCall: async (name, args) => {
-      callbacks.onToolCall(name, args);
-      const result = await handleToolCall(name, args);
-      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
-      callbacks.onToolResult(name, resultStr);
-      return result;
-    },
+    onToolCall: createToolExecutor(routeStandardTool, callbacks),
     onText: callbacks.onText,
     onThinking: callbacks.onThinking,
     onEvent: callbacks.onEvent,

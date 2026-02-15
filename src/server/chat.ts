@@ -6,10 +6,7 @@ import type {
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
-import { repoTree, repoFile, repoSearch, repoDiff } from "./tools/repo";
-import { codeImportGraph, codePatternScan } from "./tools/code";
-import { execCommand } from "./tools/exec";
-import { webSearch } from "./tools/web";
+import { routeStandardTool } from "./agents/base-agent";
 import { runReview } from "./orchestrator";
 import type { Store } from "./store";
 import type { ReviewCallbacks } from "./types";
@@ -22,6 +19,91 @@ interface ChatToolCall {
   tool: string;
   args: Record<string, unknown>;
   result: string;
+}
+
+// ── Conversation History Utilities ──
+// Token budget management: reverse-iterate history to fit within budget,
+// strip thinking blocks, and compress verbose content before sending.
+
+/** Rough token estimate: ~4 chars per token for English text */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/** Max tokens to allocate for conversation history (leaves room for system prompt + current query + response) */
+const HISTORY_TOKEN_BUDGET = 30_000;
+
+/** Max content length per individual history message (truncate verbose tool outputs) */
+const MAX_MESSAGE_CONTENT_LENGTH = 6_000;
+
+/** Patterns to strip from history content — these waste tokens on re-send */
+const THINKING_BLOCK_RE = /<thinking>[\s\S]*?<\/thinking>/g;
+const TOOL_RESULT_VERBOSE_RE = /```(?:json|text|typescript|javascript)?\n[\s\S]{2000,}?\n```/g;
+
+/**
+ * Clean a history message's content:
+ * - Strip <thinking> blocks (no multi-turn value)
+ * - Truncate excessively long content (tool results, file dumps)
+ * - Deduplicate repeated file content markers
+ */
+function cleanHistoryContent(content: string): string {
+  let cleaned = content;
+
+  // Strip thinking blocks
+  cleaned = cleaned.replace(THINKING_BLOCK_RE, "");
+
+  // Truncate very long code blocks to first/last portions
+  cleaned = cleaned.replace(TOOL_RESULT_VERBOSE_RE, (match) => {
+    if (match.length <= 2000) return match;
+    const firstPart = match.slice(0, 800);
+    const lastPart = match.slice(-400);
+    return `${firstPart}\n... [truncated ${match.length - 1200} chars] ...\n${lastPart}`;
+  });
+
+  // Final length cap per message
+  if (cleaned.length > MAX_MESSAGE_CONTENT_LENGTH) {
+    cleaned = cleaned.slice(0, MAX_MESSAGE_CONTENT_LENGTH) + "\n... [truncated]";
+  }
+
+  return cleaned.trim();
+}
+
+/**
+ * Build history messages that fit within a token budget.
+ * Iterates from most recent to oldest, adding messages until budget is exhausted.
+ * This ensures the most recent context is always preserved.
+ */
+function buildBudgetedHistory(
+  history: Array<{ role: "user" | "assistant"; content: string }>,
+): MessageParam[] {
+  if (!history || history.length === 0) return [];
+
+  const result: MessageParam[] = [];
+  let tokensUsed = 0;
+
+  // Reverse-iterate: most recent messages get priority
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    const cleaned = cleanHistoryContent(msg.content);
+    if (!cleaned) continue;
+
+    const msgTokens = estimateTokens(cleaned);
+
+    if (tokensUsed + msgTokens > HISTORY_TOKEN_BUDGET) {
+      // Budget exceeded — stop adding older messages
+      break;
+    }
+
+    result.unshift({ role: msg.role, content: cleaned });
+    tokensUsed += msgTokens;
+  }
+
+  // Ensure messages start with "user" role (Anthropic API requirement)
+  while (result.length > 0 && result[0].role !== "user") {
+    result.shift();
+  }
+
+  return result;
 }
 
 export interface ChatQueryResult {
@@ -53,6 +135,9 @@ const BASE_SYSTEM_PROMPT = `You are a code review assistant for ChainReview. Ans
 - **Search code** (crp_repo_search): Regex search across the codebase using ripgrep
 - **Git diff** (crp_repo_diff): View git changes (committed, staged, unstaged)
 - **Import graph** (crp_code_import_graph): Trace TypeScript/JS module dependencies via ts-morph
+- **Call graph** (crp_code_call_graph): Build function-level call graph with fan-in/fan-out metrics — find the most architecturally critical files
+- **Symbol lookup** (crp_code_symbol_lookup): Find where any symbol is defined and all its usages across the codebase
+- **Impact analysis** (crp_code_impact_analysis): Analyze the blast radius of changing a file — what would break?
 - **Pattern scan** (crp_code_pattern_scan): Run Semgrep static analysis for anti-patterns and security issues
 - **Shell commands** (crp_exec_command): Execute read-only commands (git log, blame, grep, find, etc.)
 - **Web search** (crp_web_search): Search for security advisories, CVEs, best practices, docs
@@ -122,6 +207,40 @@ const TOOLS = [
       properties: {
         path: { type: "string", description: "Subdirectory to analyze (relative to repo root)" },
       },
+    },
+  },
+  {
+    name: "crp_code_call_graph",
+    description: "Build a function-level call graph showing which functions call which, with fan-in/fan-out metrics per file. Fan-in = how many files depend on this file (high = critical). Use this to understand code architecture and find the most important files.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string", description: "Subdirectory to analyze (relative to repo root)" },
+      },
+    },
+  },
+  {
+    name: "crp_code_symbol_lookup",
+    description: "Find the definition and all references/usages of a symbol (function, class, variable) across the entire codebase. Answers 'where is X defined?' and 'what uses X?'",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        symbol: { type: "string", description: "Symbol name to look up" },
+        file: { type: "string", description: "Optional: file path to narrow the search" },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "crp_code_impact_analysis",
+    description: "Analyze the blast radius of changing a file — shows all files that transitively depend on it. Answers 'what would break if I change this file?'",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        file: { type: "string", description: "Relative file path to analyze" },
+        depth: { type: "number", description: "Max traversal depth (default: 3)" },
+      },
+      required: ["file"],
     },
   },
   {
@@ -197,65 +316,48 @@ async function handleToolCall(
   args: Record<string, unknown>,
   spawnCtx?: SpawnReviewContext,
 ): Promise<unknown> {
-  switch (name) {
-    case "crp_repo_tree":
-      return repoTree(args as any);
-    case "crp_repo_file":
-      return repoFile(args as any);
-    case "crp_repo_search":
-      return repoSearch(args as any);
-    case "crp_repo_diff":
-      return repoDiff(args as any);
-    case "crp_code_import_graph":
-      return codeImportGraph(args as any);
-    case "crp_code_pattern_scan":
-      return codePatternScan(args as any);
-    case "crp_exec_command":
-      return execCommand(args as any);
-    case "crp_web_search":
-      return webSearch(args as any);
-    case "crp_spawn_review": {
-      if (!spawnCtx) {
-        return { error: "Review spawning not available — store context not provided" };
-      }
-      const agents = (args.agents as string[] | undefined) || ["security", "architecture", "bugs"];
-      const targetPath = args.targetPath as string | undefined;
-      const { store, reviewCallbacks } = spawnCtx;
-
-      // Get the repo path from the most recent run or active repo
-      const runs = store.getReviewRuns(1);
-      const repoPath = runs[0]?.repoPath;
-      if (!repoPath) {
-        return { error: "No repository path available. Run a review first or open a repo." };
-      }
-
-      const options = {
-        agents: agents as ("security" | "architecture" | "bugs")[],
-        targetPath,
-      };
-
-      const result = await runReview(repoPath, "repo", store, reviewCallbacks, options);
-
-      const spawnResult: SpawnedReviewResult = {
-        runId: result.runId,
-        findingsCount: result.findings.length,
-        agents,
-      };
-
-      return {
-        status: "complete",
-        runId: result.runId,
-        findingsCount: result.findings.length,
-        agents,
-        summary: result.findings.length > 0
-          ? `Review complete: ${result.findings.length} finding(s) from ${agents.join(", ")} agent(s). Findings are now visible in the Findings tab.`
-          : `Review complete: no issues found by ${agents.join(", ")} agent(s). The code looks clean.`,
-        _spawnResult: spawnResult, // Internal: for chatQuery to pick up
-      };
+  // Handle chat-specific tool (crp_spawn_review), delegate rest to standard router
+  if (name === "crp_spawn_review") {
+    if (!spawnCtx) {
+      return { error: "Review spawning not available — store context not provided" };
     }
-    default:
-      throw new Error(`Unknown tool: ${name}`);
+    const agents = (args.agents as string[] | undefined) || ["security", "architecture", "bugs"];
+    const targetPath = args.targetPath as string | undefined;
+    const { store, reviewCallbacks } = spawnCtx;
+
+    // Get the repo path from the most recent run or active repo
+    const runs = store.getReviewRuns(1);
+    const repoPath = runs[0]?.repoPath;
+    if (!repoPath) {
+      return { error: "No repository path available. Run a review first or open a repo." };
+    }
+
+    const options = {
+      agents: agents as ("security" | "architecture" | "bugs")[],
+      targetPath,
+    };
+
+    const result = await runReview(repoPath, "repo", store, reviewCallbacks, options);
+
+    const spawnResult: SpawnedReviewResult = {
+      runId: result.runId,
+      findingsCount: result.findings.length,
+      agents,
+    };
+
+    return {
+      status: "complete",
+      runId: result.runId,
+      findingsCount: result.findings.length,
+      agents,
+      summary: result.findings.length > 0
+        ? `Review complete: ${result.findings.length} finding(s) from ${agents.join(", ")} agent(s). Findings are now visible in the Findings tab.`
+        : `Review complete: no issues found by ${agents.join(", ")} agent(s). The code looks clean.`,
+      _spawnResult: spawnResult, // Internal: for chatQuery to pick up
+    };
   }
+
+  return routeStandardTool(name, args);
 }
 
 function buildContextPrompt(store: Store, runId: string): string {
@@ -372,6 +474,7 @@ export async function chatQuery(
   store?: Store,
   callbacks?: ChatCallbacks,
   options?: ChatQueryOptions,
+  conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>,
 ): Promise<ChatQueryResult> {
   const client = new Anthropic();
   // Allow up to 50 turns for deep investigation — the agent stops naturally
@@ -385,9 +488,13 @@ export async function chatQuery(
     systemPrompt += buildContextPrompt(store, runId);
   }
 
-  const messages: MessageParam[] = [
-    { role: "user", content: query },
-  ];
+  // Build messages array: prior conversation history + current query
+  // Uses token-budgeted history with content cleaning (strips thinking blocks,
+  // truncates verbose tool results, caps total at ~30k tokens)
+  const historyMessages = buildBudgetedHistory(conversationHistory ?? []);
+  const messages: MessageParam[] = [...historyMessages];
+
+  messages.push({ role: "user", content: query });
 
   let answer = "";
   let turn = 0;
@@ -566,6 +673,40 @@ const VALIDATOR_TOOLS = [
     },
   },
   {
+    name: "crp_code_call_graph",
+    description: "Build function-level call graph to understand which functions call which and identify the most critical files (by fan-in/fan-out)",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string", description: "Subdirectory to analyze" },
+      },
+    },
+  },
+  {
+    name: "crp_code_symbol_lookup",
+    description: "Find definition and all usages of a symbol to verify if flagged code is actually used and where",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        symbol: { type: "string", description: "Symbol name to look up" },
+        file: { type: "string", description: "Optional file path to narrow search" },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "crp_code_impact_analysis",
+    description: "Analyze blast radius of a file — shows all files that depend on it. Use to understand if a fix in one file could affect others.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        file: { type: "string", description: "Relative file path to analyze" },
+        depth: { type: "number", description: "Max traversal depth (default: 3)" },
+      },
+      required: ["file"],
+    },
+  },
+  {
     name: "crp_code_pattern_scan",
     description: "Run Semgrep to check if the flagged issue is a known anti-pattern or if mitigations exist",
     input_schema: {
@@ -602,32 +743,6 @@ const VALIDATOR_TOOLS = [
   },
 ];
 
-/** Route validator tool calls to the actual CRP tool backends */
-async function handleValidatorToolCall(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  switch (name) {
-    case "crp_repo_tree":
-      return repoTree(args as any);
-    case "crp_repo_file":
-      return repoFile(args as any);
-    case "crp_repo_search":
-      return repoSearch(args as any);
-    case "crp_repo_diff":
-      return repoDiff(args as any);
-    case "crp_code_import_graph":
-      return codeImportGraph(args as any);
-    case "crp_code_pattern_scan":
-      return codePatternScan(args as any);
-    case "crp_exec_command":
-      return execCommand(args as any);
-    case "crp_web_search":
-      return webSearch(args as any);
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
-}
 
 const VALIDATOR_SYSTEM_PROMPT = `You are the Verification Agent in ChainReview. Your job is to check whether a previously reported bug has been FIXED in the CURRENT code.
 
@@ -802,7 +917,7 @@ Give your verdict using <verdict> tags.`;
         callbacks?.onToolCall?.(toolBlock.name, toolBlock.input as Record<string, unknown>);
 
         try {
-          const result = await handleValidatorToolCall(
+          const result = await routeStandardTool(
             toolBlock.name,
             toolBlock.input as Record<string, unknown>
           );

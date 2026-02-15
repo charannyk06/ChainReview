@@ -95,7 +95,7 @@ export function TaskHistory({
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--cr-border)] bg-[var(--cr-bg-primary)] shrink-0">
+      <div style={{ padding: "10px 16px" }} className="flex items-center gap-3 border-b border-[var(--cr-border)] bg-[var(--cr-bg-primary)] shrink-0">
         <button
           onClick={onClose}
           className={cn(
@@ -116,20 +116,24 @@ export function TaskHistory({
       </div>
 
       {/* Search + Filter bar */}
-      <div className="px-3 pt-2 pb-1.5 space-y-2 shrink-0 border-b border-[var(--cr-border-subtle)]">
+      <div style={{ padding: "10px 16px 6px 16px" }} className="space-y-2 shrink-0 border-b border-[var(--cr-border-subtle)]">
         <div className="flex items-center gap-2">
           <div className="flex-1 relative">
-            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-[var(--cr-text-ghost)]" />
+            <SearchIcon
+              className="absolute top-1/2 -translate-y-1/2 text-[var(--cr-text-ghost)] pointer-events-none"
+              style={{ left: 12, width: 14, height: 14 }}
+            />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search reviews..."
+              style={{ paddingLeft: 36 }}
               className={cn(
-                "w-full pl-7 pr-3 py-1.5 rounded-md text-[11px]",
-                "bg-transparent border-none",
+                "w-full pr-3 py-1.5 rounded-lg text-[11px]",
+                "bg-[var(--cr-bg-secondary)] border border-[var(--cr-border-subtle)]",
                 "text-[var(--cr-text-primary)] placeholder:text-[var(--cr-text-ghost)]",
-                "focus:outline-none focus:bg-[var(--cr-bg-secondary)]",
+                "focus:outline-none focus:border-[var(--cr-border-strong)] focus:bg-[var(--cr-bg-tertiary)]",
                 "transition-colors"
               )}
             />
@@ -182,7 +186,7 @@ export function TaskHistory({
       </div>
 
       {/* Runs list — two-line rows, no tiles/cards */}
-      <div className="flex-1 overflow-y-auto cr-scrollbar" style={{ scrollbarGutter: "stable both-edges" }}>
+      <div className="flex-1 overflow-y-auto cr-scrollbar">
         {filteredRuns.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <CalendarIcon className="size-8 text-[var(--cr-text-ghost)] opacity-40" />
@@ -209,8 +213,9 @@ export function TaskHistory({
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.1 }}
                   onClick={() => onLoadRun(run.id)}
+                  style={{ padding: "10px 16px" }}
                   className={cn(
-                    "group w-full flex items-start gap-2.5 px-3 py-2.5 text-left cursor-pointer",
+                    "group w-full flex items-start gap-2.5 text-left cursor-pointer",
                     "hover:bg-[var(--cr-bg-hover)]",
                     "border-b border-[var(--cr-border-subtle)]",
                     "transition-colors duration-100"

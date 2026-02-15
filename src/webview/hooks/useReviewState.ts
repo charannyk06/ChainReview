@@ -13,6 +13,7 @@ import type {
   ValidatorVerdict,
   ValidationResult,
   ReviewRunSummary,
+  AgentName,
 } from "../lib/types";
 
 const initialState: ReviewState = {
@@ -25,6 +26,8 @@ const initialState: ReviewState = {
   mcpServers: [],
   validationVerdicts: {},
   validatingFindings: new Set(),
+  dismissedFindingIds: new Set(),
+  fixedFindingIds: new Set(),
 };
 
 type Action =
@@ -55,20 +58,22 @@ type Action =
   | { type: "HISTORY_SET"; runs: ReviewRunSummary[] }
   | { type: "HISTORY_DELETE_RUN"; runId: string }
   | { type: "RESTORE_MESSAGES"; messages: ConversationMessage[] }
-  | { type: "RESTORE_REVIEW_STATE"; findings: Finding[]; events: AuditEvent[]; status: ReviewStatus; mode?: ReviewMode }
+  | { type: "RESTORE_REVIEW_STATE"; findings: Finding[]; events: AuditEvent[]; status: ReviewStatus; mode?: ReviewMode; validationVerdicts?: Record<string, ValidationResult> }
+  | { type: "MARK_FALSE_POSITIVE"; findingId: string }
+  | { type: "MARK_FIXED"; findingId: string }
   | { type: "CLEAR_CHAT" };
 
 function reducer(state: ReviewState, action: Action): ReviewState {
   switch (action.type) {
     case "REVIEW_STARTED":
-      return { ...initialState, status: "running", mode: action.mode, mcpServers: state.mcpServers };
+      return { ...initialState, status: "running", mode: action.mode, mcpServers: state.mcpServers, fixedFindingIds: new Set() };
 
     case "START_CHAT":
       return { ...initialState, status: "chatting", mcpServers: state.mcpServers };
 
     case "ADD_BLOCK": {
       const block = action.block;
-      const targetAgent = action.agent; // Agent routing info from extension
+      const targetAgent = action.agent || "system"; // Agent routing info from extension; default to "system" if unset
       const msgs = [...state.messages];
 
       // SubAgentEvent "started" creates a new assistant message for that agent
@@ -139,7 +144,7 @@ function reducer(state: ReviewState, action: Action): ReviewState {
         msgs.push({
           id: crypto.randomUUID(),
           role: "assistant",
-          agent: targetAgent as any,
+          agent: targetAgent as AgentName,
           blocks: [block],
           status: "streaming",
           timestamp: block.timestamp,
@@ -196,20 +201,24 @@ function reducer(state: ReviewState, action: Action): ReviewState {
     case "CHAT_RESPONSE_BLOCK": {
       const msgs = [...state.messages];
       const idx = msgs.findIndex((m) => m.id === action.messageId);
-      if (idx >= 0) {
-        const msg = { ...msgs[idx] };
-        msg.blocks = [...msg.blocks, action.block];
-        msgs[idx] = msg;
+      if (idx < 0) {
+        console.warn(`[useReviewState] CHAT_RESPONSE_BLOCK: no message found for id=${action.messageId}`);
+        return state;
       }
+      const msg = { ...msgs[idx] };
+      msg.blocks = [...msg.blocks, action.block];
+      msgs[idx] = msg;
       return { ...state, messages: msgs };
     }
 
     case "CHAT_RESPONSE_END": {
       const msgs = [...state.messages];
       const idx = msgs.findIndex((m) => m.id === action.messageId);
-      if (idx >= 0) {
-        msgs[idx] = { ...msgs[idx], status: "complete" };
+      if (idx < 0) {
+        console.warn(`[useReviewState] CHAT_RESPONSE_END: no message found for id=${action.messageId}`);
+        return state;
       }
+      msgs[idx] = { ...msgs[idx], status: "complete" };
       return { ...state, messages: msgs };
     }
 
@@ -222,23 +231,26 @@ function reducer(state: ReviewState, action: Action): ReviewState {
     case "ADD_PATCH":
       return { ...state, patches: [...state.patches, action.patch] };
 
-    case "REVIEW_COMPLETE":
+    case "REVIEW_COMPLETE": {
+      // Keep findings streamed in real-time; only use batch if no streamed findings exist
+      const completedFindings = state.findings.length > 0 ? state.findings :
+                action.findings.length > 0 ? action.findings : state.findings;
       return {
         ...state,
         status: "complete",
-        // Keep findings streamed in real-time; only use batch if no streamed findings exist
-        findings: state.findings.length > 0 ? state.findings :
-                  action.findings.length > 0 ? action.findings : state.findings,
+        // Filter out any findings previously dismissed as false positive
+        findings: completedFindings.filter((f) => !state.dismissedFindingIds.has(f.id)),
         // Keep events streamed in real-time; only use batch if no streamed events exist
         events: state.events.length > 0 ? state.events :
                 action.events.length > 0 ? action.events : state.events,
       };
+    }
 
     case "REVIEW_ERROR":
       return { ...state, status: "error", error: action.error };
 
     case "RESET":
-      return { ...initialState, mcpServers: state.mcpServers, validationVerdicts: {}, validatingFindings: new Set() };
+      return { ...initialState, mcpServers: state.mcpServers, validationVerdicts: state.validationVerdicts, validatingFindings: new Set(), dismissedFindingIds: new Set() };
 
     // ── Finding Validation ──
     case "FINDING_VALIDATING": {
@@ -312,23 +324,57 @@ function reducer(state: ReviewState, action: Action): ReviewState {
 
     // ── State Restoration ──
     case "RESTORE_MESSAGES":
-      // Only restore if currently idle (don't overwrite an active session)
-      if (state.status !== "idle") return state;
+      // Always restore messages — merge if active session has none yet,
+      // skip only if current session already has messages (to avoid duplication)
+      if (state.messages.length > 0) return state;
       return {
         ...state,
-        status: "chatting",
+        status: state.status === "idle" ? "chatting" : state.status,
         messages: action.messages,
       };
 
     case "RESTORE_REVIEW_STATE": {
-      if (state.status !== "idle" && state.status !== "chatting") return state;
+      // Allow restore unless a review is actively running right now
+      if (state.status === "running") return state;
       const restoredStatus: ReviewStatus = action.status === "running" ? "complete" : (action.status as ReviewStatus);
+      // Don't downgrade status: if we're already chatting, don't go back to idle
+      const effectiveStatus = (restoredStatus === "idle" && state.status !== "idle") ? state.status : restoredStatus;
+      // Filter out any findings that were dismissed as false positive in this session
+      const restoredFindings = action.findings.length > 0
+        ? action.findings.filter((f) => !state.dismissedFindingIds.has(f.id))
+        : state.findings;
       return {
         ...state,
-        status: restoredStatus,
-        mode: action.mode,
-        findings: action.findings,
-        events: action.events,
+        status: effectiveStatus,
+        mode: action.mode || state.mode,
+        findings: restoredFindings,
+        events: action.events.length > 0 ? action.events : state.events,
+        validationVerdicts: {
+          ...state.validationVerdicts,
+          ...(action.validationVerdicts || {}),
+        },
+      };
+    }
+
+    // ── False Positive ──
+    case "MARK_FALSE_POSITIVE": {
+      const nextDismissed = new Set(state.dismissedFindingIds);
+      nextDismissed.add(action.findingId);
+      return {
+        ...state,
+        findings: state.findings.filter((f) => f.id !== action.findingId),
+        dismissedFindingIds: nextDismissed,
+      };
+    }
+
+    // ── Mark Fixed — hide from active list, track for re-review ──
+    case "MARK_FIXED": {
+      const nextFixed = new Set(state.fixedFindingIds);
+      nextFixed.add(action.findingId);
+      return {
+        ...state,
+        findings: state.findings.filter((f) => f.id !== action.findingId),
+        fixedFindingIds: nextFixed,
       };
     }
 
@@ -396,6 +442,12 @@ export function useReviewState() {
       case "findingValidationError":
         dispatch({ type: "FINDING_VALIDATION_ERROR", findingId: msg.findingId, error: msg.error });
         break;
+      case "falsePositiveMarked":
+        dispatch({ type: "MARK_FALSE_POSITIVE", findingId: msg.findingId });
+        break;
+      case "fixedMarked":
+        dispatch({ type: "MARK_FIXED", findingId: msg.findingId });
+        break;
 
       // MCP Manager messages
       case "mcpManagerOpen":
@@ -432,6 +484,7 @@ export function useReviewState() {
           events: msg.events,
           status: msg.status as ReviewStatus,
           mode: msg.mode as ReviewMode | undefined,
+          validationVerdicts: (msg as any).validationVerdicts,
         });
         break;
 

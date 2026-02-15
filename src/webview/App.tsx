@@ -188,6 +188,10 @@ export default function App() {
     postMessage({ type: "markFalsePositive", findingId });
   };
 
+  const handleMarkFixed = (findingId: string) => {
+    postMessage({ type: "markFixed", findingId });
+  };
+
   const handleSendToValidator = (findingId: string) => {
     markFindingValidating(findingId);
     postMessage({ type: "sendToValidator", findingId });
@@ -314,6 +318,7 @@ export default function App() {
               onSendToValidator={handleSendToValidator}
               onExplain={handleExplain}
               onSendToCodingAgent={handleSendToCodingAgent}
+              onMarkFixed={handleMarkFixed}
               onReReview={handleReReview}
               className="h-full"
             />
@@ -325,7 +330,7 @@ export default function App() {
 
         {/* Error banner */}
         {state.error && (
-          <div className="px-3 py-2 bg-red-500/10 border-t border-red-500/30 text-xs text-red-300">
+          <div style={{ padding: "8px 16px" }} className="bg-red-500/10 border-t border-red-500/30 text-xs text-red-300">
             {state.error}
           </div>
         )}

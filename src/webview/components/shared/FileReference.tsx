@@ -1,134 +1,160 @@
-import { cn } from "@/lib/utils";
+import { useState } from "react";
 
-// ── File extension config with colored badge icons ──
+// ── File extension config ──
 
 interface ExtConfig {
   label: string;
-  bgColor: string;
-  textColor: string;
 }
 
-const MUTED_BG = "bg-[var(--cr-bg-tertiary)]";
-const MUTED_TEXT = "text-[var(--cr-text-muted)]";
-
 const EXT_CONFIG: Record<string, ExtConfig> = {
-  // JavaScript/TypeScript
-  js:   { label: "JS",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  jsx:  { label: "JSX",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  ts:   { label: "TS",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  tsx:  { label: "TSX",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  // Data/Config
-  json: { label: "JSON", bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  yaml: { label: "YAML", bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  yml:  { label: "YML",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  toml: { label: "TOML", bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  // Web
-  html: { label: "HTML", bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  css:  { label: "CSS",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  scss: { label: "SCSS", bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  // Markdown/Text
-  md:   { label: "MD",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  txt:  { label: "TXT",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  // Python/Other
-  py:   { label: "PY",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  rs:   { label: "RS",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  go:   { label: "GO",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  sh:   { label: "SH",   bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  sql:  { label: "SQL",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  // Config
-  env:  { label: "ENV",  bgColor: MUTED_BG, textColor: MUTED_TEXT },
-  lock: { label: "LOCK", bgColor: MUTED_BG, textColor: MUTED_TEXT },
+  js: { label: "JS" }, jsx: { label: "JSX" }, ts: { label: "TS" }, tsx: { label: "TSX" },
+  json: { label: "JSON" }, yaml: { label: "YAML" }, yml: { label: "YML" }, toml: { label: "TOML" },
+  html: { label: "HTML" }, css: { label: "CSS" }, scss: { label: "SCSS" },
+  md: { label: "MD" }, txt: { label: "TXT" },
+  py: { label: "PY" }, rs: { label: "RS" }, go: { label: "GO" }, sh: { label: "SH" }, sql: { label: "SQL" },
+  env: { label: "ENV" }, lock: { label: "LOCK" },
 };
 
 function getExtConfig(filePath: string): ExtConfig {
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
-  return EXT_CONFIG[ext] || { label: ext.toUpperCase().slice(0, 4) || "FILE", bgColor: MUTED_BG, textColor: MUTED_TEXT };
+  return EXT_CONFIG[ext] || { label: ext.toUpperCase().slice(0, 4) || "FILE" };
 }
 
 function getFileName(filePath: string): string {
   return filePath.split("/").pop() || filePath;
 }
 
-// ── Tiny extension badge icon ──
+// ── Tiny extension badge ──
 
-export function ExtBadge({ filePath, className }: { filePath: string; className?: string }) {
+export function ExtBadge({ filePath }: { filePath: string }) {
   const config = getExtConfig(filePath);
   return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center text-[7px] font-black leading-none rounded px-1 py-0.5 shrink-0",
-        config.bgColor,
-        config.textColor,
-        className
-      )}
-    >
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 7,
+      fontWeight: 900,
+      lineHeight: 1,
+      borderRadius: 3,
+      padding: "2px 4px",
+      flexShrink: 0,
+      background: "var(--cr-bg-tertiary)",
+      color: "var(--cr-text-muted)",
+    }}>
       {config.label}
     </span>
   );
 }
 
-// ── Compact file chip (collapsed state, e.g. in finding card header) ──
+// ── Compact file chip ──
 
 interface FileChipProps {
   filePath: string;
   line?: number;
   onClick?: () => void;
-  className?: string;
 }
 
-export function FileChip({ filePath, line, onClick, className }: FileChipProps) {
+export function FileChip({ filePath, line, onClick }: FileChipProps) {
+  const [hovered, setHovered] = useState(false);
+
   return (
     <button
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       title={filePath}
-      className={cn(
-        "inline-flex items-center gap-1 text-[10px] bg-[var(--cr-bg-tertiary)] hover:bg-[var(--cr-bg-hover)] px-1.5 py-0.5 rounded font-mono transition-colors cursor-pointer group border border-[var(--cr-border-subtle)]",
-        className
-      )}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: 10,
+        background: hovered ? "var(--cr-bg-hover)" : "var(--cr-bg-tertiary)",
+        padding: "2px 6px",
+        borderRadius: 4,
+        fontFamily: "var(--cr-font-mono)",
+        cursor: "pointer",
+        border: "1px solid var(--cr-border-subtle)",
+        transition: "all 150ms ease",
+      }}
     >
       <ExtBadge filePath={filePath} />
-      <span className="text-[var(--cr-text-secondary)] group-hover:text-[var(--cr-text-primary)] truncate max-w-[120px]">
+      <span style={{
+        color: hovered ? "var(--cr-text-primary)" : "var(--cr-text-secondary)",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        maxWidth: 120,
+        transition: "color 150ms ease",
+      }}>
         {getFileName(filePath)}
       </span>
       {line != null && (
-        <span className="text-[var(--cr-text-ghost)]">:{line}</span>
+        <span style={{ color: "var(--cr-text-ghost)" }}>:{line}</span>
       )}
     </button>
   );
 }
 
-// ── Full file row (expanded state) ──
+// ── Full file row (expanded) ──
 
 interface FileRowProps {
   filePath: string;
   line?: number;
   endLine?: number;
   onClick?: () => void;
-  className?: string;
 }
 
-export function FileRow({ filePath, line, endLine, onClick, className }: FileRowProps) {
+export function FileRow({ filePath, line, endLine, onClick }: FileRowProps) {
+  const [hovered, setHovered] = useState(false);
+
   return (
     <button
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       title={`Open ${filePath}${line ? ` at line ${line}` : ""}`}
-      className={cn(
-        "flex items-center gap-2 w-full text-left px-2.5 py-1.5 rounded-md hover:bg-[var(--cr-bg-hover)] transition-colors group cursor-pointer",
-        className
-      )}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        width: "100%",
+        textAlign: "left",
+        padding: "6px 10px",
+        borderRadius: 6,
+        background: hovered ? "var(--cr-bg-hover)" : "transparent",
+        cursor: "pointer",
+        border: "none",
+        transition: "all 150ms ease",
+      }}
     >
       <ExtBadge filePath={filePath} />
-      <span className="text-[11px] text-[var(--cr-text-secondary)] group-hover:text-[var(--cr-text-primary)] font-mono truncate flex-1 min-w-0 transition-colors">
+      <span style={{
+        fontSize: 11,
+        color: hovered ? "var(--cr-text-primary)" : "var(--cr-text-secondary)",
+        fontFamily: "var(--cr-font-mono)",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        flex: 1,
+        minWidth: 0,
+        transition: "color 150ms ease",
+      }}>
         {filePath}
       </span>
       {line != null && (
-        <span className="text-[9px] text-[var(--cr-text-ghost)] shrink-0 font-mono">
+        <span style={{
+          fontSize: 9,
+          color: "var(--cr-text-ghost)",
+          flexShrink: 0,
+          fontFamily: "var(--cr-font-mono)",
+        }}>
           L{line}{endLine != null && endLine !== line ? `–${endLine}` : ""}
         </span>
       )}
@@ -143,27 +169,50 @@ interface FileHeaderProps {
   startLine: number;
   endLine?: number;
   onClick?: () => void;
-  className?: string;
 }
 
-export function FileHeader({ filePath, startLine, endLine, onClick, className }: FileHeaderProps) {
+export function FileHeader({ filePath, startLine, endLine, onClick }: FileHeaderProps) {
+  const [hovered, setHovered] = useState(false);
+
   return (
     <div
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       title={`Open ${filePath} at line ${startLine}`}
-      className={cn(
-        "flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--cr-bg-tertiary)] border-b border-[var(--cr-border-subtle)] cursor-pointer hover:bg-[var(--cr-bg-hover)] transition-colors group",
-        className
-      )}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 10px",
+        background: hovered ? "var(--cr-bg-hover)" : "var(--cr-bg-tertiary)",
+        borderBottom: "1px solid var(--cr-border-subtle)",
+        cursor: "pointer",
+        transition: "background 150ms ease",
+      }}
     >
       <ExtBadge filePath={filePath} />
-      <span className="text-[10px] text-[var(--cr-text-secondary)] group-hover:text-[var(--cr-text-primary)] font-mono truncate flex-1 transition-colors">
+      <span style={{
+        fontSize: 10,
+        color: hovered ? "var(--cr-text-primary)" : "var(--cr-text-secondary)",
+        fontFamily: "var(--cr-font-mono)",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        flex: 1,
+        transition: "color 150ms ease",
+      }}>
         {filePath}
       </span>
-      <span className="text-[9px] text-[var(--cr-text-ghost)] shrink-0 font-mono">
+      <span style={{
+        fontSize: 9,
+        color: "var(--cr-text-ghost)",
+        flexShrink: 0,
+        fontFamily: "var(--cr-font-mono)",
+      }}>
         L{startLine}
         {endLine != null && endLine !== startLine && `–${endLine}`}
       </span>

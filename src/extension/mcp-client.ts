@@ -9,33 +9,104 @@ export type { Finding, Patch, AuditEvent };
 
 export type StreamEventHandler = (event: Record<string, unknown>) => void;
 
+/** Cache for keys retrieved from VS Code SecretStorage */
+let _secretStorageCache: Map<string, string> = new Map();
+
+/**
+ * Store an API key securely using VS Code SecretStorage.
+ * Called from extension activation to migrate plain-text keys.
+ */
+export async function storeApiKeySecurely(
+  secrets: { get(key: string): Thenable<string | undefined>; store(key: string, value: string): Thenable<void> },
+  key: string,
+  value: string
+): Promise<void> {
+  await secrets.store(`chainreview.${key}`, value);
+  _secretStorageCache.set(key, value);
+}
+
+/**
+ * Retrieve an API key from VS Code SecretStorage.
+ */
+export async function getSecureApiKey(
+  secrets: { get(key: string): Thenable<string | undefined> },
+  key: string
+): Promise<string | undefined> {
+  if (_secretStorageCache.has(key)) return _secretStorageCache.get(key);
+  const value = await secrets.get(`chainreview.${key}`);
+  if (value) _secretStorageCache.set(key, value);
+  return value || undefined;
+}
+
+/**
+ * Initialize secure key storage: migrate any plain-text keys from VS Code settings
+ * into SecretStorage, then clear them from settings.
+ */
+export async function migrateKeysToSecretStorage(
+  secrets: { get(key: string): Thenable<string | undefined>; store(key: string, value: string): Thenable<void> }
+): Promise<void> {
+  try {
+    const vscode = require("vscode");
+    const config = vscode.workspace.getConfiguration("chainreview");
+
+    for (const [settingName, envName] of [
+      ["anthropicApiKey", "ANTHROPIC_API_KEY"],
+      ["braveSearchApiKey", "BRAVE_SEARCH_API_KEY"],
+    ] as const) {
+      const plainTextValue = config.get<string>(settingName);
+      if (plainTextValue && plainTextValue.trim()) {
+        // Migrate to SecretStorage
+        await storeApiKeySecurely(secrets, envName, plainTextValue.trim());
+        // Clear from plain-text settings (best-effort — log failures for debugging)
+        await config.update(settingName, undefined, vscode.ConfigurationTarget.Global).then(undefined, (err: unknown) => {
+          console.warn(`ChainReview: failed to clear global setting "${settingName}":`, err);
+        });
+        await config.update(settingName, undefined, vscode.ConfigurationTarget.Workspace).then(undefined, (err: unknown) => {
+          console.warn(`ChainReview: failed to clear workspace setting "${settingName}":`, err);
+        });
+      }
+    }
+  } catch {
+    // Not in VS Code context or migration failed — not critical
+  }
+}
+
 /**
  * Resolve the Anthropic API key from multiple sources (priority order):
- * 1. VS Code setting: chainreview.anthropicApiKey
- * 2. Environment variable: ANTHROPIC_API_KEY
- * 3. .env file in workspace root
- * 4. ~/.anthropic/api_key file
+ * 1. VS Code SecretStorage (secure, encrypted)
+ * 2. VS Code setting: chainreview.anthropicApiKey (legacy, plain-text — warns user)
+ * 3. Environment variable: ANTHROPIC_API_KEY
+ * 4. .env file in workspace root
+ * 5. ~/.anthropic/api_key file
  */
 function resolveApiKey(keyName: string, settingName: string): string | undefined {
-  // 1. VS Code settings
+  // 1. Check SecretStorage cache (populated during activation by migrateKeysToSecretStorage)
+  if (_secretStorageCache.has(keyName)) {
+    return _secretStorageCache.get(keyName);
+  }
+
+  // 2. VS Code settings (legacy fallback — plain text)
   try {
-    // Dynamic import to avoid hard dependency — vscode API may not be available in all contexts
     const vscode = require("vscode");
     const config = vscode.workspace.getConfiguration("chainreview");
     const settingValue = config.get<string>(settingName);
     if (settingValue && settingValue.trim()) {
+      console.warn(
+        `ChainReview: API key "${settingName}" found in plain-text settings. ` +
+        `It will be migrated to secure storage on next activation.`
+      );
       return settingValue.trim();
     }
   } catch {
     // Not in VS Code context
   }
 
-  // 2. Environment variable
+  // 3. Environment variable
   if (process.env[keyName]) {
     return process.env[keyName];
   }
 
-  // 3. .env file in workspace root
+  // 4. .env file in workspace root
   try {
     const vscode = require("vscode");
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -43,7 +114,9 @@ function resolveApiKey(keyName: string, settingName: string): string | undefined
       const envPath = path.join(workspaceRoot, ".env");
       if (fs.existsSync(envPath)) {
         const envContent = fs.readFileSync(envPath, "utf-8");
-        const match = envContent.match(new RegExp(`^${keyName}=(.+)$`, "m"));
+        // Escape the key name for safe regex construction
+        const escapedKey = keyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = envContent.match(new RegExp(`^${escapedKey}=(.+)$`, "m"));
         if (match?.[1]) {
           return match[1].trim().replace(/^["']|["']$/g, "");
         }
@@ -53,7 +126,7 @@ function resolveApiKey(keyName: string, settingName: string): string | undefined
     // Not available
   }
 
-  // 4. ~/.anthropic/api_key (for ANTHROPIC_API_KEY only)
+  // 5. ~/.anthropic/api_key (for ANTHROPIC_API_KEY only)
   if (keyName === "ANTHROPIC_API_KEY") {
     try {
       const home = process.env.HOME || process.env.USERPROFILE || "";
@@ -339,14 +412,33 @@ export class CrpClient {
     return JSON.parse(result);
   }
 
+  // ── Chat Message Persistence ──
+
+  async saveChatMessages(runId: string, messages: unknown[]): Promise<{ saved: boolean }> {
+    const result = await this.callTool("crp.review.save_chat_messages", {
+      runId,
+      messagesJson: JSON.stringify(messages),
+    });
+    return JSON.parse(result);
+  }
+
+  async getChatMessages(runId: string): Promise<unknown[]> {
+    const result = await this.callTool("crp.review.get_chat_messages", { runId });
+    return JSON.parse(result);
+  }
+
   // ── Chat Query ──
 
   async chatQuery(
     query: string,
-    runId?: string
+    runId?: string,
+    conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>,
   ): Promise<{ answer: string; toolCalls: Array<{ tool: string; args: Record<string, unknown>; result: string }> }> {
     const args: Record<string, unknown> = { query };
     if (runId) args.runId = runId;
+    if (conversationHistory && conversationHistory.length > 0) {
+      args.conversationHistory = conversationHistory;
+    }
     const result = await this.callTool("crp.chat.query", args);
     return JSON.parse(result);
   }
@@ -390,24 +482,26 @@ export class CrpClient {
   }
 
   /** Cancel the currently running review on the server side.
-   *  This sends a cancel signal to the server which aborts all running agents,
-   *  AND aborts the client-side MCP call so it doesn't block waiting for the response.
+   *  This aborts the client-side MCP call FIRST (so the UI unblocks immediately),
+   *  then sends a cancel signal to the server to abort running agents.
    */
   async cancelReview(): Promise<void> {
-    // 1. Tell the server to abort running agents via signal
+    // 1. Abort client-side IMMEDIATELY so _startReview unblocks
+    this.cancelActiveOperation();
+
+    // 2. Tell the server to abort running agents (best-effort, don't await)
     try {
       if (this.connected) {
-        await this.client.callTool(
+        // Fire-and-forget — don't block on this
+        this.client.callTool(
           { name: "crp.review.cancel", arguments: {} },
           undefined,
           { timeout: 5000 } as any
-        );
+        ).catch(() => {});
       }
     } catch {
       // Best effort — the server might already be winding down
     }
-    // 2. Also abort the client-side waiting operation
-    this.cancelActiveOperation();
   }
 
   private async callTool(name: string, args: Record<string, unknown>): Promise<string> {
@@ -446,12 +540,13 @@ export class CrpClient {
       );
     } catch (err: any) {
       if (isLongRunning) this._activeAbort = null;
-      // Handle timeout (-32001) and user cancellation (AbortError)
+      // Handle user cancellation (AbortError) BEFORE timeout — abort can trigger
+      // timeout-like errors in the MCP SDK, so check abort signal first.
+      if (controller.signal.aborted || err.name === "AbortError" || err.message?.includes("abort")) {
+        throw new Error("Operation cancelled by user");
+      }
       if (err.code === -32001 || err.message?.includes("timed out")) {
         throw new Error(`Operation timed out after ${timeoutMs / 1000}s — the server may still be processing`);
-      }
-      if (err.name === "AbortError" || err.message?.includes("abort")) {
-        throw new Error("Operation cancelled by user");
       }
       throw err;
     }

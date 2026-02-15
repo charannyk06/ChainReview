@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDownIcon, ChevronRightIcon, BrainIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface ReasoningBlockProps {
   text: string;
@@ -10,6 +9,7 @@ interface ReasoningBlockProps {
 
 export function ReasoningBlock({ text, defaultCollapsed = true }: ReasoningBlockProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [hovered, setHovered] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);
 
@@ -25,20 +25,31 @@ export function ReasoningBlock({ text, defaultCollapsed = true }: ReasoningBlock
   }, [text, collapsed, checkScrollable]);
 
   return (
-    <div className="my-1">
+    <div style={{ margin: "4px 0" }}>
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className={cn(
-          "inline-flex items-center gap-1.5 text-left select-none cursor-pointer px-1.5 py-1",
-          "hover:bg-[var(--cr-bg-hover)] rounded-md transition-colors"
-        )}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          textAlign: "left",
+          userSelect: "none",
+          cursor: "pointer",
+          padding: "4px 6px",
+          borderRadius: 6,
+          transition: "background 150ms ease",
+          background: hovered ? "var(--cr-bg-hover)" : "transparent",
+          border: "none",
+        }}
       >
-        <BrainIcon className="size-3 text-[var(--cr-text-ghost)]" />
-        <span className="text-[11px] font-medium text-[var(--cr-text-muted)]">Thoughts</span>
+        <BrainIcon style={{ width: 12, height: 12, color: "var(--cr-text-ghost)" }} />
+        <span style={{ fontSize: 11, fontWeight: 500, color: "var(--cr-text-muted)" }}>Thoughts</span>
         {collapsed ? (
-          <ChevronRightIcon className="size-3 text-[var(--cr-text-ghost)]" />
+          <ChevronRightIcon style={{ width: 12, height: 12, color: "var(--cr-text-ghost)" }} />
         ) : (
-          <ChevronDownIcon className="size-3 text-[var(--cr-text-ghost)]" />
+          <ChevronDownIcon style={{ width: 12, height: 12, color: "var(--cr-text-ghost)" }} />
         )}
       </button>
 
@@ -49,18 +60,38 @@ export function ReasoningBlock({ text, defaultCollapsed = true }: ReasoningBlock
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="overflow-hidden"
+            style={{ overflow: "hidden" }}
           >
-            <div className="relative mt-0.5">
+            <div style={{ position: "relative", marginTop: 2 }}>
               <div
                 ref={scrollRef}
                 onScroll={checkScrollable}
-                className="pl-2.5 border-l border-[var(--cr-border-subtle)] max-h-[150px] overflow-y-auto text-xs text-[var(--cr-text-muted)] leading-relaxed whitespace-pre-wrap break-words [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                style={{
+                  paddingLeft: 10,
+                  borderLeft: "1px solid var(--cr-border-subtle)",
+                  maxHeight: 150,
+                  overflowY: "auto",
+                  fontSize: 12,
+                  color: "var(--cr-text-muted)",
+                  lineHeight: 1.6,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                }}
               >
-                <span className="block pb-2">{text}</span>
+                <span style={{ display: "block", paddingBottom: 8 }}>{text}</span>
               </div>
               {canScrollDown && (
-                <div className="absolute bottom-0 left-0 right-0 h-6 pointer-events-none bg-gradient-to-t from-[var(--cr-bg-primary)] to-transparent" />
+                <div style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: 24,
+                  pointerEvents: "none",
+                  background: "linear-gradient(to top, var(--cr-bg-primary), transparent)",
+                }} />
               )}
             </div>
           </motion.div>

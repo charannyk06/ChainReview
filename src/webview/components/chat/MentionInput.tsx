@@ -11,7 +11,6 @@ import {
   useMemo,
 } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "@/lib/utils";
 import {
   ShieldCheckIcon,
   NetworkIcon,
@@ -33,25 +32,25 @@ export const AVAILABLE_AGENTS: AgentMention[] = [
     id: "security",
     name: "Security",
     description: "Find vulnerabilities, injection flaws, auth issues",
-    icon: <ShieldCheckIcon className="size-3.5" />,
+    icon: <ShieldCheckIcon style={{ width: 14, height: 14 }} />,
   },
   {
     id: "architecture",
     name: "Architecture",
     description: "Analyze structure, dependencies, boundaries",
-    icon: <NetworkIcon className="size-3.5" />,
+    icon: <NetworkIcon style={{ width: 14, height: 14 }} />,
   },
   {
     id: "bugs",
     name: "Bugs",
     description: "Find logic errors, null handling, race conditions",
-    icon: <BugIcon className="size-3.5" />,
+    icon: <BugIcon style={{ width: 14, height: 14 }} />,
   },
   {
     id: "all",
     name: "All",
     description: "Run all agents (Security → Architecture → Bugs)",
-    icon: <UsersIcon className="size-3.5" />,
+    icon: <UsersIcon style={{ width: 14, height: 14 }} />,
   },
 ];
 
@@ -68,24 +67,33 @@ function MentionSuggestion({ items, command, selectedIndex }: SuggestionProps) {
 
   return (
     <div className="mention-suggestion-list">
-      <div className="text-[10px] font-medium text-[var(--cr-text-muted)] px-2.5 py-1.5 border-b border-[var(--cr-border-subtle)]">
+      <div style={{
+        fontSize: 10,
+        fontWeight: 500,
+        color: "var(--cr-text-muted)",
+        padding: "6px 10px",
+        borderBottom: "1px solid var(--cr-border-subtle)",
+      }}>
         Agents
       </div>
       {items.map((item, index) => (
         <button
           key={item.id}
           onClick={() => command(item)}
-          className={cn(
-            "mention-suggestion-item",
-            index === selectedIndex && "is-selected"
-          )}
+          className={`mention-suggestion-item${index === selectedIndex ? " is-selected" : ""}`}
         >
           <span className="mention-suggestion-icon">{item.icon}</span>
-          <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-medium text-[var(--cr-text-primary)]">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "var(--cr-text-primary)" }}>
               @{item.name}
             </div>
-            <div className="text-[10px] text-[var(--cr-text-muted)] truncate">
+            <div style={{
+              fontSize: 10,
+              color: "var(--cr-text-muted)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}>
               {item.description}
             </div>
           </div>
@@ -331,7 +339,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
 
     return (
       <>
-        <div className={cn("mention-input-wrapper", className)}>
+        <div className={`mention-input-wrapper${className ? ` ${className}` : ""}`}>
           <EditorContent editor={editor} />
         </div>
         {suggestionPortal}

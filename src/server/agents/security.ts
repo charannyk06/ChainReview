@@ -1,9 +1,5 @@
-import { runAgentLoop, type AgentTool } from "./base-agent";
-import { repoTree, repoFile, repoSearch, repoDiff } from "../tools/repo";
-import { codeImportGraph, codePatternScan } from "../tools/code";
-import { execCommand } from "../tools/exec";
-import { webSearch } from "../tools/web";
-import type { AgentContext, AgentFinding, AuditEvent } from "../types";
+import { runAgentLoop, createToolExecutor, routeStandardTool, sanitizeForPrompt, type AgentTool, type AgentCallbacks } from "./base-agent";
+import type { AgentContext, AgentFinding } from "../types";
 
 const SYSTEM_PROMPT = `You are the Security Agent in ChainReview, an advanced repo-scale AI code reviewer for TypeScript repositories.
 
@@ -137,43 +133,45 @@ const TOOLS: AgentTool[] = [
       required: ["query"],
     },
   },
+  {
+    name: "crp_code_call_graph",
+    description: "Build function-level call graph to trace how security-sensitive functions are called and by whom. Reveals hidden attack surface through deep call chains.",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Subdirectory to scope analysis to" },
+      },
+    },
+  },
+  {
+    name: "crp_code_symbol_lookup",
+    description: "Find the definition and all references for a security-relevant symbol (e.g., sanitize, validate, authenticate). Shows everywhere it's used.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "Symbol name to look up" },
+        file: { type: "string", description: "Specific file to search in first" },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "crp_code_impact_analysis",
+    description: "Compute blast radius of a file change — find all downstream modules affected. Critical for understanding security boundary exposure.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "Relative file path to analyze impact for" },
+        depth: { type: "number", description: "Max traversal depth (default: 3)" },
+      },
+      required: ["file"],
+    },
+  },
 ];
-
-async function handleToolCall(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  switch (name) {
-    case "crp_repo_tree":
-      return repoTree(args as any);
-    case "crp_repo_file":
-      return repoFile(args as any);
-    case "crp_repo_search":
-      return repoSearch(args as any);
-    case "crp_repo_diff":
-      return repoDiff(args as any);
-    case "crp_code_import_graph":
-      return codeImportGraph(args as any);
-    case "crp_code_pattern_scan":
-      return codePatternScan(args as any);
-    case "crp_exec_command":
-      return execCommand(args as any);
-    case "crp_web_search":
-      return webSearch(args as any);
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
-}
 
 export async function runSecurityAgent(
   context: AgentContext,
-  callbacks: {
-    onText: (text: string) => void;
-    onThinking?: (text: string) => void;
-    onEvent: (event: Omit<AuditEvent, "id" | "timestamp">) => void;
-    onToolCall: (tool: string, args: Record<string, unknown>) => void;
-    onToolResult: (tool: string, result: string) => void;
-  },
+  callbacks: AgentCallbacks,
   signal?: AbortSignal
 ): Promise<AgentFinding[]> {
   let userPrompt = `Analyze this TypeScript repository for security vulnerabilities.
@@ -202,10 +200,10 @@ Semgrep Scan Results (${context.semgrepResults.length} findings):
 ${context.semgrepResults
   .map(
     (r, i) =>
-      `${i + 1}. [${r.severity}] ${r.ruleId}
-   File: ${r.filePath}:${r.startLine}-${r.endLine}
-   Message: ${r.message}
-   Code: ${r.snippet}`
+      `${i + 1}. [${sanitizeForPrompt(r.severity, 20)}] ${sanitizeForPrompt(r.ruleId, 100)}
+   File: ${sanitizeForPrompt(r.filePath, 200)}:${r.startLine}-${r.endLine}
+   Message: ${sanitizeForPrompt(r.message, 500)}
+   Code: ${sanitizeForPrompt(r.snippet, 500)}`
   )
   .join("\n\n")}
 `;
@@ -216,21 +214,51 @@ Please use the available tools to search for common security patterns manually.
 `;
   }
 
+  // Inject module criticality — security agent should focus on high-fan-in files
+  // (they have the widest attack surface since many modules depend on them)
+  if (context.criticalFiles && context.criticalFiles.length > 0) {
+    userPrompt += `
+## High-Impact Modules (ranked by architectural centrality — focus security review here)
+These files have the most dependents — a vulnerability here affects the most code:
+${context.criticalFiles
+  .slice(0, 10)
+  .map(
+    (f, i) =>
+      `${i + 1}. ${f.file} — Fan-in: ${f.fanIn} dependents, Fan-out: ${f.fanOut} (${f.reason})`
+  )
+  .join("\n")}
+`;
+  }
+
+  // Inject blast radius for diff reviews
+  if (context.impactedModules && context.impactedModules.length > 0) {
+    userPrompt += `
+## Change Blast Radius
+The diff changes affect these downstream modules — check for security regressions:
+${context.impactedModules
+  .slice(0, 10)
+  .map(
+    (m) =>
+      `- ${m.file} (distance: ${m.distance} hop${m.distance > 1 ? "s" : ""}, fan-in: ${m.fanIn})`
+  )
+  .join("\n")}
+`;
+  }
+
   if (context.diffContent) {
     userPrompt += `
 Diff content (changes to review for security issues):
-${context.diffContent.slice(0, 5000)}
-${context.diffContent.length > 5000 ? "\n... (diff truncated)" : ""}
+${sanitizeForPrompt(context.diffContent, 5000)}
 `;
   }
 
   if (context.priorFindings) {
-    userPrompt += context.priorFindings;
+    userPrompt += sanitizeForPrompt(context.priorFindings, 5000);
   }
 
   userPrompt += `
 
-NOW: Begin your deep investigation using ALL available tools. You have 8 powerful tools:
+NOW: Begin your deep investigation using ALL available tools. You have 11 powerful tools:
 1. crp_repo_tree — understand project layout, find config and env files
 2. crp_repo_file — read security-critical files
 3. crp_repo_search — search for eval, exec, spawn, readFile, password, secret, token, innerHTML, SQL, etc.
@@ -239,6 +267,11 @@ NOW: Begin your deep investigation using ALL available tools. You have 8 powerfu
 6. crp_code_pattern_scan — run Semgrep for OWASP vulnerabilities
 7. crp_exec_command — use git log, npm ls, grep for deeper analysis
 8. crp_web_search — look up CVEs, security advisories for detected dependencies
+9. crp_code_call_graph — trace function call chains to find hidden attack surfaces
+10. crp_code_symbol_lookup — find all usages of security-critical functions (e.g., sanitize, validate, authenticate)
+11. crp_code_impact_analysis — compute blast radius to prioritize security review
+
+START by investigating the highest-impact modules listed above. Use crp_code_symbol_lookup to trace security-sensitive functions, and crp_code_call_graph to find indirect attack paths.
 
 DO NOT skip tool use. You MUST read at least 5-10 files and run multiple searches before producing your findings. Every finding MUST include evidence from files you actually read.`;
 
@@ -247,13 +280,7 @@ DO NOT skip tool use. You MUST read at least 5-10 files and run multiple searche
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     tools: TOOLS,
-    onToolCall: async (name, args) => {
-      callbacks.onToolCall(name, args);
-      const result = await handleToolCall(name, args);
-      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
-      callbacks.onToolResult(name, resultStr);
-      return result;
-    },
+    onToolCall: createToolExecutor(routeStandardTool, callbacks),
     onText: callbacks.onText,
     onThinking: callbacks.onThinking,
     onEvent: callbacks.onEvent,

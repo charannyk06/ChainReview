@@ -1,79 +1,99 @@
 <p align="center">
-  <img src="media/icon.png" width="64" height="64" alt="ChainReview" />
+  <img src="media/icon.png" width="80" height="80" alt="ChainReview" />
 </p>
 
 <h1 align="center">ChainReview</h1>
 
 <p align="center">
-  Advanced repo-scale AI code reviewer for TypeScript repositories.
-  <br />
-  Multi-agent review. Evidence-backed findings. Validated patches. Auditable chain-of-review.
+  Multi-agent AI code reviewer for TypeScript repositories.<br />
+  Evidence-backed findings. Validated patches. Auditable chain-of-review.
 </p>
 
 <p align="center">
-  <a href="https://github.com/charannyk06/ChainReview/stargazers"><img src="https://img.shields.io/github/stars/charannyk06/ChainReview?style=flat&color=6366f1&labelColor=0f0f0f" alt="GitHub Stars" /></a>
+  <a href="https://github.com/charannyk06/ChainReview/stargazers"><img src="https://img.shields.io/github/stars/charannyk06/ChainReview?style=flat&color=6366f1&labelColor=0f0f0f" alt="Stars" /></a>
   <a href="https://github.com/charannyk06/ChainReview/blob/main/LICENSE"><img src="https://img.shields.io/github/license/charannyk06/ChainReview?style=flat&color=6366f1&labelColor=0f0f0f" alt="License" /></a>
   <a href="https://github.com/charannyk06/ChainReview/issues"><img src="https://img.shields.io/github/issues/charannyk06/ChainReview?style=flat&color=6366f1&labelColor=0f0f0f" alt="Issues" /></a>
-  <a href="https://github.com/charannyk06/ChainReview/pulls"><img src="https://img.shields.io/github/issues-pr/charannyk06/ChainReview?style=flat&color=6366f1&labelColor=0f0f0f" alt="Pull Requests" /></a>
-  <a href="https://github.com/charannyk06/ChainReview/actions"><img src="https://img.shields.io/github/actions/workflow/status/charannyk06/ChainReview/pr-title-check.yml?style=flat&color=6366f1&labelColor=0f0f0f&label=CI" alt="CI Status" /></a>
 </p>
-
----
-
-## Table of Contents
-
-- [Why ChainReview](#why-chainreview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Quick Start](#quick-start)
-- [CRP Tool Reference](#crp-tool-reference)
-- [Configuration](#configuration)
-- [Privacy and Security](#privacy-and-security)
-- [Project Structure](#project-structure)
-- [Development](#development)
-- [Contributing](#contributing)
-- [Roadmap](#roadmap)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
 
 ---
 
 ## Why ChainReview
 
-Code review today is diff-centric, inconsistent, and hard to audit. Most existing AI reviewers are single-agent, text-output-only, and non-replayable.
+Code review today is diff-centric, inconsistent, and hard to audit. Most AI reviewers are single-agent, text-output-only, and non-replayable.
 
-ChainReview takes a different approach:
+ChainReview is different:
 
-- **Multi-agent architecture** -- three specialized agents (Architecture, Security, Validator) review your code in parallel, each grounding their analysis in deterministic tooling rather than guesswork.
-- **Evidence-backed findings** -- every finding includes file paths, line ranges, code snippets, and a 0-1 confidence score. No vague suggestions.
-- **Validated patch proposals** -- patches are syntax-checked against the TypeScript compiler and verified to apply cleanly before you see them.
-- **Auditable chain-of-review** -- every agent action, tool call, finding, and human decision is recorded as a structured event in a local SQLite database. Reviews are replayable and analyzable.
+- **Multi-agent architecture** -- five specialized agents (Architecture, Security, Bugs, Validator, Explainer) review your code, each grounding their analysis in deterministic tooling.
+- **Evidence-backed findings** -- every finding includes file paths, line ranges, code snippets, and a 0-1 confidence score.
+- **Validated patches** -- patches are syntax-checked against the TypeScript compiler and verified to apply cleanly.
+- **Auditable chain-of-review** -- every agent action, tool call, finding, and human decision is recorded in a local SQLite database.
+- **Coding agent handoff** -- send findings directly to Claude Code, Cursor, Windsurf, or GitHub Copilot for remediation.
 
-ChainReview is built on CRP (ChainReview Protocol), an open, MCP-compatible tool schema that separates deterministic code context from LLM reasoning.
+Built on CRP (ChainReview Protocol), an open MCP-compatible tool schema.
 
 ---
 
 ## Features
 
-**Multi-Agent Review** -- Architecture Agent detects coupling, circular dependencies, and boundary violations. Security Agent surfaces injection risks, auth gaps, and crypto issues. Validator Agent independently challenges findings and reduces false positives.
+### Multi-Agent Review Pipeline
 
-**Two Review Modes** -- Full repository review analyzes the entire codebase. Diff review focuses on staged and unstaged changes for targeted PR-style feedback.
+Five specialized agents run during a review:
 
-**Evidence Collection Pipeline** -- File tree extraction, TypeScript import graph analysis via ts-morph, Semgrep static analysis, and Git diff parsing all run before agents begin. Agents work from structured evidence, not raw file dumps.
+| Agent | Role |
+|---|---|
+| **Architecture** | Detects coupling, circular dependencies, boundary violations, and structural issues |
+| **Security** | Surfaces injection risks, auth gaps, crypto issues, and data exposure |
+| **Bugs** | Finds logic errors, null reference issues, race conditions, and edge cases |
+| **Validator** | Independently challenges findings from other agents, reducing false positives |
+| **Explainer** | Provides deep-dive explanations of findings on demand |
 
-**Patch Generation and Validation** -- Generate unified diff patches for any finding. Patches are validated with TypeScript syntax checking (in-memory compilation via ts-morph) and clean-apply verification before being presented to you.
+Agents run in parallel using `Promise.allSettled`, then the Validator challenges the combined results.
 
-**Patch Preview and Apply** -- Review proposed patches in a dedicated diff viewer inside the VS Code sidebar. Apply validated patches to disk with a single click.
+### Review Modes
 
-**Chain-of-Review Audit Trail** -- Eight structured event types (`agent_started`, `evidence_collected`, `finding_emitted`, `patch_proposed`, `patch_validated`, `human_accepted`, `human_rejected`, `false_positive_marked`) recorded in local SQLite for every review run.
+- **Full Repository** -- analyzes the entire codebase with file tree, import graph, and Semgrep evidence
+- **Diff Review** -- focuses on staged and unstaged Git changes for targeted PR-style feedback
+- **Chat** -- ask questions about the codebase using the same CRP tools available to agents
 
-**Real-Time Streaming** -- Agent reasoning, tool calls, thinking steps, and findings stream to the UI in real time. No waiting for the full review to complete before seeing results.
+### Real-Time Streaming UI
 
-**Chat Interface** -- Ask questions about the codebase directly in the Review Cockpit. The same CRP tools available to agents are available to the chat handler.
+The Review Cockpit VS Code side panel streams agent reasoning, tool calls, thinking steps, and findings in real time. Agent messages auto-collapse when complete, showing a summary with tool icons and output preview. Expand to see full detail.
 
-**MCP Server Manager** -- Add, configure, and manage external MCP servers from the UI. Extend ChainReview with additional tool capabilities.
+### Finding Management
 
-**Coding Agent Handoff** -- Send findings directly to Cursor, Windsurf, GitHub Copilot, or Claude Code with pre-formatted context for immediate remediation.
+Each finding card shows:
+- Severity (critical/high/medium/low/info) with color-coded indicators
+- Category and confidence score
+- Source agent attribution
+- File evidence with clickable line references
+- Expandable code snippets
+
+Actions per finding:
+- **Explain** -- get a detailed breakdown from the Explainer agent
+- **Generate Fix** -- produce a unified diff patch via LLM reasoning
+- **Verify Fix** -- run the Validator to check if a fix resolved the issue
+- **Handoff To** -- send to Claude Code, Cursor, Windsurf, GitHub Copilot, or Codex CLI
+- **False Positive** -- mark and dismiss
+
+### Patch Preview and Apply
+
+Review proposed patches in a diff viewer inside the VS Code sidebar. Patches are validated with TypeScript syntax checking (in-memory compilation via ts-morph) and clean-apply verification before being presented.
+
+### @Mention Agent Selection
+
+Type `@` in the chat input to mention specific agents (`@security`, `@architecture`, `@bugs`, or `@all`). Only mentioned agents will run during a review, giving you targeted analysis.
+
+### MCP Server Manager
+
+Add, configure, and manage external MCP servers from the UI. Extend ChainReview with additional tool capabilities beyond the built-in CRP tools.
+
+### Chain-of-Review Audit Trail
+
+Eight structured event types recorded in local SQLite:
+
+`agent_started` | `evidence_collected` | `finding_emitted` | `patch_proposed` | `patch_validated` | `human_accepted` | `human_rejected` | `false_positive_marked`
+
+Browse the full timeline in the Audit Trail tab.
 
 ---
 
@@ -82,17 +102,17 @@ ChainReview is built on CRP (ChainReview Protocol), an open, MCP-compatible tool
 ```
 +------------------------------------------------------------+
 |                    VS Code Extension                        |
-|               (UI + Triggers + Review Cockpit)              |
+|          (Review Cockpit Webview + Command Palette)         |
 +----------------------------+-------------------------------+
                              | MCP Protocol (stdio)
 +----------------------------v-------------------------------+
 |                   CRP MCP Server (TypeScript)               |
 |  +------------------------------------------------------+  |
 |  |               Orchestrator (in-server)                |  |
-|  |  +--------------+ +-------------+ +----------------+ |  |
-|  |  | Architecture | |  Security   | |   Validator    | |  |
-|  |  |    Agent     | |    Agent    | |     Agent      | |  |
-|  |  +--------------+ +-------------+ +----------------+ |  |
+|  |  +--------+ +--------+ +------+ +--------+ +-------+ |  |
+|  |  | Arch.  | |Security| | Bugs | |Validator| |Explain| |  |
+|  |  | Agent  | | Agent  | |Agent | | Agent  | | Agent | |  |
+|  |  +--------+ +--------+ +------+ +--------+ +-------+ |  |
 |  +------------------------------------------------------+  |
 |  +------------------------------------------------------+  |
 |  |                    Tool Backends                      |  |
@@ -112,7 +132,7 @@ ChainReview is built on CRP (ChainReview Protocol), an open, MCP-compatible tool
 1. User triggers review from VS Code (repository or diff mode)
 2. Extension launches CRP server as a child process over stdio
 3. Server collects evidence: file tree, import graph, Semgrep results, diff
-4. Architecture and Security agents run in parallel using `Promise.allSettled`
+4. Architecture, Security, and Bugs agents run in parallel
 5. Each agent makes tool calls (file reads, searches, pattern scans) and emits structured findings
 6. Validator agent challenges the combined findings, adjusting confidence scores
 7. Findings, patches, and events stream to the UI via stderr JSON lines
@@ -124,14 +144,12 @@ ChainReview is built on CRP (ChainReview Protocol), an open, MCP-compatible tool
 
 ### Prerequisites
 
-- **Node.js** 18 or later
-- **VS Code** 1.90 or later
+- **Node.js** 18+
+- **VS Code** 1.90+
 - **Anthropic API key** (Claude access required)
 - **Semgrep** (optional, recommended) -- `pip install semgrep` or `brew install semgrep`
 
 ### Installation
-
-1. Clone and build:
 
 ```bash
 git clone https://github.com/charannyk06/ChainReview.git
@@ -140,17 +158,23 @@ npm install
 npm run build
 ```
 
-2. Set your Anthropic API key:
+### Configuration
+
+Set your Anthropic API key in VS Code Settings > ChainReview, or as an environment variable:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-3. Open the project in VS Code and press `F5` to launch the Extension Development Host.
+Optionally add a Brave Search API key for web search capabilities:
 
-4. In the new VS Code window, open any TypeScript repository and click the ChainReview icon in the activity bar.
+```bash
+export BRAVE_SEARCH_API_KEY="BSA..."
+```
 
-5. Click **Review Repo** or **Review Diff** to start a review.
+### Running
+
+Press `F5` in VS Code to launch the Extension Development Host. Open any TypeScript repository, click the ChainReview icon (`</>`) in the activity bar, then click **Review Repository** or **Review Diff**.
 
 ---
 
@@ -172,7 +196,7 @@ CRP (ChainReview Protocol) is an open, MCP-compatible tool schema. All tools are
 
 | Tool | Description |
 |---|---|
-| `crp.code.import_graph` | TypeScript import graph with cycle detection (via ts-morph) |
+| `crp.code.import_graph` | TypeScript import graph with cycle detection (ts-morph) |
 | `crp.code.pattern_scan` | Semgrep static analysis with configurable rules |
 
 ### Patch Operations
@@ -205,24 +229,17 @@ CRP (ChainReview Protocol) is an open, MCP-compatible tool schema. All tools are
 
 ---
 
-## Configuration
-
-### Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude access |
-| `BRAVE_SEARCH_API_KEY` | No | Brave Search API key (enables `crp.web.search`) |
-
-### VS Code Settings
+## VS Code Settings
 
 | Setting | Type | Description |
 |---|---|---|
+| `chainreview.anthropicApiKey` | String | Anthropic API key for Claude access |
+| `chainreview.braveSearchApiKey` | String | Brave Search API key (optional, enables web search) |
 | `chainreview.mcpServers` | Array | External MCP server configurations |
 
 ### MCP Server Configuration
 
-Add external MCP servers through the MCP Manager tab in the Review Cockpit, or directly in VS Code settings:
+Add external MCP servers through the MCP Manager tab or directly in settings:
 
 ```json
 {
@@ -243,12 +260,12 @@ Add external MCP servers through the MCP Manager tab in the Review Cockpit, or d
 
 ## Privacy and Security
 
-ChainReview is designed with a local-first architecture.
+ChainReview is local-first by design.
 
 - **Semgrep runs locally.** No code is sent to external scanning services.
-- **Code snippets are sent to the Anthropic API** for agent reasoning. Only targeted snippets and metadata are sent, not entire files or repositories.
+- **Code snippets are sent to the Anthropic API** for agent reasoning. Only targeted snippets and metadata are sent, not entire files.
 - **Secrets redaction** strips common patterns (API keys, tokens, passwords) from snippets before they reach the model.
-- **All review data is stored locally** in SQLite at `~/.chainreview/chainreview.db`. No external storage, no telemetry, no analytics collection.
+- **All review data is stored locally** in SQLite at `~/.chainreview/chainreview.db`. No telemetry, no analytics.
 - **No destructive actions** without explicit user approval. Patches require manual "Apply" confirmation.
 - **Path traversal protection** prevents patch operations from writing outside the repository boundary.
 
@@ -260,45 +277,47 @@ ChainReview is designed with a local-first architecture.
 src/
   extension/                VS Code extension host
     extension.ts            Entry point, command registration, server lifecycle
-    webview-provider.ts     Review Cockpit webview provider
+    webview-provider.ts     Review Cockpit webview provider, coding agent handoff
     mcp-client.ts           MCP client (stdio transport, event streaming)
 
   server/                   CRP MCP Server
     server.ts               MCP server with 20+ tool registrations
-    orchestrator.ts         Review pipeline (evidence collection, parallel agents, validator)
+    orchestrator.ts         Review pipeline (evidence, parallel agents, validator)
     store.ts                SQLite store (better-sqlite3, WAL mode, 5 tables)
-    chat.ts                 Chat query handler
-    types.ts                Server-side type definitions
+    chat.ts                 Chat query handler with patch generation
     agents/
-      base-agent.ts         Agent loop framework (tool calling, thinking, abort support)
+      base-agent.ts         Agent loop framework (tool calling, thinking, abort)
       architecture.ts       Architecture Agent
       security.ts           Security Agent
+      bugs.ts               Bugs Agent
       validator.ts          Validator Agent (challenge mode)
+      explainer.ts          Explainer Agent (on-demand deep-dive)
     tools/
       repo.ts               Git, file tree, search, diff
       code.ts               Import graph (ts-morph), Semgrep runner
-      patch.ts              Patch propose, validate, apply
+      patch.ts              Patch propose, validate, apply, generate
       audit.ts              Event recording
       exec.ts               Allowlisted shell commands
-      web.ts                Web search
+      web.ts                Web search (Brave Search API)
       redact.ts             Secrets redaction
 
   webview/                  React UI (Review Cockpit)
     App.tsx                 Main app with tab navigation
     components/
       layout/               Header, TabNav, EmptyState
-      chat/                 Chat interface, messages, tool call rendering
+      chat/                 Chat interface, messages, tool calls, @mention input
       review/               Findings grid, finding cards, patch preview, diff viewer
       timeline/             Audit trail timeline
-      mcp/                  MCP server manager
+      mcp/                  MCP server manager (add/edit/toggle servers)
+      history/              Task history
+      shared/               File references, handoff menu, buttons
     hooks/                  useVSCodeAPI, useReviewState
     lib/                    Types, constants, utilities
-
-docs/
-  PRD.md                    Product Requirements Document (v1.0)
+    contexts/               OpenFileContext
 
 media/
-  icon.svg                  Extension icon
+  icon.svg                  Activity bar icon (monochrome)
+  icon.png                  Extension marketplace icon (128x128)
 ```
 
 ---
@@ -308,28 +327,27 @@ media/
 ### Build
 
 ```bash
-# Install dependencies
 npm install
-
-# Build all targets (webview, extension, server)
 npm run build
-
-# Or build individually
-npm run build:webview     # Vite build (React + Tailwind)
-npm run build:extension   # esbuild (VS Code extension)
-npm run build:server      # esbuild (CRP MCP server)
 ```
+
+Three build targets:
+- `npm run build:webview` -- Vite (React)
+- `npm run build:extension` -- esbuild (VS Code extension)
+- `npm run build:server` -- esbuild (CRP MCP server)
 
 ### Watch Mode
 
 ```bash
-# Concurrent watch for extension + webview
-npm run dev
+npm run dev    # concurrent watch for extension + webview
 ```
 
-### Run
+### Test
 
-Press `F5` in VS Code to launch the Extension Development Host with the extension loaded.
+```bash
+npm run test              # run all tests
+npm run test:security     # security-specific tests
+```
 
 ### Tech Stack
 
@@ -337,14 +355,14 @@ Press `F5` in VS Code to launch the Extension Development Host with the extensio
 |---|---|
 | Extension | VS Code Extension API, esbuild |
 | Server | Node.js, MCP SDK, better-sqlite3, ts-morph, simple-git |
-| UI | React 18, Tailwind CSS 4, Motion (Framer Motion), Lucide Icons |
+| UI | React 18, Motion (Framer Motion), Lucide Icons, inline CSS |
 | Build | Vite 6, esbuild, TypeScript 5.7 |
-| LLM | Anthropic Claude API (claude-haiku-4-5 for agents, claude-opus-4-6 for validation) |
+| LLM | Anthropic Claude API (Claude Opus 4.6 for agents) |
 | Static Analysis | Semgrep (local) |
 
 ### Database
 
-SQLite database at `~/.chainreview/chainreview.db` with five tables:
+SQLite at `~/.chainreview/chainreview.db` with five tables:
 
 | Table | Purpose |
 |---|---|
@@ -356,50 +374,24 @@ SQLite database at `~/.chainreview/chainreview.db` with five tables:
 
 ---
 
-## Contributing
-
-Contributions are welcome. Please open an issue to discuss significant changes before submitting a pull request.
-
-```bash
-# Clone the repository
-git clone https://github.com/charannyk06/ChainReview.git
-cd ChainReview
-
-# Install dependencies
-npm install
-
-# Start development
-npm run dev
-
-# Build and test
-npm run build
-```
-
-If you find a bug or have a feature request, please [open an issue](https://github.com/charannyk06/ChainReview/issues).
-
----
-
 ## Roadmap
-
-The following items are planned for post-MVP development:
 
 - CLI tool for CI/CD integration
 - GitHub PR commenting and draft PR creation
 - Duplication detection via AST fingerprints
-- Analytics dashboard for review insights
 - Multi-language support beyond TypeScript
-- Multi-repository review support
+- Custom agent creation
 
 ---
 
 ## License
 
-ChainReview is licensed under the [Apache License 2.0](LICENSE).
+[Apache License 2.0](LICENSE)
 
 ---
 
 ## Acknowledgments
 
-ChainReview was built for the **Built with Opus 4.6: Claude Code Hackathon** by Anthropic.
+Built for the **Built with Claude: Claude Code Hackathon** by Anthropic.
 
-Built with [Claude Code](https://claude.ai) and powered by [Claude](https://anthropic.com) for agent reasoning. Uses the [Model Context Protocol](https://modelcontextprotocol.io) for tool integration, [Semgrep](https://semgrep.dev) for static analysis, and [ts-morph](https://github.com/dsherret/ts-morph) for TypeScript AST analysis.
+Powered by [Claude](https://anthropic.com) for agent reasoning. Uses the [Model Context Protocol](https://modelcontextprotocol.io) for tool integration, [Semgrep](https://semgrep.dev) for static analysis, and [ts-morph](https://github.com/dsherret/ts-morph) for TypeScript AST analysis.

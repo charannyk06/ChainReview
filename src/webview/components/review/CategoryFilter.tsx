@@ -1,10 +1,10 @@
+import { useState } from "react";
 import {
   BugIcon,
   ShieldAlertIcon,
   LandmarkIcon,
   LayersIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { FindingCategory } from "@/lib/types";
 
 type FilterOption = "all" | FindingCategory;
@@ -13,52 +13,46 @@ interface CategoryFilterProps {
   active: FilterOption;
   onChange: (category: FilterOption) => void;
   counts: Record<FilterOption, number>;
-  className?: string;
 }
 
 const CATEGORIES: {
   id: FilterOption;
   label: string;
   dotColor: string;
+  activeColor: string;
   activeBg: string;
-  activeText: string;
-  activeBorder: string;
-  Icon: React.FC<{ className?: string }>;
+  Icon: React.FC<{ style?: React.CSSProperties }>;
 }[] = [
   {
     id: "all",
     label: "All",
-    dotColor: "bg-[var(--cr-text-tertiary)]",
-    activeBg: "bg-[var(--cr-bg-elevated)]",
-    activeText: "text-[var(--cr-text-primary)]",
-    activeBorder: "border-[var(--cr-border-strong)]",
+    dotColor: "#737373",
+    activeColor: "#e5e5e5",
+    activeBg: "rgba(255,255,255,0.08)",
     Icon: LayersIcon,
   },
   {
     id: "bugs",
     label: "Bug",
-    dotColor: "bg-rose-400",
-    activeBg: "bg-rose-500/10",
-    activeText: "text-rose-300",
-    activeBorder: "border-rose-500/25",
+    dotColor: "#fb7185",
+    activeColor: "#fda4af",
+    activeBg: "rgba(244,63,94,0.10)",
     Icon: BugIcon,
   },
   {
     id: "security",
     label: "Security",
-    dotColor: "bg-amber-400",
-    activeBg: "bg-amber-500/10",
-    activeText: "text-amber-300",
-    activeBorder: "border-amber-500/25",
+    dotColor: "#fbbf24",
+    activeColor: "#fcd34d",
+    activeBg: "rgba(245,158,11,0.10)",
     Icon: ShieldAlertIcon,
   },
   {
     id: "architecture",
     label: "Architecture",
-    dotColor: "bg-blue-400",
-    activeBg: "bg-blue-500/10",
-    activeText: "text-blue-300",
-    activeBorder: "border-blue-500/25",
+    dotColor: "#60a5fa",
+    activeColor: "#93c5fd",
+    activeBg: "rgba(59,130,246,0.10)",
     Icon: LandmarkIcon,
   },
 ];
@@ -67,42 +61,63 @@ export function CategoryFilter({
   active,
   onChange,
   counts,
-  className,
 }: CategoryFilterProps) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
   return (
-    <div className={cn("flex gap-1.5", className)}>
+    <div style={{ display: "flex", gap: 6 }}>
       {CATEGORIES.map((cat) => {
         const isActive = active === cat.id;
+        const isHovered = hoveredId === cat.id;
         const count = counts[cat.id] || 0;
 
         return (
           <button
             key={cat.id}
             onClick={() => onChange(cat.id)}
-            className={cn(
-              "relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all duration-150 cursor-pointer",
-              isActive
-                ? cn(cat.activeBg, cat.activeText)
-                : "text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)] hover:bg-[var(--cr-bg-hover)]"
-            )}
+            onMouseEnter={() => setHoveredId(cat.id)}
+            onMouseLeave={() => setHoveredId(null)}
+            style={{
+              position: "relative",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "4px 10px",
+              borderRadius: 9999,
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: "pointer",
+              border: "none",
+              transition: "all 150ms ease",
+              background: isActive ? cat.activeBg : isHovered ? "var(--cr-bg-hover)" : "transparent",
+              color: isActive ? cat.activeColor : isHovered ? "var(--cr-text-secondary)" : "var(--cr-text-muted)",
+            }}
           >
             {/* Colored dot indicator */}
-            <div className={cn(
-              "size-1.5 rounded-full shrink-0 transition-opacity",
-              cat.dotColor,
-              !isActive && "opacity-40"
-            )} />
+            <div style={{
+              width: 6,
+              height: 6,
+              borderRadius: 9999,
+              flexShrink: 0,
+              background: cat.dotColor,
+              opacity: isActive ? 1 : 0.4,
+              transition: "opacity 150ms ease",
+            }} />
 
             <span>{cat.label}</span>
 
             {/* Count badge */}
             {count > 0 && (
-              <span className={cn(
-                "text-[9px] font-mono min-w-[16px] text-center px-1 py-0 rounded-full",
-                isActive
-                  ? "bg-white/10"
-                  : "bg-[var(--cr-bg-hover)] text-[var(--cr-text-muted)]"
-              )}>
+              <span style={{
+                fontSize: 9,
+                fontFamily: "var(--cr-font-mono)",
+                minWidth: 16,
+                textAlign: "center",
+                padding: "0 4px",
+                borderRadius: 9999,
+                background: isActive ? "rgba(255,255,255,0.10)" : "var(--cr-bg-hover)",
+                color: isActive ? "inherit" : "var(--cr-text-muted)",
+              }}>
                 {count}
               </span>
             )}

@@ -177,6 +177,19 @@ export const CODING_AGENTS: Array<{
   },
 ];
 
+/** Inline color values for agent styling (no Tailwind — works in VS Code webview) */
+export const AGENT_INLINE_COLORS: Record<
+  AgentName,
+  { color: string; bgColor: string; borderColor: string }
+> = {
+  architecture: { color: "#60a5fa", bgColor: "rgba(59,130,246,0.10)", borderColor: "rgba(59,130,246,0.20)" },
+  security: { color: "#fbbf24", bgColor: "rgba(245,158,11,0.10)", borderColor: "rgba(245,158,11,0.20)" },
+  bugs: { color: "#fb7185", bgColor: "rgba(244,63,94,0.10)", borderColor: "rgba(244,63,94,0.20)" },
+  validator: { color: "#34d399", bgColor: "rgba(16,185,129,0.10)", borderColor: "rgba(16,185,129,0.20)" },
+  explainer: { color: "#a78bfa", bgColor: "rgba(139,92,246,0.10)", borderColor: "rgba(139,92,246,0.20)" },
+  system: { color: "var(--cr-text-secondary)", bgColor: "var(--cr-bg-tertiary)", borderColor: "var(--cr-border)" },
+};
+
 /** Safe config lookups — never return undefined */
 export function getAgentConfig(agent: string) {
   return (AGENT_CONFIG as Record<string, (typeof AGENT_CONFIG)[AgentName]>)[agent] ?? {
@@ -185,6 +198,14 @@ export function getAgentConfig(agent: string) {
     color: "text-[var(--cr-text-ghost)]",
     bgColor: "bg-transparent",
     borderColor: "border-transparent",
+  };
+}
+
+export function getAgentInlineColors(agent: string) {
+  return (AGENT_INLINE_COLORS as Record<string, (typeof AGENT_INLINE_COLORS)[AgentName]>)[agent] ?? {
+    color: "var(--cr-text-ghost)",
+    bgColor: "transparent",
+    borderColor: "transparent",
   };
 }
 
@@ -215,6 +236,7 @@ export const MILESTONE_EVENTS: Set<EventType> = new Set([
   "human_accepted",
   "human_rejected",
   "false_positive_marked",
+  "issue_fixed",
 ]);
 
 export const EVENT_LABELS: Record<string, string> = {
@@ -226,4 +248,5 @@ export const EVENT_LABELS: Record<string, string> = {
   human_accepted: "Accepted",
   human_rejected: "Rejected",
   false_positive_marked: "Marked False Positive",
+  issue_fixed: "Issue Fixed",
 };

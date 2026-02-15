@@ -66,7 +66,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _currentRunId?: string;
   private _findings: Finding[] = [];
+  private _validationVerdicts: Record<string, { verdict: string; reasoning: string }> = {};
   private _blockCounter = 0;
+  /** Flag to suppress error messages when review was user-cancelled */
+  private _reviewCancelled = false;
   /** Track running tool_call block IDs per-agent for parallel routing */
   private _lastRunningToolBlockIds: Record<string, string> = {};
   /** Legacy fallback for non-agent-tagged tool calls */
@@ -92,6 +95,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   /** Active thinking block for validation streaming */
   private _validateStreamingThinkingBlockId: string | null = null;
   private _validateStreamingThinkingAccum = "";
+
+  // ── Conversation memory ──
+  /** Conversation history for multi-turn LLM context (persisted across panel reloads) */
+  private _conversationHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -129,7 +136,18 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       });
     });
 
-    // Restore persisted state when webview becomes visible
+    // Persist chat messages when panel visibility changes (tab switch, panel hide)
+    webviewView.onDidChangeVisibility(() => {
+      if (!webviewView.visible) {
+        // Panel is being hidden — request messages for persistence
+        this.postMessage({ type: "requestPersistMessages" });
+      } else {
+        // Panel became visible again — restore state
+        this._restorePersistedState();
+      }
+    });
+
+    // Restore persisted state when webview first loads
     this._restorePersistedState();
   }
 
@@ -143,48 +161,73 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  /** Safely extract a string from an untrusted message field */
+  private _safeStr(value: unknown, maxLength = 500): string {
+    if (typeof value !== "string") return "";
+    // Strip control characters and limit length
+    return value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").slice(0, maxLength);
+  }
+
+  /** Safely extract a string array from an untrusted message field */
+  private _safeStrArray(value: unknown, maxItems = 10): string[] {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((v): v is string => typeof v === "string")
+      .slice(0, maxItems)
+      .map((s) => this._safeStr(s, 200));
+  }
+
   private async _handleMessage(message: Record<string, unknown>) {
     switch (message.type) {
-      case "startReview":
-        await this._startReview(message.mode as "repo" | "diff", message.path as string | undefined);
+      case "startReview": {
+        const mode = message.mode === "diff" ? "diff" : "repo";
+        await this._startReview(mode, this._safeStr(message.path, 1000) || undefined);
         break;
+      }
       case "chatQuery": {
-        const agents = message.agents as string[] | undefined;
-        if (agents && agents.length > 0) {
+        const agents = this._safeStrArray(message.agents);
+        if (agents.length > 0) {
           // Agents mentioned — trigger a full review run with those agents
-          await this._startReview("repo", message.targetPath as string | undefined, agents);
+          await this._startReview("repo", this._safeStr(message.targetPath, 1000) || undefined, agents);
         } else {
           // No agents — plain chat Q&A
-          await this._handleChatQuery(message.query as string);
+          const query = this._safeStr(message.query, 10000);
+          if (query) await this._handleChatQuery(query);
         }
         break;
       }
       case "requestPatch":
-        await this._requestPatch(message.findingId as string);
+        await this._requestPatch(this._safeStr(message.findingId, 100));
         break;
       case "applyPatch":
-        await this._applyPatch(message.patchId as string);
+        await this._applyPatch(this._safeStr(message.patchId, 100));
         break;
       case "dismissPatch":
-        await this._dismissPatch(message.patchId as string);
+        await this._dismissPatch(this._safeStr(message.patchId, 100));
         break;
       case "markFalsePositive":
-        await this._markFalsePositive(message.findingId as string);
+        await this._markFalsePositive(this._safeStr(message.findingId, 100));
+        break;
+      case "markFixed":
+        await this._markFixed(this._safeStr(message.findingId, 100));
         break;
       case "explainFinding":
-        await this._explainFinding(message.findingId as string);
+        await this._explainFinding(this._safeStr(message.findingId, 100));
         break;
       case "sendToValidator":
-        await this._sendToValidator(message.findingId as string);
+        await this._sendToValidator(this._safeStr(message.findingId, 100));
         break;
       case "sendToCodingAgent":
-        await this._sendToCodingAgent(message.findingId as string, message.agentId as string);
+        await this._sendToCodingAgent(this._safeStr(message.findingId, 100), this._safeStr(message.agentId, 50));
         break;
       case "cancelReview":
         this._cancelReview();
         break;
       case "openFile":
-        this._openFile(message.filePath as string, message.line as number | undefined);
+        this._openFile(
+          this._safeStr(message.filePath, 1000),
+          typeof message.line === "number" ? Math.max(0, Math.floor(message.line)) : undefined
+        );
         break;
       // ── MCP Manager ──
       case "openMCPManager":
@@ -200,23 +243,23 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         this._mcpUpdateServer(message.config as any);
         break;
       case "mcpRemoveServer":
-        this._mcpRemoveServer(message.serverId as string);
+        this._mcpRemoveServer(this._safeStr(message.serverId, 100));
         break;
       case "mcpToggleServer":
-        this._mcpToggleServer(message.serverId as string, message.enabled as boolean);
+        this._mcpToggleServer(this._safeStr(message.serverId, 100), message.enabled === true);
         break;
       case "mcpRefreshServer":
-        this._mcpRefreshServer(message.serverId as string);
+        this._mcpRefreshServer(this._safeStr(message.serverId, 100));
         break;
       // ── Task History ──
       case "getReviewHistory":
         this._getReviewHistory();
         break;
       case "deleteReviewRun":
-        this._deleteReviewRun(message.runId as string);
+        this._deleteReviewRun(this._safeStr(message.runId, 100));
         break;
       case "loadReviewRun":
-        await this._loadReviewRun(message.runId as string);
+        await this._loadReviewRun(this._safeStr(message.runId, 100));
         break;
       case "clearChat":
         this._clearPersistedChat();
@@ -262,10 +305,11 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   // ── Cancel Review ──
 
   private _cancelReview() {
+    // Set flag BEFORE aborting so _startReview catch block knows this was intentional
+    this._reviewCancelled = true;
+
     if (this._crpClient) {
-      this._crpClient.cancelReview().catch(() => {
-        this._crpClient?.cancelActiveOperation();
-      });
+      this._crpClient.cancelReview().catch(() => {});
     }
     this._emitBlock({
       kind: "sub_agent_event",
@@ -847,6 +891,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     this._findings = [];
     this._lastRunningToolBlockId = null;
     this._lastRunningToolBlockIds = {};
+    this._reviewCancelled = false;
 
     this.postMessage({ type: "reviewStarted", mode });
 
@@ -902,6 +947,11 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       // Persist chat messages
       this.postMessage({ type: "requestPersistMessages" });
     } catch (err: any) {
+      // Don't show error if user intentionally cancelled — _cancelReview already sent reviewCancelled
+      if (this._reviewCancelled) {
+        this._reviewCancelled = false;
+        return;
+      }
       this.postMessage({ type: "reviewError", error: `Review failed: ${err.message}` });
     }
   }
@@ -1140,6 +1190,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     // Create the streaming assistant message
     this.postMessage({ type: "chatResponseStart", messageId });
 
+    // Add user query to conversation history
+    this._conversationHistory.push({ role: "user", content: query });
+
     try {
       // The chatQuery MCP call blocks until complete, BUT during execution
       // the server streams events via stderr → _handleStreamEvent → chatThinking/chatText/chatToolCall/chatToolResult
@@ -1148,7 +1201,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       // RACE CONDITION FIX: stderr events from the final LLM turn may still be
       // in transit when the MCP result arrives via stdout. We flush stderr by
       // waiting a few event-loop ticks before marking the message complete.
-      const result = await this._crpClient.chatQuery(query, this._currentRunId);
+      const result = await this._crpClient.chatQuery(query, this._currentRunId, this._conversationHistory.slice(0, -1));
 
       // ── Flush stderr: wait for any in-flight events to be processed ──
       // Node.js processes I/O callbacks in phases. Multiple ticks allow
@@ -1171,12 +1224,25 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         });
       }
 
+      // Add assistant answer to conversation history for multi-turn context
+      if (result.answer && result.answer.trim()) {
+        this._conversationHistory.push({ role: "assistant", content: result.answer });
+      }
+
+      // Persist conversation history to workspaceState for cross-reload memory
+      this._persistConversationHistory();
+
       // Mark the message as complete
       this.postMessage({ type: "chatResponseEnd", messageId });
 
       // Persist chat messages after chat completes
       this.postMessage({ type: "requestPersistMessages" });
     } catch (err: any) {
+      // Remove the optimistically-added user message from history on error
+      if (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1].role === "user") {
+        this._conversationHistory.pop();
+      }
+
       // Emit error block
       this.postMessage({
         type: "chatResponseBlock",
@@ -1223,7 +1289,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       .map((ev) => `- \`${ev.filePath}\` (lines ${ev.startLine}–${ev.endLine})`)
       .join("\n");
     const userTicket = [
-      `✨ **Explain Finding**`,
+      `🧠 **Explain Finding**`,
       ``,
       `**${finding.title}**`,
       `**Severity:** ${finding.severity.toUpperCase()} · **Category:** ${finding.category} · **Confidence:** ${Math.round(finding.confidence * 100)}%`,
@@ -1232,31 +1298,60 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       ``,
       `**Evidence:**`,
       evidenceList,
+      ``,
+      `*Invoking Explainer Agent to break this down...*`,
     ].join("\n");
 
     this.postMessage({ type: "injectUserMessage", text: userTicket });
 
-    // Build an investigation prompt so the LLM actively researches the finding
+    // Build an investigation prompt so the Explainer Agent actively researches the finding
+    // and breaks it down in simple, non-technical terms
     const evidenceSummary = finding.evidence
       .map((ev) => `  - ${ev.filePath}:${ev.startLine}-${ev.endLine}`)
       .join("\n");
 
+    const codeSnippets = finding.evidence
+      .filter((ev) => ev.snippet)
+      .map((ev) => `\`\`\`\n// ${ev.filePath}:${ev.startLine}\n${ev.snippet}\n\`\`\``)
+      .join("\n\n");
+
     const query = [
-      `Explain this code review finding in detail. Investigate the code and provide a thorough analysis:`,
+      `🧠 **[Explainer Agent]** — Break down this finding in simple, clear language that any developer can understand.`,
+      ``,
+      `You are acting as the **Explainer Agent**. Your job is NOT to just repeat the finding — you must:`,
+      `1. **Read the actual code** at the evidence locations to understand the real context`,
+      `2. **Explain the problem** like you're teaching a junior developer — use analogies and plain English`,
+      `3. **Show what could go wrong** with a concrete example scenario (e.g., "If a user sends X, then Y happens because...")`,
+      `4. **Rate the real-world risk** — is this a "your house is on fire" issue or a "you should clean up someday" issue?`,
+      `5. **Give a clear fix** with a before/after code example`,
+      ``,
+      `---`,
       ``,
       `**Finding:** ${finding.title}`,
       `**Severity:** ${finding.severity.toUpperCase()} | **Confidence:** ${Math.round(finding.confidence * 100)}%`,
       `**Agent:** ${finding.agent} | **Category:** ${finding.category}`,
+      ``,
       `**Description:** ${finding.description}`,
       ``,
       `**Evidence locations:**`,
       evidenceSummary,
+      codeSnippets ? `\n**Code snippets from evidence:**\n${codeSnippets}` : ``,
       ``,
-      `Please read the relevant files, understand the context, and explain:`,
-      `1. What exactly is the issue and why it matters`,
-      `2. The potential impact and risk`,
-      `3. Whether this is a true positive or could be a false positive`,
-      `4. Suggested fix or mitigation`,
+      `---`,
+      ``,
+      `**Instructions:** Read the files above, then explain in this format:`,
+      ``,
+      `## 🔍 What's the problem?`,
+      `(Plain English explanation — no jargon. Use an analogy if helpful.)`,
+      ``,
+      `## 💥 What could go wrong?`,
+      `(A specific, realistic scenario showing the bug in action.)`,
+      ``,
+      `## ⚡ How serious is this?`,
+      `(Honest assessment: critical/important/minor, and why.)`,
+      ``,
+      `## 🔧 How to fix it`,
+      `(Concrete code change — show before and after.)`,
     ].join("\n");
 
     // Trigger an actual chat query — the LLM will investigate with tool calls
@@ -1384,6 +1479,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         reasoning: result.reasoning,
       });
 
+      // Persist verdict so it survives panel reloads
+      this._validationVerdicts[findingId] = { verdict: result.verdict, reasoning: result.reasoning };
+      this._persistValidationVerdicts();
+
       vscode.window.showInformationMessage(`ChainReview: Verification result — ${verdictLabel[result.verdict] || result.verdict}`);
     } catch (err: any) {
       const errMsg = err.message || "Unknown error";
@@ -1493,7 +1592,63 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (!this._crpClient?.isConnected() || !this._currentRunId) return;
     try {
       await this._crpClient.recordEvent(this._currentRunId, "false_positive_marked", undefined, { findingId });
+
+      // Get finding title for the timeline event
+      const finding = this._findings.find((f) => f.id === findingId);
+      const findingTitle = finding?.title || "Finding";
+
+      // Remove finding from in-memory list
+      this._findings = this._findings.filter((f) => f.id !== findingId);
+
+      // Notify webview to remove the finding from UI
+      this.postMessage({ type: "falsePositiveMarked", findingId });
+
+      // Also emit a timeline event so the timeline tab shows this action
+      this.postMessage({
+        type: "addEvent",
+        event: {
+          id: `fp-${findingId}-${Date.now()}`,
+          runId: this._currentRunId,
+          type: "false_positive_marked",
+          timestamp: new Date().toISOString(),
+          data: { findingId, findingTitle },
+        },
+      });
+
       vscode.window.showInformationMessage("ChainReview: Finding marked as false positive");
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`ChainReview: Failed to record — ${err.message}`);
+    }
+  }
+
+  private async _markFixed(findingId: string) {
+    if (!this._crpClient?.isConnected() || !this._currentRunId) return;
+    try {
+      await this._crpClient.recordEvent(this._currentRunId, "issue_fixed", undefined, { findingId });
+
+      // Get finding title for the timeline event
+      const finding = this._findings.find((f) => f.id === findingId);
+      const findingTitle = finding?.title || "Finding";
+
+      // Remove finding from in-memory list
+      this._findings = this._findings.filter((f) => f.id !== findingId);
+
+      // Notify webview to remove the finding from UI and track as fixed
+      this.postMessage({ type: "fixedMarked", findingId });
+
+      // Emit a timeline event so the timeline tab shows this action
+      this.postMessage({
+        type: "addEvent",
+        event: {
+          id: `fixed-${findingId}-${Date.now()}`,
+          runId: this._currentRunId,
+          type: "issue_fixed",
+          timestamp: new Date().toISOString(),
+          data: { findingId, findingTitle },
+        },
+      });
+
+      vscode.window.showInformationMessage("ChainReview: Finding marked as fixed — will be re-checked on next review");
     } catch (err: any) {
       vscode.window.showErrorMessage(`ChainReview: Failed to record — ${err.message}`);
     }
@@ -1570,7 +1725,8 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         const filePath = path.join(chainReviewDir, fileName);
         fs.writeFileSync(filePath, prompt, "utf-8");
         const uri = vscode.Uri.file(filePath);
-        await vscode.workspace.openTextDocument(uri).then((doc) => vscode.window.showTextDocument(doc));
+        const doc = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(doc);
         vscode.window.showInformationMessage(`ChainReview: Finding exported to .chainreview/${fileName}`);
       } catch (err: any) {
         await vscode.env.clipboard.writeText(prompt);
@@ -1606,13 +1762,23 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
         const fs = await import("fs");
         const path = await import("path");
-        const { execSync } = await import("child_process");
+        const { spawnSync } = await import("child_process");
 
-        // Check if the CLI is available
+        // Validate CLI command name — only allow known safe alphanumeric names
+        if (!/^[a-zA-Z0-9_-]+$/.test(cliAgent.cmd)) {
+          vscode.window.showErrorMessage("ChainReview: Invalid CLI agent command name");
+          return;
+        }
+
+        // Check if the CLI is available using spawnSync with argument array (no shell injection)
         let cliAvailable = false;
         try {
-          execSync(`which ${cliAgent.cmd} 2>/dev/null || where ${cliAgent.cmd} 2>NUL`, { timeout: 5000 });
-          cliAvailable = true;
+          const whichResult = spawnSync(
+            process.platform === "win32" ? "where" : "which",
+            [cliAgent.cmd],
+            { timeout: 5000, encoding: "utf-8" }
+          );
+          cliAvailable = whichResult.status === 0;
         } catch {
           // CLI not in PATH
         }
@@ -1641,18 +1807,20 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         });
         terminal.show();
 
-        // Build the command — launch each CLI in PRINT mode, reading the prompt
-        // file via stdin redirect to avoid $() expansion echoing the whole prompt.
+        // Build the command — pipe the prompt file into each CLI in interactive mode
+        // so the agent actually executes changes (not print mode).
+        // Shell-escape the file path to prevent injection via crafted finding IDs
+        const escapedPath = promptFilePath.replace(/'/g, "'\\''");
         let shellCmd: string;
         if (agentId === "claude-code") {
-          // Claude Code: use -p (print mode) with stdin redirect — no echo duplication
-          shellCmd = `claude -p --verbose < '${promptFilePath}'`;
+          // Claude Code: pipe prompt via cat for interactive execution (NOT -p print mode)
+          shellCmd = `cat '${escapedPath}' | claude --verbose`;
         } else if (agentId === "codex-cli") {
-          // Codex CLI: use quiet flag with stdin redirect
-          shellCmd = `codex -q < '${promptFilePath}'`;
+          // Codex CLI: pipe prompt for interactive execution
+          shellCmd = `cat '${escapedPath}' | codex`;
         } else {
-          // Gemini CLI: use stdin redirect
-          shellCmd = `gemini < '${promptFilePath}'`;
+          // Gemini CLI: pipe prompt for interactive execution
+          shellCmd = `cat '${escapedPath}' | gemini`;
         }
         terminal.sendText(shellCmd);
 
@@ -1754,11 +1922,16 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (!this._crpClient?.isConnected()) return;
 
     try {
-      // Get findings and events for this run
-      const [findings, events] = await Promise.all([
+      // Get findings, events, and chat messages for this run
+      const [findings, events, chatMessages] = await Promise.all([
         this._crpClient.getFindings(runId),
         this._crpClient.getEvents(runId),
+        this._crpClient.getChatMessages(runId).catch(() => [] as unknown[]),
       ]);
+
+      if (!Array.isArray(findings) || !Array.isArray(events)) {
+        throw new Error("Invalid findings or events data");
+      }
 
       this._currentRunId = runId;
       this._findings = findings;
@@ -1774,6 +1947,13 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       // Send all events
       for (const event of events) {
         this.postMessage({ type: "addEvent", event });
+      }
+
+      // Restore chat messages from SQLite (per-run persistence)
+      if (Array.isArray(chatMessages) && chatMessages.length > 0) {
+        this.postMessage({ type: "restoreMessages", messages: chatMessages });
+        // Also update workspaceState so _restorePersistedState picks them up on panel reload
+        this._context?.workspaceState.update("chainreview.chatMessages", chatMessages);
       }
 
       // Mark complete
@@ -1921,6 +2101,30 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     this._connectMCPServer(serverId);
   }
 
+  /** Allowlist of known-safe MCP server commands */
+  private static readonly MCP_COMMAND_ALLOWLIST = new Set([
+    "node", "npx", "tsx", "ts-node",
+    "python", "python3", "pip", "pipx", "uvx",
+    "deno", "bun",
+    "docker",
+    "mcp-server-filesystem", "mcp-server-fetch", "mcp-server-memory",
+    "mcp-server-brave-search", "mcp-server-github", "mcp-server-gitlab",
+    "mcp-server-postgres", "mcp-server-sqlite", "mcp-server-redis",
+    "mcp-server-puppeteer", "mcp-server-sequential-thinking",
+  ]);
+
+  private _validateMCPCommand(command: string): { valid: boolean; reason?: string } {
+    // Must be alphanumeric with hyphens/underscores only — no paths, no shell metacharacters
+    if (!/^[a-zA-Z0-9_.-]+$/.test(command)) {
+      return { valid: false, reason: `Invalid command name "${command}" — only alphanumeric characters, dots, hyphens, and underscores are allowed` };
+    }
+    // Check allowlist
+    if (!ReviewCockpitProvider.MCP_COMMAND_ALLOWLIST.has(command)) {
+      return { valid: false, reason: `Command "${command}" is not in the MCP server allowlist. Allowed: ${Array.from(ReviewCockpitProvider.MCP_COMMAND_ALLOWLIST).join(", ")}` };
+    }
+    return { valid: true };
+  }
+
   private async _connectMCPServer(serverId: string) {
     const server = this._mcpServers.find((s) => s.id === serverId);
     if (!server) return;
@@ -1930,16 +2134,22 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     this._sendMCPServers();
 
     try {
-      // Verify the command exists on the system before marking connected.
-      // For a full implementation, we'd use the MCP SDK to establish a real connection.
+      // Validate the command against our allowlist before executing anything
+      const cmdValidation = this._validateMCPCommand(server.command);
+      if (!cmdValidation.valid) {
+        throw new Error(cmdValidation.reason);
+      }
+
+      // Verify the command exists on the system using argument array (no shell injection)
       const { spawnSync } = await import("child_process");
-      const result = spawnSync("which", [server.command], {
-        timeout: 5000,
-        encoding: "utf-8",
-      });
+      const result = spawnSync(
+        process.platform === "win32" ? "where" : "which",
+        [server.command],
+        { timeout: 5000, encoding: "utf-8" }
+      );
 
       if (result.status !== 0) {
-        throw new Error(`Command "${server.command}" not found`);
+        throw new Error(`Command "${server.command}" not found in PATH`);
       }
 
       // Mark as connected (in a real implementation, we'd maintain the MCP connection)
@@ -2011,12 +2221,19 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (!this._context) return;
     try {
       this._context.workspaceState.update("chainreview.chatMessages", messages);
+
+      // Also persist to SQLite for task history recall (per-run)
+      if (this._currentRunId && this._crpClient?.isConnected()) {
+        this._crpClient.saveChatMessages(this._currentRunId, messages).catch((err: any) => {
+          console.error("ChainReview: Failed to persist chat messages to SQLite:", err.message);
+        });
+      }
     } catch (err: any) {
       console.error("ChainReview: Failed to persist chat messages:", err.message);
     }
   }
 
-  private _persistReviewState(state: { findings: unknown[]; events: unknown[]; status: string; mode?: string; runId?: string }) {
+  private _persistReviewState(state: { findings: unknown[]; events: unknown[]; status: string; mode?: string; runId?: string; validationVerdicts?: Record<string, unknown> }) {
     if (!this._context) return;
     try {
       this._context.workspaceState.update("chainreview.reviewState", state);
@@ -2025,17 +2242,83 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private _persistValidationVerdicts() {
+    if (!this._context) return;
+    try {
+      this._context.workspaceState.update("chainreview.validationVerdicts", this._validationVerdicts);
+    } catch (err: any) {
+      console.error("ChainReview: Failed to persist validation verdicts:", err.message);
+    }
+  }
+
+  private _persistConversationHistory() {
+    if (!this._context) return;
+    try {
+      // Keep only last 40 turns to avoid workspace storage bloat
+      const trimmed = this._conversationHistory.slice(-40);
+
+      // Deduplicate: if consecutive assistant messages contain the same file content,
+      // replace duplicates with a reference marker to save storage and tokens
+      const deduped = this._deduplicateHistory(trimmed);
+
+      this._context.workspaceState.update("chainreview.conversationHistory", deduped);
+    } catch (err: any) {
+      console.error("ChainReview: Failed to persist conversation history:", err.message);
+    }
+  }
+
+  /** Detect and collapse duplicate file content blocks in history */
+  private _deduplicateHistory(
+    history: Array<{ role: "user" | "assistant"; content: string }>
+  ): Array<{ role: "user" | "assistant"; content: string }> {
+    const seenFileContents = new Set<string>();
+
+    return history.map((msg) => {
+      if (msg.role !== "assistant") return msg;
+
+      // Find file content blocks (```...``` with file paths)
+      const cleaned = msg.content.replace(
+        /(?:File: ([^\n]+)\n)?```[\w]*\n([\s\S]{500,}?)\n```/g,
+        (match, filePath, content) => {
+          // Create a fingerprint from first 200 chars of the content block
+          const fingerprint = (filePath || "") + ":" + content.slice(0, 200);
+          if (seenFileContents.has(fingerprint)) {
+            return `[Previously shown: ${filePath || "code block"}]`;
+          }
+          seenFileContents.add(fingerprint);
+          return match;
+        }
+      );
+
+      return cleaned !== msg.content ? { ...msg, content: cleaned } : msg;
+    });
+  }
+
   private _restorePersistedState() {
     if (!this._context) return;
 
     // Small delay to ensure webview is ready to receive messages
     setTimeout(() => {
       try {
+        // Restore conversation history for LLM multi-turn context
+        const history = this._context!.workspaceState.get<Array<{ role: "user" | "assistant"; content: string }>>("chainreview.conversationHistory");
+        if (history && history.length > 0) {
+          this._conversationHistory = history;
+        }
+
+        // Restore chat messages
         const messages = this._context!.workspaceState.get<unknown[]>("chainreview.chatMessages");
         if (messages && messages.length > 0) {
           this.postMessage({ type: "restoreMessages", messages });
         }
 
+        // Restore validation verdicts into memory
+        const verdicts = this._context!.workspaceState.get<Record<string, { verdict: string; reasoning: string }>>("chainreview.validationVerdicts");
+        if (verdicts) {
+          this._validationVerdicts = verdicts;
+        }
+
+        // Restore review state (findings, events, status) + merge verdicts
         const reviewState = this._context!.workspaceState.get<{
           findings: unknown[];
           events: unknown[];
@@ -2047,7 +2330,20 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
           if (reviewState.runId) {
             this._currentRunId = reviewState.runId;
           }
-          this.postMessage({ type: "restoreReviewState", ...reviewState });
+          this.postMessage({
+            type: "restoreReviewState",
+            ...reviewState,
+            validationVerdicts: this._validationVerdicts,
+          });
+        } else if (Object.keys(this._validationVerdicts).length > 0) {
+          // Even without a review state, restore verdicts alone
+          this.postMessage({
+            type: "restoreReviewState",
+            findings: [],
+            events: [],
+            status: "idle",
+            validationVerdicts: this._validationVerdicts,
+          });
         }
       } catch (err: any) {
         console.error("ChainReview: Failed to restore persisted state:", err.message);
@@ -2057,8 +2353,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   private _clearPersistedChat() {
     if (!this._context) return;
+    // Clear chat messages and conversation history
     this._context.workspaceState.update("chainreview.chatMessages", undefined);
-    this._context.workspaceState.update("chainreview.reviewState", undefined);
+    this._context.workspaceState.update("chainreview.conversationHistory", undefined);
+    this._conversationHistory = [];
   }
 
   // ── Webview HTML ──

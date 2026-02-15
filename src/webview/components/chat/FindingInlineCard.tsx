@@ -6,45 +6,42 @@ import {
   ShieldCheckIcon,
   SettingsIcon,
   SparklesIcon,
+  BookOpenIcon,
   XCircleIcon,
   ChevronRightIcon,
   BugIcon,
   WrenchIcon,
   SendIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { getSeverityConfig, getAgentConfig, getCategoryConfig } from "@/lib/constants";
 import { FileChip, FileHeader } from "@/components/shared/FileReference";
 import { HandoffMenu } from "@/components/shared/HandoffMenu";
 import { useOpenFile } from "@/contexts/OpenFileContext";
 import type { Finding, AgentName } from "@/lib/types";
 
-const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
+const AGENT_ICONS: Record<AgentName, React.FC<{ style?: React.CSSProperties }>> = {
   architecture: LandmarkIcon,
   security: ShieldAlertIcon,
+  bugs: BugIcon,
   validator: ShieldCheckIcon,
+  explainer: BookOpenIcon,
   system: SettingsIcon,
 };
 
-/** Severity left-bar color classes — muted tones */
-const SEVERITY_BAR: Record<string, string> = {
-  critical: "bg-red-500/50",
-  high: "bg-orange-500/40",
-  medium: "bg-yellow-500/30",
-  low: "bg-[var(--cr-text-ghost)]",
-  info: "bg-[var(--cr-text-ghost)]",
+const SEVERITY_BAR_COLOR: Record<string, string> = {
+  critical: "rgba(239,68,68,0.50)",
+  high: "rgba(249,115,22,0.40)",
+  medium: "rgba(234,179,8,0.30)",
+  low: "var(--cr-text-ghost)",
+  info: "var(--cr-text-ghost)",
 };
 
 function getCategoryIcon(icon: string) {
   switch (icon) {
-    case "bug":
-      return BugIcon;
-    case "shield":
-      return ShieldAlertIcon;
-    case "landmark":
-      return LandmarkIcon;
-    default:
-      return BugIcon;
+    case "bug": return BugIcon;
+    case "shield": return ShieldAlertIcon;
+    case "landmark": return LandmarkIcon;
+    default: return BugIcon;
   }
 }
 
@@ -67,6 +64,7 @@ export function FindingInlineCard({
 }: FindingInlineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [cardHovered, setCardHovered] = useState(false);
   const handoffRef = useRef<HTMLDivElement>(null);
   const handoffBtnRef = useRef<HTMLButtonElement>(null);
   const openFile = useOpenFile();
@@ -75,16 +73,19 @@ export function FindingInlineCard({
   const categoryConfig = getCategoryConfig(finding.category);
   const AgentIcon = AGENT_ICONS[finding.agent] || SettingsIcon;
   const CategoryIcon = getCategoryIcon(categoryConfig.icon);
-  const severityBar = SEVERITY_BAR[finding.severity] || "bg-[var(--cr-text-ghost)]";
+  const severityBar = SEVERITY_BAR_COLOR[finding.severity] || "var(--cr-text-ghost)";
 
-  // Close handoff dropdown on outside click (accounts for portal menu)
+  // Close handoff dropdown on outside click
   useEffect(() => {
     if (!handoffOpen) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       const insideTrigger = handoffRef.current?.contains(target);
-      const portalMenu = document.querySelector("[class*='z-\\[9999\\]']");
-      const insidePortal = portalMenu?.contains(target);
+      const portalMenus = document.querySelectorAll("[style*='z-index: 9999']");
+      let insidePortal = false;
+      portalMenus.forEach((el) => {
+        if (el.contains(target)) insidePortal = true;
+      });
       if (!insideTrigger && !insidePortal) {
         setHandoffOpen(false);
       }
@@ -98,58 +99,85 @@ export function FindingInlineCard({
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="my-2 relative rounded-xl border border-[var(--cr-border)] bg-[var(--cr-bg-secondary)] hover:border-[var(--cr-border-strong)] overflow-hidden transition-all duration-200"
+      onMouseEnter={() => setCardHovered(true)}
+      onMouseLeave={() => setCardHovered(false)}
+      style={{
+        margin: "8px 0",
+        position: "relative",
+        borderRadius: 12,
+        border: `1px solid ${cardHovered ? "var(--cr-border-strong)" : "var(--cr-border)"}`,
+        background: "var(--cr-bg-secondary)",
+        overflow: "hidden",
+        transition: "all 200ms ease",
+      }}
     >
-      {/* Severity color bar — left edge indicator */}
-      <div className={cn("absolute left-0 top-0 bottom-0 w-[3px] rounded-l-lg", severityBar)} />
+      {/* Severity color bar — left edge */}
+      <div style={{
+        position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
+        borderRadius: "12px 0 0 12px", background: severityBar,
+      }} />
 
       {/* Main content area */}
-      <div className="pl-3">
-        {/* Header — always visible, clickable */}
+      <div style={{ paddingLeft: 12 }}>
+        {/* Header — clickable */}
         <button
           onClick={() => setExpanded((p) => !p)}
-          className="w-full text-left px-3.5 pt-3 pb-2.5 hover:bg-[var(--cr-bg-hover)] transition-colors"
+          style={{
+            width: "100%",
+            textAlign: "left",
+            padding: "12px 14px 10px 14px",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            transition: "background 150ms ease",
+          }}
         >
-          {/* Top row: plain text meta */}
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="inline-flex items-center gap-1 text-[9px] text-[var(--cr-text-muted)]">
-              <CategoryIcon className="size-2" />
+          {/* Top row: meta */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9, color: "var(--cr-text-muted)" }}>
+              <CategoryIcon style={{ width: 8, height: 8 }} />
               {categoryConfig.label}
             </span>
-            <span className="text-[var(--cr-text-ghost)]">&middot;</span>
-            <span className="text-[9px] text-[var(--cr-text-muted)]">{severity.label}</span>
-            <span className="text-[var(--cr-text-ghost)]">&middot;</span>
-            <span className="text-[9px] font-mono text-[var(--cr-text-ghost)]">{Math.round(finding.confidence * 100)}%</span>
+            <span style={{ color: "var(--cr-text-ghost)" }}>&middot;</span>
+            <span style={{ fontSize: 9, color: "var(--cr-text-muted)" }}>{severity.label}</span>
+            <span style={{ color: "var(--cr-text-ghost)" }}>&middot;</span>
+            <span style={{ fontSize: 9, fontFamily: "var(--cr-font-mono)", color: "var(--cr-text-ghost)" }}>
+              {Math.round(finding.confidence * 100)}%
+            </span>
 
-            <div className="flex items-center gap-1.5 ml-auto">
-              <span className="inline-flex items-center gap-0.5 text-[var(--cr-text-ghost)]">
-                <AgentIcon className="size-2" />
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "var(--cr-text-ghost)" }}>
+                <AgentIcon style={{ width: 8, height: 8 }} />
               </span>
-              <ChevronRightIcon
-                className={cn(
-                  "size-3 text-[var(--cr-text-ghost)] transition-transform duration-200",
-                  expanded && "rotate-90"
-                )}
-              />
+              <ChevronRightIcon style={{
+                width: 12, height: 12, color: "var(--cr-text-ghost)",
+                transition: "transform 200ms ease",
+                transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+              }} />
             </div>
           </div>
 
           {/* Title */}
-          <h4 className="text-[12px] font-semibold text-[var(--cr-text-primary)] leading-snug mb-1.5">
+          <h4 style={{ fontSize: 12, fontWeight: 600, color: "var(--cr-text-primary)", lineHeight: 1.4, marginBottom: 6 }}>
             {finding.title}
           </h4>
 
-          {/* Description preview */}
-          <p className={cn(
-            "text-[11px] text-[var(--cr-text-secondary)] leading-relaxed",
-            !expanded && "line-clamp-2"
-          )}>
+          {/* Description */}
+          <p style={{
+            fontSize: 11, color: "var(--cr-text-secondary)", lineHeight: 1.6,
+            ...(expanded ? {} : {
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical" as const,
+              overflow: "hidden",
+            }),
+          }}>
             {finding.description}
           </p>
 
-          {/* Referenced files — compact chips with colored extension badges */}
+          {/* File chips */}
           {finding.evidence.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1.5">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
               {finding.evidence.map((ev, i) => (
                 <FileChip
                   key={i}
@@ -170,75 +198,74 @@ export function FindingInlineCard({
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="overflow-hidden"
+              style={{ overflow: "hidden" }}
             >
-              <div className="px-3.5 pb-3.5 space-y-3 border-t border-[var(--cr-border-subtle)] pt-3">
-                {/* Evidence snippets with proper file headers */}
+              <div style={{
+                padding: "0 14px 14px 14px",
+                display: "flex", flexDirection: "column", gap: 12,
+                borderTop: "1px solid var(--cr-border-subtle)", paddingTop: 12,
+              }}>
+                {/* Evidence snippets */}
                 {finding.evidence.map((ev, i) => (
-                  <div
-                    key={i}
-                    className="rounded-lg border border-[var(--cr-border-subtle)] bg-[var(--cr-bg-primary)] overflow-hidden"
-                  >
-                    {/* Clickable file header with colored extension badge */}
+                  <div key={i} style={{
+                    borderRadius: 8, border: "1px solid var(--cr-border-subtle)",
+                    background: "var(--cr-bg-primary)", overflow: "hidden",
+                  }}>
                     <FileHeader
                       filePath={ev.filePath}
                       startLine={ev.startLine}
                       endLine={ev.endLine}
                       onClick={() => openFile(ev.filePath, ev.startLine)}
                     />
-                    <pre className="px-3 py-2.5 text-[10.5px] text-[var(--cr-text-secondary)] font-mono overflow-x-auto max-h-28 leading-relaxed">
+                    <pre style={{
+                      padding: "10px 12px", fontSize: 10.5, color: "var(--cr-text-secondary)",
+                      fontFamily: "var(--cr-font-mono)", overflowX: "auto", maxHeight: 112,
+                      lineHeight: 1.6, margin: 0,
+                    }}>
                       {ev.snippet}
                     </pre>
                   </div>
                 ))}
 
-                {/* Action buttons — matching FindingCard style */}
+                {/* Action buttons */}
                 <div
-                  className="flex gap-1.5 pt-1 flex-wrap items-center"
+                  style={{ display: "flex", gap: 6, paddingTop: 4, flexWrap: "wrap", alignItems: "center" }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   {onExplain && (
-                    <button
-                      onClick={() => onExplain(finding.id)}
-                      className="cr-btn cr-btn-sm cr-btn-purple"
-                    >
-                      <SparklesIcon className="size-3" />
+                    <button onClick={() => onExplain(finding.id)} className="cr-btn cr-btn-sm cr-btn-purple">
+                      <SparklesIcon style={{ width: 12, height: 12 }} />
                       Explain
                     </button>
                   )}
                   {onProposePatch && (
-                    <button
-                      onClick={() => onProposePatch(finding.id)}
-                      className="cr-btn cr-btn-sm cr-btn-blue"
-                    >
-                      <WrenchIcon className="size-3" />
+                    <button onClick={() => onProposePatch(finding.id)} className="cr-btn cr-btn-sm cr-btn-blue">
+                      <WrenchIcon style={{ width: 12, height: 12 }} />
                       Fix
                     </button>
                   )}
                   {onSendToValidator && (
-                    <button
-                      onClick={() => onSendToValidator(finding.id)}
-                      className="cr-btn cr-btn-sm cr-btn-emerald"
-                    >
-                      <ShieldCheckIcon className="size-3" />
+                    <button onClick={() => onSendToValidator(finding.id)} className="cr-btn cr-btn-sm cr-btn-emerald">
+                      <ShieldCheckIcon style={{ width: 12, height: 12 }} />
                       Validate
                     </button>
                   )}
 
                   {/* Send to Coding Agent */}
                   {onSendToCodingAgent && (
-                    <div className="relative" ref={handoffRef}>
+                    <div style={{ position: "relative" }} ref={handoffRef}>
                       <button
                         ref={handoffBtnRef}
                         onClick={() => setHandoffOpen((p) => !p)}
                         className="cr-btn cr-btn-sm cr-btn-orange"
                       >
-                        <SendIcon className="size-3" />
+                        <SendIcon style={{ width: 12, height: 12 }} />
                         Send to Agent
-                        <ChevronRightIcon className={cn(
-                          "size-3 transition-transform",
-                          handoffOpen && "rotate-90"
-                        )} />
+                        <ChevronRightIcon style={{
+                          width: 12, height: 12,
+                          transition: "transform 150ms ease",
+                          transform: handoffOpen ? "rotate(90deg)" : "rotate(0deg)",
+                        }} />
                       </button>
                       <HandoffMenu
                         open={handoffOpen}
@@ -251,13 +278,14 @@ export function FindingInlineCard({
                     </div>
                   )}
 
-                  {/* False positive — right-aligned, ghost button */}
+                  {/* False positive */}
                   {onMarkFalsePositive && (
                     <button
                       onClick={() => onMarkFalsePositive(finding.id)}
-                      className="cr-btn cr-btn-sm cr-btn-ghost ml-auto"
+                      className="cr-btn cr-btn-sm cr-btn-ghost"
+                      style={{ marginLeft: "auto" }}
                     >
-                      <XCircleIcon className="size-3" />
+                      <XCircleIcon style={{ width: 12, height: 12 }} />
                       False Positive
                     </button>
                   )}

@@ -188,12 +188,28 @@ export async function codePatternScan(args: {
   const semgrepArgs: string[] = ["scan", "--json", "--quiet", "--no-git-ignore"];
 
   if (args.pattern) {
+    // Validate pattern: max length + no shell metacharacters
+    if (args.pattern.length > 500) {
+      return {
+        results: [],
+        totalResults: 0,
+        warning: "Semgrep pattern too long (max 500 chars)",
+      };
+    }
     semgrepArgs.push("--pattern", args.pattern, "--lang", "ts");
   } else {
     // Registry configs like "p/typescript" require network + login on newer Semgrep versions.
     // Use "auto" for local analysis (uses built-in rules without registry access),
     // or fall back to the user-provided config.
     const config = args.config ?? "auto";
+    // Validate config: only allow safe config identifiers (e.g., "auto", "p/typescript")
+    if (!/^[a-zA-Z0-9_/.-]+$/.test(config)) {
+      return {
+        results: [],
+        totalResults: 0,
+        warning: "Invalid Semgrep config identifier",
+      };
+    }
     semgrepArgs.push("--config", config);
   }
 

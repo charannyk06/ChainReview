@@ -1,7 +1,5 @@
-import { runAgentLoop, type AgentTool } from "./base-agent";
-import { repoFile, repoSearch } from "../tools/repo";
-import { webSearch } from "../tools/web";
-import type { Finding, AuditEvent } from "../types";
+import { runAgentLoop, createToolExecutor, routeStandardTool, type AgentTool, type AgentCallbacks, type ToolHandler } from "./base-agent";
+import type { Finding } from "../types";
 
 /**
  * Explainer Agent
@@ -180,11 +178,8 @@ export interface Explanation {
   }>;
 }
 
-export interface ExplainerCallbacks {
-  onEvent: (event: AuditEvent) => void;
+export interface ExplainerCallbacks extends AgentCallbacks {
   onExplanation: (explanation: Explanation) => void;
-  onThinking?: (text: string) => void;
-  onToolCall?: (name: string, input: unknown) => void;
 }
 
 /**
@@ -233,121 +228,73 @@ For EACH finding, you must:
 
 Start with Finding 1 and work through all of them. Use your tools to gather context before explaining.`;
 
-  // Tool handler
-  async function handleToolCall(
-    name: string,
-    input: Record<string, unknown>
-  ): Promise<string> {
-    callbacks.onToolCall?.(name, input);
+  // Tool handler: routes standard tools + handles explainer-specific emit_explanation
+  const explainerToolHandler: ToolHandler = async (name, args) => {
+    if (name === "emit_explanation") {
+      const explanation: Explanation = {
+        findingId: args.findingId as string,
+        summary: args.summary as string,
+        whyItMatters: {
+          impact: args.impact as "Critical" | "High" | "Medium" | "Low",
+          explanation: args.whyItMatters as string,
+          scenario: args.scenario as string | undefined,
+        },
+        howToFix: {
+          effort: args.effort as "Quick fix" | "Half-day" | "Multi-day refactor",
+          steps: args.steps as string[],
+        },
+        codeExample: args.codeBefore ? {
+          before: args.codeBefore as string,
+          after: args.codeAfter as string || "",
+          explanation: args.codeExplanation as string || "",
+        } : undefined,
+        resources: (args.resources as Explanation["resources"]) || [],
+      };
 
-    switch (name) {
-      case "crp_repo_file": {
-        try {
-          const result = await repoFile({
-            path: input.path as string,
-            startLine: input.startLine as number | undefined,
-            endLine: input.endLine as number | undefined,
-          });
-          return JSON.stringify(result);
-        } catch (err: any) {
-          return JSON.stringify({ error: err.message });
-        }
-      }
+      explanations.push(explanation);
+      callbacks.onExplanation(explanation);
 
-      case "crp_repo_search": {
-        try {
-          const result = await repoSearch({
-            pattern: input.pattern as string,
-            glob: input.glob as string | undefined,
-            maxResults: input.maxResults as number | undefined,
-          });
-          return JSON.stringify(result);
-        } catch (err: any) {
-          return JSON.stringify({ error: err.message });
-        }
-      }
+      callbacks.onEvent({
+        type: "finding_explained",
+        agent: "explainer",
+        data: { findingId: explanation.findingId, summary: explanation.summary },
+      });
 
-      case "crp_web_search": {
-        try {
-          const result = await webSearch({ query: input.query as string });
-          return JSON.stringify(result);
-        } catch (err: any) {
-          return JSON.stringify({ error: err.message });
-        }
-      }
-
-      case "emit_explanation": {
-        const explanation: Explanation = {
-          findingId: input.findingId as string,
-          summary: input.summary as string,
-          whyItMatters: {
-            impact: input.impact as "Critical" | "High" | "Medium" | "Low",
-            explanation: input.whyItMatters as string,
-            scenario: input.scenario as string | undefined,
-          },
-          howToFix: {
-            effort: input.effort as "Quick fix" | "Half-day" | "Multi-day refactor",
-            steps: input.steps as string[],
-          },
-          codeExample: input.codeBefore ? {
-            before: input.codeBefore as string,
-            after: input.codeAfter as string || "",
-            explanation: input.codeExplanation as string || "",
-          } : undefined,
-          resources: (input.resources as Explanation["resources"]) || [],
-        };
-
-        explanations.push(explanation);
-        callbacks.onExplanation(explanation);
-
-        // Emit audit event
-        callbacks.onEvent({
-          id: `event-${Date.now()}`,
-          type: "finding_explained",
-          agent: "explainer",
-          timestamp: new Date().toISOString(),
-          data: { findingId: explanation.findingId, summary: explanation.summary },
-        });
-
-        return JSON.stringify({ 
-          success: true, 
-          message: `Explanation recorded for finding ${explanation.findingId}` 
-        });
-      }
-
-      default:
-        return JSON.stringify({ error: `Unknown tool: ${name}` });
+      return JSON.stringify({
+        success: true,
+        message: `Explanation recorded for finding ${explanation.findingId}`,
+      });
     }
-  }
+
+    return routeStandardTool(name, args);
+  };
 
   // Emit start event
   callbacks.onEvent({
-    id: `event-${Date.now()}`,
     type: "agent_started",
     agent: "explainer",
-    timestamp: new Date().toISOString(),
     data: { findingCount: findings.length },
   });
 
   // Run the agent loop
   await runAgentLoop({
+    name: "explainer",
     systemPrompt: SYSTEM_PROMPT,
-    initialMessage,
+    userPrompt: initialMessage,
     tools: TOOLS,
-    handleToolCall,
+    onToolCall: createToolExecutor(explainerToolHandler, callbacks),
+    onText: callbacks.onText,
     onThinking: callbacks.onThinking,
-    maxIterations: findings.length * 5 + 10, // Allow enough iterations for all findings
+    onEvent: callbacks.onEvent,
+    maxTurns: findings.length * 5 + 10, // Allow enough iterations for all findings
     signal,
-    // Use claude-haiku-4-5 for fast, cost-effective explanations
     model: "claude-haiku-4-5-20251001",
   });
 
   // Emit completion event
   callbacks.onEvent({
-    id: `event-${Date.now()}`,
     type: "agent_completed",
     agent: "explainer",
-    timestamp: new Date().toISOString(),
     data: { explanationCount: explanations.length },
   });
 

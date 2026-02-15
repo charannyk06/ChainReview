@@ -8,7 +8,7 @@ export function setExecRepoPath(repoPath: string) {
   currentRepoPath = repoPath;
 }
 
-// Allowlisted read-only commands
+// Allowlisted read-only commands — carefully curated to prevent arbitrary code execution
 const ALLOWED_COMMANDS = new Set([
   "wc",
   "find",
@@ -20,7 +20,7 @@ const ALLOWED_COMMANDS = new Set([
   "git",
   "npm",
   "tsc",
-  "node",
+  // "node" intentionally excluded — can execute arbitrary JS
   "du",
   "file",
   "stat",
@@ -28,8 +28,7 @@ const ALLOWED_COMMANDS = new Set([
   "uniq",
   "tr",
   "cut",
-  "awk",
-  "sed",
+  // "awk" and "sed" excluded — can execute arbitrary programs via system() calls
   "semgrep", // Allow agents to invoke semgrep directly
   "rg",      // ripgrep for agents
 ]);
@@ -58,14 +57,20 @@ function validateCommand(command: string): { valid: boolean; reason?: string } {
   const trimmed = command.trim();
   if (!trimmed) return { valid: false, reason: "Empty command" };
 
-  // Block shell metacharacters that allow command chaining/injection
+  // Block shell metacharacters that allow command chaining/injection/expansion
   // This prevents bypasses like: cat README.md && rm -rf /
-  const SHELL_CHAIN_PATTERN = /[;&|`$(){}]/;
+  // Also blocks backticks, subshell syntax, variable expansion, and glob abuse
+  const SHELL_CHAIN_PATTERN = /[;&|`$(){}!#~\\]/;
   if (SHELL_CHAIN_PATTERN.test(trimmed)) {
     return {
       valid: false,
-      reason: "Shell metacharacters (;&|`$(){}) are not allowed to prevent command injection",
+      reason: "Shell metacharacters (;&|`$(){}!#~\\) are not allowed to prevent command injection",
     };
+  }
+
+  // Block newlines which can be used to inject additional commands
+  if (/[\r\n]/.test(trimmed)) {
+    return { valid: false, reason: "Newlines are not allowed in commands" };
   }
 
   // Extract the base command (first word)

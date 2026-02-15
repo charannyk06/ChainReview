@@ -4,33 +4,36 @@ import {
   CheckCircle2Icon,
   CircleXIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { StatusBlock } from "@/lib/types";
 
 interface StatusRowProps {
   block: StatusBlock;
 }
 
-const LEVEL_CONFIG = {
+const LEVEL_CONFIG: Record<string, {
+  Icon: React.FC<{ style?: React.CSSProperties }>;
+  iconColor: string;
+  textColor: string;
+}> = {
   info: {
     Icon: InfoIcon,
-    iconClass: "text-[var(--cr-text-ghost)]",
-    textClass: "text-[var(--cr-text-muted)]",
+    iconColor: "var(--cr-text-ghost)",
+    textColor: "var(--cr-text-muted)",
   },
   warning: {
     Icon: AlertTriangleIcon,
-    iconClass: "text-amber-400/50",
-    textClass: "text-amber-300/60",
+    iconColor: "rgba(251,191,36,0.50)",
+    textColor: "rgba(252,211,77,0.60)",
   },
   error: {
     Icon: CircleXIcon,
-    iconClass: "text-red-400/50",
-    textClass: "text-red-300/60",
+    iconColor: "rgba(248,113,113,0.50)",
+    textColor: "rgba(252,165,165,0.60)",
   },
   success: {
     Icon: CheckCircle2Icon,
-    iconClass: "text-emerald-400/50",
-    textClass: "text-emerald-300/60",
+    iconColor: "rgba(52,211,153,0.50)",
+    textColor: "rgba(110,231,183,0.60)",
   },
 };
 
@@ -39,11 +42,24 @@ export function StatusRow({ block }: StatusRowProps) {
   const { Icon } = config;
 
   return (
-    <div className="flex items-center gap-1.5 py-0.5 text-[10.5px] leading-normal">
-      <Icon className={cn("size-3 shrink-0", config.iconClass)} />
-      <span className={cn("min-w-0 truncate", config.textClass)}>
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      padding: "2px 0",
+      fontSize: 10.5,
+      lineHeight: "normal",
+    }}>
+      <Icon style={{ width: 12, height: 12, flexShrink: 0, color: config.iconColor }} />
+      <span style={{
+        color: config.textColor,
+        minWidth: 0,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}>
         {block.step && (
-          <span className="font-semibold mr-1">{block.step}:</span>
+          <span style={{ fontWeight: 600, marginRight: 4 }}>{block.step}:</span>
         )}
         {block.text}
       </span>

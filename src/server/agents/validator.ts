@@ -1,10 +1,6 @@
-import { runAgentLoop, type AgentTool } from "./base-agent";
-import { repoTree, repoFile, repoSearch, repoDiff } from "../tools/repo";
-import { codeImportGraph, codePatternScan } from "../tools/code";
-import { execCommand } from "../tools/exec";
-import { webSearch } from "../tools/web";
+import { runAgentLoop, createToolExecutor, routeStandardTool, sanitizeForPrompt, type AgentTool, type AgentCallbacks, type ToolHandler } from "./base-agent";
 import { patchValidate } from "../tools/patch";
-import type { AgentFinding, AuditEvent, Finding } from "../types";
+import type { AgentFinding, Finding } from "../types";
 import type { Store } from "../store";
 
 const CHALLENGE_SYSTEM_PROMPT = `You are the Validator Agent in ChainReview. Your job is to CHALLENGE findings from other agents by doing your OWN independent investigation.
@@ -153,73 +149,12 @@ const PATCH_TOOLS: AgentTool[] = [
   },
 ];
 
-async function handleChallengeToolCall(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  switch (name) {
-    case "crp_repo_tree":
-      return repoTree(args as any);
-    case "crp_repo_file":
-      return repoFile(args as any);
-    case "crp_repo_search":
-      return repoSearch(args as any);
-    case "crp_repo_diff":
-      return repoDiff(args as any);
-    case "crp_code_import_graph":
-      return codeImportGraph(args as any);
-    case "crp_code_pattern_scan":
-      return codePatternScan(args as any);
-    case "crp_exec_command":
-      return execCommand(args as any);
-    case "crp_web_search":
-      return webSearch(args as any);
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
-}
-
-async function handlePatchToolCall(
-  name: string,
-  args: Record<string, unknown>,
-  store: Store
-): Promise<unknown> {
-  switch (name) {
-    case "crp_repo_tree":
-      return repoTree(args as any);
-    case "crp_repo_file":
-      return repoFile(args as any);
-    case "crp_repo_search":
-      return repoSearch(args as any);
-    case "crp_repo_diff":
-      return repoDiff(args as any);
-    case "crp_code_import_graph":
-      return codeImportGraph(args as any);
-    case "crp_code_pattern_scan":
-      return codePatternScan(args as any);
-    case "crp_exec_command":
-      return execCommand(args as any);
-    case "crp_web_search":
-      return webSearch(args as any);
-    case "crp_patch_validate":
-      return patchValidate(args as any, store);
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
-}
-
 // ── Challenge Mode: Validate findings from other agents ──
 
 export async function runValidatorChallenge(
   findings: Finding[],
   repoPath: string,
-  callbacks: {
-    onText: (text: string) => void;
-    onThinking?: (text: string) => void;
-    onEvent: (event: Omit<AuditEvent, "id" | "timestamp">) => void;
-    onToolCall: (tool: string, args: Record<string, unknown>) => void;
-    onToolResult: (tool: string, result: string) => void;
-  },
+  callbacks: AgentCallbacks,
   signal?: AbortSignal
 ): Promise<AgentFinding[]> {
   const userPrompt = `Review and challenge these findings from the Architecture and Security agents.
@@ -237,11 +172,11 @@ Findings to validate:
 ${findings
   .map(
     (f, i) =>
-      `${i + 1}. [${f.severity.toUpperCase()}] ${f.title} (${f.agent} agent, confidence: ${f.confidence})
+      `${i + 1}. [${f.severity.toUpperCase()}] ${sanitizeForPrompt(f.title, 200)} (${sanitizeForPrompt(f.agent || "unknown", 50)} agent, confidence: ${f.confidence})
    Category: ${f.category}
-   Description: ${f.description}
+   Description: ${sanitizeForPrompt(f.description, 1000)}
    Evidence:
-${(f.evidence || []).map((e) => `     - ${e.filePath}:${e.startLine}-${e.endLine}: ${(e.snippet || "").slice(0, 200)}`).join("\n")}`
+${(f.evidence || []).map((e) => `     - ${sanitizeForPrompt(e.filePath, 200)}:${e.startLine}-${e.endLine}: ${sanitizeForPrompt((e.snippet || ""), 200)}`).join("\n")}`
   )
   .join("\n\n")}
 
@@ -259,18 +194,12 @@ Set confidence to 0 for false positives. Add explanation for any changes.`;
     systemPrompt: CHALLENGE_SYSTEM_PROMPT,
     userPrompt,
     tools: CHALLENGE_TOOLS,
-    onToolCall: async (name, args) => {
-      callbacks.onToolCall(name, args);
-      const result = await handleChallengeToolCall(name, args);
-      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
-      callbacks.onToolResult(name, resultStr);
-      return result;
-    },
+    onToolCall: createToolExecutor(routeStandardTool, callbacks),
     onText: callbacks.onText,
     onThinking: callbacks.onThinking,
     onEvent: callbacks.onEvent,
     maxTurns: 50,
-    model: "claude-haiku-4-5-20251001",
+    model: "claude-haiku-4-5-20251001", // Haiku 4.5 for fast challenge validation
     // Validator must also investigate — force it to read files and verify claims
     forcedToolTurns: 2,
     signal,
@@ -283,12 +212,7 @@ export async function runValidatorPatch(
   patchId: string,
   finding: Finding,
   store: Store,
-  callbacks: {
-    onText: (text: string) => void;
-    onEvent: (event: Omit<AuditEvent, "id" | "timestamp">) => void;
-    onToolCall: (tool: string, args: Record<string, unknown>) => void;
-    onToolResult: (tool: string, result: string) => void;
-  }
+  callbacks: AgentCallbacks,
 ): Promise<{ validated: boolean; message: string }> {
   const patch = store.getPatch(patchId);
   if (!patch) {
@@ -297,11 +221,11 @@ export async function runValidatorPatch(
 
   const userPrompt = `Validate this patch proposal.
 
-Finding: [${finding.severity.toUpperCase()}] ${finding.title}
-Description: ${finding.description}
+Finding: [${finding.severity.toUpperCase()}] ${sanitizeForPrompt(finding.title, 200)}
+Description: ${sanitizeForPrompt(finding.description, 1000)}
 
 Patch diff:
-${patch.diff}
+${sanitizeForPrompt(patch.diff, 5000)}
 
 Steps:
 1. Read the original file to understand the context
@@ -310,22 +234,24 @@ Steps:
 
 Use the crp_patch_validate tool with patchId "${patchId}" to validate.`;
 
+  // Extend the standard tool router with patch-specific tool
+  const patchToolHandler: ToolHandler = async (name, args) => {
+    if (name === "crp_patch_validate") {
+      return patchValidate(args as any, store);
+    }
+    return routeStandardTool(name, args);
+  };
+
   const validationFindings = await runAgentLoop({
     name: "validator",
     systemPrompt: PATCH_SYSTEM_PROMPT,
     userPrompt,
     tools: PATCH_TOOLS,
-    onToolCall: async (name, args) => {
-      callbacks.onToolCall(name, args);
-      const result = await handlePatchToolCall(name, args, store);
-      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
-      callbacks.onToolResult(name, resultStr);
-      return result;
-    },
+    onToolCall: createToolExecutor(patchToolHandler, callbacks),
     onText: callbacks.onText,
     onEvent: callbacks.onEvent,
     maxTurns: 20,
-    model: "claude-haiku-4-5-20251001", // Haiku 4.5 for all agents
+    model: "claude-haiku-4-5-20251001", // Haiku 4.5 for patch validation
   });
 
   // Check the patch validation status from the store

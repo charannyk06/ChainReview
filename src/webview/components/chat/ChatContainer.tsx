@@ -1,5 +1,4 @@
 import { useEffect, useRef, useCallback } from "react";
-import { cn } from "@/lib/utils";
 import { ChatMessage, type FindingActions } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import type { ConversationMessage } from "@/lib/types";
@@ -23,7 +22,6 @@ export function ChatContainer({
   onCancelReview,
   isReviewing = false,
   findingActions,
-  className,
 }: ChatContainerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -64,35 +62,58 @@ export function ChatContainer({
   // Empty state — clean, minimal
   if (messages.length === 0) {
     return (
-      <div className={cn("flex flex-col h-full", className)}>
-        <div className="flex-1 flex items-center justify-center">
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           {isReviewing ? (
-            <div className="flex flex-col items-center gap-3">
-              <div className="flex gap-1.5">
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", gap: 6 }}>
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-[var(--cr-accent)]"
-                    style={{ animation: `pulse-dot 1.2s ease-in-out ${i * 200}ms infinite` }}
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: "var(--cr-accent)",
+                      animation: `pulse-dot 1.2s ease-in-out ${i * 200}ms infinite`,
+                    }}
                   />
                 ))}
               </div>
-              <span className="text-[11px] text-[var(--cr-text-tertiary)] font-medium">
+              <span style={{ fontSize: 11, color: "var(--cr-text-tertiary)", fontWeight: 500 }}>
                 Starting review...
               </span>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-3 px-8 text-center">
-              <div className="size-9 rounded-xl bg-[var(--cr-bg-tertiary)] border border-[var(--cr-border-subtle)] flex items-center justify-center">
-                <svg className="size-4.5 text-[var(--cr-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 12,
+              padding: "0 32px",
+              textAlign: "center",
+            }}>
+              <div style={{
+                width: 36,
+                height: 36,
+                borderRadius: 12,
+                background: "var(--cr-bg-tertiary)",
+                border: "1px solid var(--cr-border-subtle)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <svg width={18} height={18} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 7L4 16L10 25" stroke="var(--cr-text-tertiary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M22 7L28 16L22 25" stroke="var(--cr-text-tertiary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M19 9L13 23" stroke="var(--cr-text-tertiary)" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
                 </svg>
               </div>
               <div>
-                <p className="text-[12px] text-[var(--cr-text-secondary)] font-medium mb-0.5">
+                <p style={{ fontSize: 12, color: "var(--cr-text-secondary)", fontWeight: 500, marginBottom: 2 }}>
                   ChainReview
                 </p>
-                <p className="text-[11px] text-[var(--cr-text-muted)] leading-relaxed">
+                <p style={{ fontSize: 11, color: "var(--cr-text-muted)", lineHeight: 1.6 }}>
                   Start a review or ask about your codebase
                 </p>
               </div>
@@ -114,16 +135,16 @@ export function ChatContainer({
   }
 
   return (
-    <div className={cn("flex flex-col h-full", className)}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto min-h-0"
-        style={{ scrollbarGutter: "stable both-edges" }}
+        className="cr-scrollbar"
+        style={{ flex: 1, overflowY: "auto", minHeight: 0 }}
         onScroll={handleScroll}
       >
         {/* Spacer pushes messages toward the bottom when there are few */}
-        <div className="flex flex-col min-h-full justify-end">
-          <div className="flex flex-col gap-1 pb-4 pt-4">
+        <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", justifyContent: "flex-end" }}>
+          <div style={{ margin: "0 12px", paddingTop: 16, paddingBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}
@@ -144,6 +165,7 @@ export function ChatContainer({
           onCancelReview={onCancelReview}
           disabled={false}
           isReviewing={isReviewing}
+          hasMessages={messages.length > 0}
         />
       )}
     </div>

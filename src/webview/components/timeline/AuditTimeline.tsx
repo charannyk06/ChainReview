@@ -44,8 +44,8 @@ export function AuditTimeline({ events, className }: AuditTimelineProps) {
   }, [milestones]);
 
   return (
-    <div className={cn("h-full overflow-y-auto", className)} style={{ scrollbarGutter: "stable both-edges" }}>
-      <div className="px-3 pt-4 pb-3">
+    <div className={cn("h-full overflow-y-auto cr-scrollbar", className)}>
+      <div style={{ padding: "16px 16px 12px 16px" }}>
         {/* Summary bar */}
         <div className="flex items-center gap-3 mb-4 pb-3 border-b border-[var(--cr-border-subtle)]">
           <h3 className="text-[12px] font-semibold text-[var(--cr-text-muted)] uppercase tracking-wider">

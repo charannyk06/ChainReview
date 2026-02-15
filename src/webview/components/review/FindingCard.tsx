@@ -16,14 +16,13 @@ import {
   CircleIcon,
   SunIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { getAgentConfig, getSeverityConfig, getCategoryConfig } from "@/lib/constants";
 import { FileChip, FileHeader } from "@/components/shared/FileReference";
 import { HandoffMenu } from "@/components/shared/HandoffMenu";
 import { useOpenFile } from "@/contexts/OpenFileContext";
 import type { Finding, AgentName, ValidationResult, ValidatorVerdict } from "@/lib/types";
 
-const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
+const AGENT_ICONS: Record<AgentName, React.FC<{ style?: React.CSSProperties }>> = {
   architecture: LandmarkIcon,
   security: ShieldAlertIcon,
   bugs: BugIcon,
@@ -32,28 +31,33 @@ const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
   system: SettingsIcon,
 };
 
-/** Severity dot color classes — subtle, muted tones */
-const SEVERITY_DOT: Record<string, string> = {
-  critical: "text-red-500/60",
-  high: "text-orange-500/50",
-  medium: "text-yellow-500/40",
-  low: "text-[var(--cr-text-muted)]",
-  info: "text-[var(--cr-text-ghost)]",
+const SEVERITY_DOT_COLOR: Record<string, string> = {
+  critical: "rgba(239,68,68,0.6)",
+  high: "rgba(249,115,22,0.5)",
+  medium: "rgba(234,179,8,0.4)",
+  low: "var(--cr-text-muted)",
+  info: "var(--cr-text-ghost)",
 };
 
-/** Get the category icon component */
 function getCategoryIcon(icon: string) {
   switch (icon) {
-    case "bug":
-      return BugIcon;
-    case "shield":
-      return ShieldAlertIcon;
-    case "landmark":
-      return LandmarkIcon;
-    default:
-      return BugIcon;
+    case "bug": return BugIcon;
+    case "shield": return ShieldAlertIcon;
+    case "landmark": return LandmarkIcon;
+    default: return BugIcon;
   }
 }
+
+/** Verdict badge config */
+const VERDICT_BADGE: Record<ValidatorVerdict, {
+  label: string; color: string; bgColor: string; borderColor: string;
+  icon: "shield" | "bug" | "help";
+}> = {
+  still_present: { label: "Still Present", color: "#f87171", bgColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.20)", icon: "bug" },
+  partially_fixed: { label: "Partially Fixed", color: "#fb923c", bgColor: "rgba(249,115,22,0.10)", borderColor: "var(--cr-border-strong)", icon: "help" },
+  fixed: { label: "Fixed ✓", color: "#34d399", bgColor: "rgba(52,211,153,0.10)", borderColor: "rgba(52,211,153,0.20)", icon: "shield" },
+  unable_to_determine: { label: "Unable to Verify", color: "#facc15", bgColor: "rgba(234,179,8,0.10)", borderColor: "rgba(234,179,8,0.20)", icon: "help" },
+};
 
 interface FindingCardProps {
   finding: Finding;
@@ -67,16 +71,8 @@ interface FindingCardProps {
   onSendToValidator?: (findingId: string) => void;
   onExplain?: (findingId: string) => void;
   onSendToCodingAgent?: (findingId: string, agentId: string) => void;
-  className?: string;
+  onMarkFixed?: (findingId: string) => void;
 }
-
-/** Verdict badge config */
-const VERDICT_BADGE: Record<ValidatorVerdict, { label: string; color: string; bgColor: string; borderColor: string; icon: "shield" | "bug" | "help" }> = {
-  still_present: { label: "Still Present", color: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/20", icon: "bug" },
-  partially_fixed: { label: "Partially Fixed", color: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-[var(--cr-border-strong)]", icon: "help" },
-  fixed: { label: "Fixed ✓", color: "text-emerald-400", bgColor: "bg-emerald-500/10", borderColor: "border-emerald-500/20", icon: "shield" },
-  unable_to_determine: { label: "Unable to Verify", color: "text-yellow-400", bgColor: "bg-yellow-500/10", borderColor: "border-yellow-500/20", icon: "help" },
-};
 
 export function FindingCard({
   finding,
@@ -90,10 +86,11 @@ export function FindingCard({
   onSendToValidator,
   onExplain,
   onSendToCodingAgent,
-  className,
+  onMarkFixed,
 }: FindingCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const handoffRef = useRef<HTMLDivElement>(null);
   const handoffBtnRef = useRef<HTMLButtonElement>(null);
   const openFile = useOpenFile();
@@ -102,18 +99,20 @@ export function FindingCard({
   const severity = getSeverityConfig(finding.severity);
   const AgentIcon = AGENT_ICONS[finding.agent] || SettingsIcon;
   const CategoryIcon = getCategoryIcon(categoryConfig.icon);
-  const severityDotColor = SEVERITY_DOT[finding.severity] || "text-gray-400";
+  const severityDotColor = SEVERITY_DOT_COLOR[finding.severity] || "var(--cr-text-ghost)";
 
-  // Close handoff dropdown when clicking outside (accounts for portal menu)
+  // Close handoff dropdown on outside click
   useEffect(() => {
     if (!handoffOpen) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
-      // Check if click is inside the trigger wrapper OR the portal menu
       const insideTrigger = handoffRef.current?.contains(target);
-      // Portal menu has z-[9999] and is a direct child of body — find it
-      const portalMenu = document.querySelector("[class*='z-\\[9999\\]']");
-      const insidePortal = portalMenu?.contains(target);
+      // Portal menu is rendered at z-index 9999
+      const portalMenus = document.querySelectorAll("[style*='z-index: 9999']");
+      let insidePortal = false;
+      portalMenus.forEach((el) => {
+        if (el.contains(target)) insidePortal = true;
+      });
       if (!insideTrigger && !insidePortal) {
         setHandoffOpen(false);
       }
@@ -122,147 +121,157 @@ export function FindingCard({
     return () => document.removeEventListener("mousedown", handler);
   }, [handoffOpen]);
 
-  const handleReVerify = () => {
-    onSendToValidator?.(finding.id);
-  };
+  const handleReVerify = () => onSendToValidator?.(finding.id);
 
-  // Derive badge from actual validation result
   const verdictBadge = validationResult ? VERDICT_BADGE[validationResult.verdict] : null;
   const isStillPresent = validationResult?.verdict === "still_present" || validationResult?.verdict === "partially_fixed";
   const isFixed = validationResult?.verdict === "fixed";
 
+  // Background color logic
+  let bgColor = hovered && !selected && !isValidating && !isStillPresent && !isFixed
+    ? "var(--cr-bg-hover)" : "transparent";
+  if (selected) bgColor = "rgba(99,102,241,0.05)";
+  if (isValidating) bgColor = "rgba(52,211,153,0.05)";
+  if (isStillPresent && !isValidating) bgColor = "rgba(239,68,68,0.05)";
+  if (isFixed && !isValidating) bgColor = "rgba(52,211,153,0.05)";
+
   return (
-    <motion.div
-      layout
-      className={cn(
-        "group relative transition-all duration-200",
-        "border-b border-[var(--cr-border-subtle)]",
-        selected && "bg-indigo-500/5",
-        isValidating && "bg-emerald-500/5",
-        isStillPresent && !isValidating && "bg-red-500/5",
-        isFixed && !isValidating && "bg-emerald-500/5",
-        !selected && !isValidating && !isStillPresent && !isFixed && "hover:bg-[var(--cr-bg-hover)]",
-        className
-      )}
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: "relative",
+        transition: "background 200ms ease",
+        borderBottom: "1px solid var(--cr-border-subtle)",
+        background: bgColor,
+      }}
     >
-      {/* Verifying overlay indicator */}
-      {isValidating && (
-        <div className="absolute top-3.5 right-3.5 z-10">
-          <div className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/25 rounded-lg px-2.5 py-1">
-            <LoaderIcon className="size-3 text-emerald-400 animate-spin" />
-            <span className="text-[10px] font-semibold text-emerald-400">Checking Fix...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Verdict badge */}
-      {verdictBadge && !isValidating && (
-        <div className="absolute top-3.5 right-3.5 z-10">
-          <div className={cn("flex items-center gap-1.5 rounded-lg px-2.5 py-1 border", verdictBadge.bgColor, verdictBadge.borderColor)}>
-            {verdictBadge.icon === "bug" ? (
-              <BugIcon className={cn("size-3", verdictBadge.color)} />
-            ) : verdictBadge.icon === "shield" ? (
-              <ShieldCheckIcon className={cn("size-3", verdictBadge.color)} />
-            ) : (
-              <ShieldAlertIcon className={cn("size-3", verdictBadge.color)} />
-            )}
-            <span className={cn("text-[10px] font-semibold", verdictBadge.color)}>
-              {verdictBadge.label}
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Header — always visible */}
       <div
-        className="px-4 pt-3 pb-3 cursor-pointer select-none"
+        style={{ padding: "12px 16px", cursor: "pointer", userSelect: "none" }}
         onClick={() => {
-          if (selectionMode && onToggleSelect) {
-            onToggleSelect(finding.id);
-          } else {
-            setExpanded((p) => !p);
-          }
+          if (selectionMode && onToggleSelect) onToggleSelect(finding.id);
+          else setExpanded((p) => !p);
         }}
       >
-        {/* Top row: severity dot + title + meta */}
-        <div className="flex items-start gap-3">
+        {/* Top row */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           {/* Selection checkbox OR severity dot */}
           {selectionMode ? (
-            <div
-              className={cn(
-                "size-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all",
-                selected
-                  ? "bg-indigo-500 border-indigo-500 shadow-sm shadow-indigo-500/30"
-                  : "border-[var(--cr-border-strong)] bg-transparent hover:border-indigo-400/50"
-              )}
-            >
-              {selected && <CheckIcon className="size-3 text-white" strokeWidth={3} />}
+            <div style={{
+              width: 20, height: 20, borderRadius: 6,
+              border: selected ? "2px solid #6366f1" : "2px solid var(--cr-border-strong)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0, marginTop: 2,
+              background: selected ? "#6366f1" : "transparent",
+              boxShadow: selected ? "0 1px 4px rgba(99,102,241,0.3)" : "none",
+              transition: "all 150ms ease",
+            }}>
+              {selected && <CheckIcon style={{ width: 12, height: 12, color: "white" }} strokeWidth={3} />}
             </div>
           ) : (
             <span title={severity.label}>
-              <CircleIcon
-                className={cn("size-2.5 shrink-0 mt-1.5 fill-current", severityDotColor)}
-                strokeWidth={0}
-              />
+              <CircleIcon style={{
+                width: 10, height: 10, flexShrink: 0, marginTop: 6,
+                fill: severityDotColor, color: severityDotColor,
+              }} strokeWidth={0} />
             </span>
           )}
 
           {/* Title + description */}
-          <div className="flex-1 min-w-0 pr-6">
-            <h3 className="text-[13px] font-semibold text-[var(--cr-text-primary)] leading-snug">
-              {finding.title}
-            </h3>
-            <p className={cn(
-              "text-[11.5px] text-[var(--cr-text-secondary)] leading-relaxed mt-1.5",
-              !expanded && "line-clamp-2"
-            )}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--cr-text-primary)", lineHeight: 1.4, flex: 1, minWidth: 0 }}>
+                {finding.title}
+              </h3>
+
+              {/* Verdict badge — inline, no overlap */}
+              {verdictBadge && !isValidating && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  borderRadius: 8, padding: "3px 9px",
+                  border: `1px solid ${verdictBadge.borderColor}`,
+                  background: verdictBadge.bgColor,
+                  flexShrink: 0, whiteSpace: "nowrap",
+                }}>
+                  {verdictBadge.icon === "bug" ? (
+                    <BugIcon style={{ width: 11, height: 11, color: verdictBadge.color }} />
+                  ) : verdictBadge.icon === "shield" ? (
+                    <ShieldCheckIcon style={{ width: 11, height: 11, color: verdictBadge.color }} />
+                  ) : (
+                    <ShieldAlertIcon style={{ width: 11, height: 11, color: verdictBadge.color }} />
+                  )}
+                  <span style={{ fontSize: 10, fontWeight: 600, color: verdictBadge.color }}>
+                    {verdictBadge.label}
+                  </span>
+                </div>
+              )}
+
+              {/* Verifying badge — inline */}
+              {isValidating && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.25)",
+                  borderRadius: 8, padding: "3px 9px", flexShrink: 0, whiteSpace: "nowrap",
+                }}>
+                  <LoaderIcon style={{ width: 11, height: 11, color: "#34d399", animation: "spin 1s linear infinite" }} />
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "#34d399" }}>Checking...</span>
+                </div>
+              )}
+            </div>
+            <p style={{
+              fontSize: 11.5, color: "var(--cr-text-secondary)", lineHeight: 1.6, marginTop: 6,
+              ...(expanded ? {} : {
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical" as const,
+                overflow: "hidden",
+              }),
+            }}>
               {finding.description}
             </p>
           </div>
 
           {/* Expand chevron */}
           {!selectionMode && (
-            <ChevronDownIcon
-              className={cn(
-                "size-4 text-[var(--cr-text-ghost)] shrink-0 mt-0.5 transition-transform duration-200",
-                expanded && "rotate-180"
-              )}
-            />
+            <ChevronDownIcon style={{
+              width: 16, height: 16, color: "var(--cr-text-ghost)", flexShrink: 0,
+              marginTop: 2, transition: "transform 200ms ease",
+              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            }} />
           )}
         </div>
 
-        {/* Meta row: plain text labels — aligned with title (past severity dot + gap) */}
-        <div className="flex items-center gap-3 mt-2.5" style={{ marginLeft: 'calc(10px + 0.75rem)' }}>
-          {/* Category — plain text */}
-          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--cr-text-muted)]">
-            <CategoryIcon className="size-2.5" />
+        {/* Meta row */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12, marginTop: 10,
+          marginLeft: "calc(10px + 0.75rem)",
+        }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--cr-text-muted)" }}>
+            <CategoryIcon style={{ width: 10, height: 10 }} />
             {categoryConfig.label}
           </span>
-
-          <span className="text-[var(--cr-text-ghost)]">&middot;</span>
-
-          {/* Severity — plain text */}
-          <span className="text-[10px] text-[var(--cr-text-muted)]">
-            {severity.label}
-          </span>
-
-          <span className="text-[var(--cr-text-ghost)]">&middot;</span>
-
-          {/* Confidence — plain mono number */}
-          <span className="text-[10px] font-mono text-[var(--cr-text-ghost)] tabular-nums">
+          <span style={{ color: "var(--cr-text-ghost)" }}>&middot;</span>
+          <span style={{ fontSize: 10, color: "var(--cr-text-muted)" }}>{severity.label}</span>
+          <span style={{ color: "var(--cr-text-ghost)" }}>&middot;</span>
+          <span style={{ fontSize: 10, fontFamily: "var(--cr-font-mono)", color: "var(--cr-text-ghost)" }}>
             {Math.round(finding.confidence * 100)}%
           </span>
-
-          {/* Agent — right-aligned, ghost */}
-          <span className="inline-flex items-center gap-1 ml-auto text-[10px] text-[var(--cr-text-ghost)]">
-            <AgentIcon className="size-2.5" />
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            marginLeft: "auto", fontSize: 10, color: "var(--cr-text-ghost)",
+          }}>
+            <AgentIcon style={{ width: 10, height: 10 }} />
             {agentConfig.shortLabel}
           </span>
         </div>
 
-        {/* Referenced files — compact chips, aligned with title */}
+        {/* File chips */}
         {finding.evidence.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3" style={{ marginLeft: 'calc(10px + 0.75rem)' }}>
+          <div style={{
+            display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12,
+            marginLeft: "calc(10px + 0.75rem)",
+          }}>
             {finding.evidence.map((ev, i) => (
               <FileChip
                 key={i}
@@ -276,29 +285,40 @@ export function FindingCard({
       </div>
 
       {/* Expanded content */}
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {expanded && !selectionMode && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
+            transition={{
+              height: { duration: 0.25, ease: [0.25, 0.1, 0.25, 1] },
+              opacity: { duration: 0.2, delay: 0.05 },
+            }}
+            style={{ overflow: "hidden" }}
           >
-            <div className="px-4 pb-4 space-y-3" style={{ paddingLeft: 'calc(10px + 0.75rem)' }}>
-              {/* Evidence snippets with proper file headers */}
+            <div style={{
+              display: "flex", flexDirection: "column", gap: 12,
+              padding: "0 16px 16px",
+              paddingLeft: "calc(10px + 0.75rem)",
+            }}>
+              {/* Evidence snippets */}
               {finding.evidence.map((ev, i) => (
-                <div
-                  key={i}
-                  className="rounded-md border border-[var(--cr-border-subtle)] bg-[var(--cr-bg-root)] overflow-hidden"
-                >
+                <div key={i} style={{
+                  borderRadius: 6, border: "1px solid var(--cr-border-subtle)",
+                  background: "var(--cr-bg-root)", overflow: "hidden",
+                }}>
                   <FileHeader
                     filePath={ev.filePath}
                     startLine={ev.startLine}
                     endLine={ev.endLine}
                     onClick={() => openFile(ev.filePath, ev.startLine)}
                   />
-                  <pre className="px-3.5 py-3 text-[10.5px] text-[var(--cr-text-secondary)] font-mono overflow-x-auto max-h-36 leading-relaxed">
+                  <pre style={{
+                    padding: "12px 14px", fontSize: 10.5, color: "var(--cr-text-secondary)",
+                    fontFamily: "var(--cr-font-mono)", overflowX: "auto", maxHeight: 144,
+                    lineHeight: 1.6, margin: 0,
+                  }}>
                     {ev.snippet}
                   </pre>
                 </div>
@@ -306,81 +326,63 @@ export function FindingCard({
 
               {/* Action Buttons */}
               <div
-                className="flex flex-col gap-3 pt-1"
+                style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 4 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Primary actions row */}
-                <div className="flex gap-2 flex-wrap">
+                {/* Primary row */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {onExplain && (
-                    <button
-                      onClick={() => onExplain(finding.id)}
-                      className="cr-btn cr-btn-purple"
-                    >
-                      <SparklesIcon className="size-3.5" />
+                    <button onClick={() => onExplain(finding.id)} className="cr-btn cr-btn-purple">
+                      <SparklesIcon style={{ width: 14, height: 14 }} />
                       Explain
                     </button>
                   )}
-
                   {onProposePatch && (
-                    <button
-                      onClick={() => onProposePatch(finding.id)}
-                      className="cr-btn cr-btn-blue"
-                    >
-                      <WrenchIcon className="size-3.5" />
+                    <button onClick={() => onProposePatch(finding.id)} className="cr-btn cr-btn-blue">
+                      <WrenchIcon style={{ width: 14, height: 14 }} />
                       Generate Fix
                     </button>
                   )}
-
                   {onSendToValidator && (
                     <button
                       onClick={handleReVerify}
                       disabled={isValidating}
-                      className={cn(
-                        "cr-btn",
-                        isValidating
-                          ? "bg-emerald-500/10 text-emerald-400/60 border-emerald-500/20 cursor-wait"
-                          : validationResult
-                          ? isStillPresent
-                            ? "bg-red-500/15 text-red-300 border-red-500/30 hover:bg-red-500/25"
-                            : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
-                          : "cr-btn-emerald"
-                      )}
+                      className="cr-btn cr-btn-emerald"
+                      style={{
+                        ...(isValidating ? { background: "rgba(52,211,153,0.10)", color: "rgba(52,211,153,0.6)", borderColor: "rgba(52,211,153,0.20)", cursor: "wait" } : {}),
+                        ...(validationResult && isStillPresent ? { background: "rgba(239,68,68,0.15)", color: "#fca5a5", borderColor: "rgba(239,68,68,0.30)" } : {}),
+                        ...(validationResult && isFixed ? { background: "rgba(52,211,153,0.15)", color: "#6ee7b7", borderColor: "rgba(52,211,153,0.30)" } : {}),
+                      }}
                     >
                       {isValidating ? (
-                        <LoaderIcon className="size-3.5 animate-spin" />
+                        <LoaderIcon style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} />
                       ) : validationResult ? (
-                        isStillPresent ? <BugIcon className="size-3.5" /> : <CheckIcon className="size-3.5" />
+                        isStillPresent ? <BugIcon style={{ width: 14, height: 14 }} /> : <CheckIcon style={{ width: 14, height: 14 }} />
                       ) : (
-                        <ShieldCheckIcon className="size-3.5" />
+                        <ShieldCheckIcon style={{ width: 14, height: 14 }} />
                       )}
-                      {isValidating
-                        ? "Checking Fix..."
-                        : validationResult
-                        ? verdictBadge?.label || "Re-check"
-                        : "Verify Fix"}
+                      {isValidating ? "Checking Fix..." : validationResult ? verdictBadge?.label || "Re-check" : "Verify Fix"}
                     </button>
                   )}
                 </div>
 
-                {/* Secondary actions row */}
-                <div className="flex gap-2 items-center flex-wrap">
-                  {/* Handoff To — dropdown trigger */}
+                {/* Secondary row */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {onSendToCodingAgent && (
-                    <div className="relative" ref={handoffRef}>
+                    <div style={{ position: "relative" }} ref={handoffRef}>
                       <button
                         ref={handoffBtnRef}
                         onClick={() => setHandoffOpen((p) => !p)}
                         className="cr-btn cr-btn-orange"
                       >
-                        <SunIcon className="size-3.5" />
+                        <SunIcon style={{ width: 14, height: 14 }} />
                         Handoff To
-                        <ChevronDownIcon className={cn(
-                          "size-3 transition-transform",
-                          handoffOpen && "rotate-180"
-                        )} />
+                        <ChevronDownIcon style={{
+                          width: 12, height: 12,
+                          transition: "transform 150ms ease",
+                          transform: handoffOpen ? "rotate(180deg)" : "rotate(0deg)",
+                        }} />
                       </button>
-
-                      {/* Agent dropdown — portal-based shared component */}
                       <HandoffMenu
                         open={handoffOpen}
                         triggerRef={handoffBtnRef}
@@ -392,16 +394,19 @@ export function FindingCard({
                     </div>
                   )}
 
-                  {/* Spacer */}
-                  <div className="flex-1" />
+                  <div style={{ flex: 1 }} />
 
-                  {/* False positive — right-aligned, ghost style */}
+                  {/* Mark Fixed — visible when validator says "fixed" */}
+                  {onMarkFixed && isFixed && (
+                    <button onClick={() => onMarkFixed(finding.id)} className="cr-btn cr-btn-emerald">
+                      <CheckIcon style={{ width: 14, height: 14 }} />
+                      Mark Fixed
+                    </button>
+                  )}
+
                   {onMarkFalsePositive && (
-                    <button
-                      onClick={() => onMarkFalsePositive(finding.id)}
-                      className="cr-btn cr-btn-ghost"
-                    >
-                      <XCircleIcon className="size-3.5" />
+                    <button onClick={() => onMarkFalsePositive(finding.id)} className="cr-btn cr-btn-ghost">
+                      <XCircleIcon style={{ width: 14, height: 14 }} />
                       False Positive
                     </button>
                   )}
@@ -411,6 +416,6 @@ export function FindingCard({
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
