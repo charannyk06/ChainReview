@@ -1641,18 +1641,18 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         });
         terminal.show();
 
-        // Build the command — launch each CLI in PRINT mode, reading the prompt
-        // file via stdin redirect to avoid $() expansion echoing the whole prompt.
+        // Build the command — pipe the prompt file into each CLI in interactive mode
+        // so the agent actually executes changes (not print mode).
         let shellCmd: string;
         if (agentId === "claude-code") {
-          // Claude Code: use -p (print mode) with stdin redirect — no echo duplication
-          shellCmd = `claude -p --verbose < '${promptFilePath}'`;
+          // Claude Code: pipe prompt via cat for interactive execution (NOT -p print mode)
+          shellCmd = `cat '${promptFilePath}' | claude --verbose`;
         } else if (agentId === "codex-cli") {
-          // Codex CLI: use quiet flag with stdin redirect
-          shellCmd = `codex -q < '${promptFilePath}'`;
+          // Codex CLI: pipe prompt for interactive execution
+          shellCmd = `cat '${promptFilePath}' | codex`;
         } else {
-          // Gemini CLI: use stdin redirect
-          shellCmd = `gemini < '${promptFilePath}'`;
+          // Gemini CLI: pipe prompt for interactive execution
+          shellCmd = `cat '${promptFilePath}' | gemini`;
         }
         terminal.sendText(shellCmd);
 
