@@ -208,7 +208,7 @@ export function ChatMessage({
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className="px-3 py-0.5"
+        className="py-0.5"
       >
         {/* Agent label divider — small inline label, not a tile */}
         <button
@@ -317,7 +317,7 @@ export function ChatMessage({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="px-3 py-1.5"
+      className="py-1.5"
     >
       <div className="flex flex-col gap-2.5">
         {message.blocks.map((block) => renderInnerBlock(block))}

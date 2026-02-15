@@ -182,7 +182,7 @@ export function TaskHistory({
       </div>
 
       {/* Runs list — two-line rows, no tiles/cards */}
-      <div className="flex-1 overflow-y-auto cr-scrollbar" style={{ scrollbarGutter: "stable both-edges" }}>
+      <div className="flex-1 overflow-y-auto cr-scrollbar">
         {filteredRuns.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <CalendarIcon className="size-8 text-[var(--cr-text-ghost)] opacity-40" />

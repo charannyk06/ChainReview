@@ -117,13 +117,12 @@ export function ChatContainer({
     <div className={cn("flex flex-col h-full", className)}>
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto min-h-0"
-        style={{ scrollbarGutter: "stable both-edges" }}
+        className="flex-1 overflow-y-auto min-h-0 cr-scrollbar"
         onScroll={handleScroll}
       >
         {/* Spacer pushes messages toward the bottom when there are few */}
         <div className="flex flex-col min-h-full justify-end">
-          <div className="flex flex-col gap-2 pb-4 pt-4 px-5">
+          <div className="flex flex-col gap-2 pb-4 pt-4 mx-3">
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}

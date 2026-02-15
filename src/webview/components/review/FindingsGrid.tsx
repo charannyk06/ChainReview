@@ -316,7 +316,7 @@ export function FindingsGrid({
       </AnimatePresence>
 
       {/* ═══ Findings List ═══ */}
-      <div className="flex-1 overflow-y-auto" style={{ scrollbarGutter: "stable both-edges" }}>
+      <div className="flex-1 overflow-y-auto cr-scrollbar">
         <div className="flex flex-col px-4 py-2">
           {filtered.map((finding, i) => (
             <motion.div

@@ -84,7 +84,7 @@ export function ChatInput({
   const hasMentions = currentMentions.length > 0;
 
   return (
-    <div className={cn("flex-shrink-0 px-5 py-3", className)}>
+    <div className={cn("flex-shrink-0 mx-3 mb-3 mt-1", className)}>
       {/* Review progress bar */}
       {isReviewing && (
         <div className="flex items-center justify-between px-3 py-2 mb-2.5 rounded-lg bg-[var(--cr-accent-subtle)] border border-[var(--cr-border-subtle)]">
