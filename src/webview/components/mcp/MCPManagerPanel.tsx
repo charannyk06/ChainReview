@@ -116,7 +116,7 @@ export function MCPManagerPanel({
 
             {/* Server List */}
             <div className="flex-1 overflow-y-auto cr-scrollbar" style={{ scrollbarGutter: "stable both-edges" }}>
-              <div className="p-3 space-y-2">
+              <div className="p-4 space-y-2">
                 {/* Built-in CRP Server (premium card) */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}

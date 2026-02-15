@@ -1509,6 +1509,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (!this._crpClient?.isConnected() || !this._currentRunId) return;
     try {
       await this._crpClient.recordEvent(this._currentRunId, "false_positive_marked", undefined, { findingId });
+      // Remove finding from in-memory list
+      this._findings = this._findings.filter((f) => f.id !== findingId);
+      // Notify webview to remove the finding from UI
+      this.postMessage({ type: "falsePositiveMarked", findingId });
       vscode.window.showInformationMessage("ChainReview: Finding marked as false positive");
     } catch (err: any) {
       vscode.window.showErrorMessage(`ChainReview: Failed to record — ${err.message}`);

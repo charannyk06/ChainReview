@@ -235,6 +235,7 @@ export type ExtensionMessage =
   | { type: "reviewError"; error: string }
   | { type: "findingValidated"; findingId: string; verdict: ValidatorVerdict; reasoning: string }
   | { type: "findingValidationError"; findingId: string; error: string }
+  | { type: "falsePositiveMarked"; findingId: string }
   | { type: "switchTab"; tab: "chat" | "findings" | "timeline" }
   | { type: "mcpManagerOpen" }
   | { type: "mcpServers"; servers: MCPServerInfo[] }

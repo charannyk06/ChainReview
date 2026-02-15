@@ -56,6 +56,7 @@ type Action =
   | { type: "HISTORY_DELETE_RUN"; runId: string }
   | { type: "RESTORE_MESSAGES"; messages: ConversationMessage[] }
   | { type: "RESTORE_REVIEW_STATE"; findings: Finding[]; events: AuditEvent[]; status: ReviewStatus; mode?: ReviewMode; validationVerdicts?: Record<string, ValidationResult> }
+  | { type: "MARK_FALSE_POSITIVE"; findingId: string }
   | { type: "CLEAR_CHAT" };
 
 function reducer(state: ReviewState, action: Action): ReviewState {
@@ -340,6 +341,13 @@ function reducer(state: ReviewState, action: Action): ReviewState {
       };
     }
 
+    // ── False Positive ──
+    case "MARK_FALSE_POSITIVE":
+      return {
+        ...state,
+        findings: state.findings.filter((f) => f.id !== action.findingId),
+      };
+
     case "CLEAR_CHAT":
       return { ...initialState, mcpServers: state.mcpServers };
 
@@ -403,6 +411,9 @@ export function useReviewState() {
         break;
       case "findingValidationError":
         dispatch({ type: "FINDING_VALIDATION_ERROR", findingId: msg.findingId, error: msg.error });
+        break;
+      case "falsePositiveMarked":
+        dispatch({ type: "MARK_FALSE_POSITIVE", findingId: msg.findingId });
         break;
 
       // MCP Manager messages
