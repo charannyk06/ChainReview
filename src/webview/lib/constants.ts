@@ -236,6 +236,7 @@ export const MILESTONE_EVENTS: Set<EventType> = new Set([
   "human_accepted",
   "human_rejected",
   "false_positive_marked",
+  "issue_fixed",
 ]);
 
 export const EVENT_LABELS: Record<string, string> = {
@@ -247,4 +248,5 @@ export const EVENT_LABELS: Record<string, string> = {
   human_accepted: "Accepted",
   human_rejected: "Rejected",
   false_positive_marked: "Marked False Positive",
+  issue_fixed: "Issue Fixed",
 };

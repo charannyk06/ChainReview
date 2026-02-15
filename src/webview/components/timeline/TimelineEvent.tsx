@@ -13,6 +13,7 @@ import {
   BugIcon,
   BookOpenIcon,
   SettingsIcon,
+  CheckCircle2Icon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAgentConfig, EVENT_LABELS } from "@/lib/constants";
@@ -31,6 +32,7 @@ const EVENT_ICONS: Record<string, React.FC<{ className?: string }>> = {
   human_accepted: ThumbsUpIcon,
   human_rejected: ThumbsDownIcon,
   false_positive_marked: BanIcon,
+  issue_fixed: CheckCircle2Icon,
 };
 
 const EVENT_COLORS: Record<string, string> = {
@@ -41,6 +43,7 @@ const EVENT_COLORS: Record<string, string> = {
   human_accepted: "bg-emerald-400",
   human_rejected: "bg-red-400",
   false_positive_marked: "bg-[var(--cr-text-muted)]",
+  issue_fixed: "bg-emerald-500",
 };
 
 const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
@@ -88,6 +91,8 @@ function getEventSummary(event: AuditEvent): string | null {
       return (data?.patchId as string) ? `Patch: ${(data.patchId as string).slice(0, 12)}...` : null;
     case "false_positive_marked":
       return (data?.findingId as string) ? `Finding marked as false positive` : null;
+    case "issue_fixed":
+      return (data?.findingTitle as string) ? `Fixed: ${data.findingTitle as string}` : "Finding marked as fixed";
     default:
       return null;
   }

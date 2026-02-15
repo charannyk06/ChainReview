@@ -19,10 +19,10 @@ function ChainReviewLogo({ size = 20 }: { size?: number }) {
       style={{ flexShrink: 0 }}
     >
       {/* Code brackets */}
-      <path d="M10 7L4 16L10 25" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M22 7L28 16L22 25" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 7L4 16L10 25" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M22 7L28 16L22 25" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
       {/* Chain link slash */}
-      <path d="M19 9L13 23" stroke="#a5b4fc" strokeWidth="2" strokeLinecap="round" />
+      <path d="M19 9L13 23" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }

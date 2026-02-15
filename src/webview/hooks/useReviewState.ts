@@ -27,6 +27,7 @@ const initialState: ReviewState = {
   validationVerdicts: {},
   validatingFindings: new Set(),
   dismissedFindingIds: new Set(),
+  fixedFindingIds: new Set(),
 };
 
 type Action =
@@ -59,12 +60,13 @@ type Action =
   | { type: "RESTORE_MESSAGES"; messages: ConversationMessage[] }
   | { type: "RESTORE_REVIEW_STATE"; findings: Finding[]; events: AuditEvent[]; status: ReviewStatus; mode?: ReviewMode; validationVerdicts?: Record<string, ValidationResult> }
   | { type: "MARK_FALSE_POSITIVE"; findingId: string }
+  | { type: "MARK_FIXED"; findingId: string }
   | { type: "CLEAR_CHAT" };
 
 function reducer(state: ReviewState, action: Action): ReviewState {
   switch (action.type) {
     case "REVIEW_STARTED":
-      return { ...initialState, status: "running", mode: action.mode, mcpServers: state.mcpServers };
+      return { ...initialState, status: "running", mode: action.mode, mcpServers: state.mcpServers, fixedFindingIds: new Set() };
 
     case "START_CHAT":
       return { ...initialState, status: "chatting", mcpServers: state.mcpServers };
@@ -199,20 +201,24 @@ function reducer(state: ReviewState, action: Action): ReviewState {
     case "CHAT_RESPONSE_BLOCK": {
       const msgs = [...state.messages];
       const idx = msgs.findIndex((m) => m.id === action.messageId);
-      if (idx >= 0) {
-        const msg = { ...msgs[idx] };
-        msg.blocks = [...msg.blocks, action.block];
-        msgs[idx] = msg;
+      if (idx < 0) {
+        console.warn(`[useReviewState] CHAT_RESPONSE_BLOCK: no message found for id=${action.messageId}`);
+        return state;
       }
+      const msg = { ...msgs[idx] };
+      msg.blocks = [...msg.blocks, action.block];
+      msgs[idx] = msg;
       return { ...state, messages: msgs };
     }
 
     case "CHAT_RESPONSE_END": {
       const msgs = [...state.messages];
       const idx = msgs.findIndex((m) => m.id === action.messageId);
-      if (idx >= 0) {
-        msgs[idx] = { ...msgs[idx], status: "complete" };
+      if (idx < 0) {
+        console.warn(`[useReviewState] CHAT_RESPONSE_END: no message found for id=${action.messageId}`);
+        return state;
       }
+      msgs[idx] = { ...msgs[idx], status: "complete" };
       return { ...state, messages: msgs };
     }
 
@@ -361,6 +367,17 @@ function reducer(state: ReviewState, action: Action): ReviewState {
       };
     }
 
+    // ── Mark Fixed — hide from active list, track for re-review ──
+    case "MARK_FIXED": {
+      const nextFixed = new Set(state.fixedFindingIds);
+      nextFixed.add(action.findingId);
+      return {
+        ...state,
+        findings: state.findings.filter((f) => f.id !== action.findingId),
+        fixedFindingIds: nextFixed,
+      };
+    }
+
     case "CLEAR_CHAT":
       return { ...initialState, mcpServers: state.mcpServers };
 
@@ -427,6 +444,9 @@ export function useReviewState() {
         break;
       case "falsePositiveMarked":
         dispatch({ type: "MARK_FALSE_POSITIVE", findingId: msg.findingId });
+        break;
+      case "fixedMarked":
+        dispatch({ type: "MARK_FIXED", findingId: msg.findingId });
         break;
 
       // MCP Manager messages

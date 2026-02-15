@@ -47,7 +47,8 @@ export type EventType =
   | "patch_validated"
   | "human_accepted"
   | "human_rejected"
-  | "false_positive_marked";
+  | "false_positive_marked"
+  | "issue_fixed";
 
 export interface AuditEvent {
   id: string;
@@ -200,6 +201,7 @@ export type WebviewMessage =
   | { type: "applyPatch"; patchId: string }
   | { type: "dismissPatch"; patchId: string }
   | { type: "markFalsePositive"; findingId: string }
+  | { type: "markFixed"; findingId: string }
   | { type: "sendToValidator"; findingId: string }
   | { type: "explainFinding"; findingId: string }
   | { type: "sendToCodingAgent"; findingId: string; agentId: string }
@@ -236,6 +238,7 @@ export type ExtensionMessage =
   | { type: "findingValidated"; findingId: string; verdict: ValidatorVerdict; reasoning: string }
   | { type: "findingValidationError"; findingId: string; error: string }
   | { type: "falsePositiveMarked"; findingId: string }
+  | { type: "fixedMarked"; findingId: string }
   | { type: "switchTab"; tab: "chat" | "findings" | "timeline" }
   | { type: "mcpManagerOpen" }
   | { type: "mcpServers"; servers: MCPServerInfo[] }
@@ -275,4 +278,6 @@ export interface ReviewState {
   reviewHistory?: ReviewRunSummary[];
   /** Finding IDs dismissed as false positive — persists across state restores */
   dismissedFindingIds: Set<string>;
+  /** Finding IDs marked as fixed — hidden from active list, cleared on re-review */
+  fixedFindingIds: Set<string>;
 }

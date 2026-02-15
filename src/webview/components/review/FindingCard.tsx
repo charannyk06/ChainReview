@@ -71,6 +71,7 @@ interface FindingCardProps {
   onSendToValidator?: (findingId: string) => void;
   onExplain?: (findingId: string) => void;
   onSendToCodingAgent?: (findingId: string, agentId: string) => void;
+  onMarkFixed?: (findingId: string) => void;
 }
 
 export function FindingCard({
@@ -85,6 +86,7 @@ export function FindingCard({
   onSendToValidator,
   onExplain,
   onSendToCodingAgent,
+  onMarkFixed,
 }: FindingCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
@@ -134,54 +136,16 @@ export function FindingCard({
   if (isFixed && !isValidating) bgColor = "rgba(52,211,153,0.05)";
 
   return (
-    <motion.div
-      layout
+    <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         position: "relative",
-        transition: "all 200ms ease",
+        transition: "background 200ms ease",
         borderBottom: "1px solid var(--cr-border-subtle)",
         background: bgColor,
       }}
     >
-      {/* Verifying overlay */}
-      {isValidating && (
-        <div style={{ position: "absolute", top: 14, right: 14, zIndex: 10 }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 6,
-            background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.25)",
-            borderRadius: 8, padding: "4px 10px",
-          }}>
-            <LoaderIcon style={{ width: 12, height: 12, color: "#34d399", animation: "spin 1s linear infinite" }} />
-            <span style={{ fontSize: 10, fontWeight: 600, color: "#34d399" }}>Checking Fix...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Verdict badge */}
-      {verdictBadge && !isValidating && (
-        <div style={{ position: "absolute", top: 14, right: 14, zIndex: 10 }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 6,
-            borderRadius: 8, padding: "4px 10px",
-            border: `1px solid ${verdictBadge.borderColor}`,
-            background: verdictBadge.bgColor,
-          }}>
-            {verdictBadge.icon === "bug" ? (
-              <BugIcon style={{ width: 12, height: 12, color: verdictBadge.color }} />
-            ) : verdictBadge.icon === "shield" ? (
-              <ShieldCheckIcon style={{ width: 12, height: 12, color: verdictBadge.color }} />
-            ) : (
-              <ShieldAlertIcon style={{ width: 12, height: 12, color: verdictBadge.color }} />
-            )}
-            <span style={{ fontSize: 10, fontWeight: 600, color: verdictBadge.color }}>
-              {verdictBadge.label}
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Header — always visible */}
       <div
         style={{ padding: "12px 16px", cursor: "pointer", userSelect: "none" }}
@@ -215,10 +179,46 @@ export function FindingCard({
           )}
 
           {/* Title + description */}
-          <div style={{ flex: 1, minWidth: 0, paddingRight: 24 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--cr-text-primary)", lineHeight: 1.4 }}>
-              {finding.title}
-            </h3>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--cr-text-primary)", lineHeight: 1.4, flex: 1, minWidth: 0 }}>
+                {finding.title}
+              </h3>
+
+              {/* Verdict badge — inline, no overlap */}
+              {verdictBadge && !isValidating && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  borderRadius: 8, padding: "3px 9px",
+                  border: `1px solid ${verdictBadge.borderColor}`,
+                  background: verdictBadge.bgColor,
+                  flexShrink: 0, whiteSpace: "nowrap",
+                }}>
+                  {verdictBadge.icon === "bug" ? (
+                    <BugIcon style={{ width: 11, height: 11, color: verdictBadge.color }} />
+                  ) : verdictBadge.icon === "shield" ? (
+                    <ShieldCheckIcon style={{ width: 11, height: 11, color: verdictBadge.color }} />
+                  ) : (
+                    <ShieldAlertIcon style={{ width: 11, height: 11, color: verdictBadge.color }} />
+                  )}
+                  <span style={{ fontSize: 10, fontWeight: 600, color: verdictBadge.color }}>
+                    {verdictBadge.label}
+                  </span>
+                </div>
+              )}
+
+              {/* Verifying badge — inline */}
+              {isValidating && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.25)",
+                  borderRadius: 8, padding: "3px 9px", flexShrink: 0, whiteSpace: "nowrap",
+                }}>
+                  <LoaderIcon style={{ width: 11, height: 11, color: "#34d399", animation: "spin 1s linear infinite" }} />
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "#34d399" }}>Checking...</span>
+                </div>
+              )}
+            </div>
             <p style={{
               fontSize: 11.5, color: "var(--cr-text-secondary)", lineHeight: 1.6, marginTop: 6,
               ...(expanded ? {} : {
@@ -285,13 +285,16 @@ export function FindingCard({
       </div>
 
       {/* Expanded content */}
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {expanded && !selectionMode && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{
+              height: { duration: 0.25, ease: [0.25, 0.1, 0.25, 1] },
+              opacity: { duration: 0.2, delay: 0.05 },
+            }}
             style={{ overflow: "hidden" }}
           >
             <div style={{
@@ -393,6 +396,14 @@ export function FindingCard({
 
                   <div style={{ flex: 1 }} />
 
+                  {/* Mark Fixed — visible when validator says "fixed" */}
+                  {onMarkFixed && isFixed && (
+                    <button onClick={() => onMarkFixed(finding.id)} className="cr-btn cr-btn-emerald">
+                      <CheckIcon style={{ width: 14, height: 14 }} />
+                      Mark Fixed
+                    </button>
+                  )}
+
                   {onMarkFalsePositive && (
                     <button onClick={() => onMarkFalsePositive(finding.id)} className="cr-btn cr-btn-ghost">
                       <XCircleIcon style={{ width: 14, height: 14 }} />
@@ -405,6 +416,6 @@ export function FindingCard({
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }

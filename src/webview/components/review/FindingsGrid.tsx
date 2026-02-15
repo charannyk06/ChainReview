@@ -28,6 +28,7 @@ interface FindingsGridProps {
   onSendToValidator?: (findingId: string) => void;
   onExplain?: (findingId: string) => void;
   onSendToCodingAgent?: (findingId: string, agentId: string) => void;
+  onMarkFixed?: (findingId: string) => void;
   onReReview?: () => void;
 }
 
@@ -40,6 +41,7 @@ export function FindingsGrid({
   onSendToValidator,
   onExplain,
   onSendToCodingAgent,
+  onMarkFixed,
   onReReview,
 }: FindingsGridProps) {
   const [filter, setFilter] = useState<FilterOption>("all");
@@ -369,6 +371,7 @@ export function FindingsGrid({
                 onSendToValidator={onSendToValidator}
                 onExplain={onExplain}
                 onSendToCodingAgent={onSendToCodingAgent}
+                onMarkFixed={onMarkFixed}
               />
             </motion.div>
           ))}

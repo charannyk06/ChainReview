@@ -188,6 +188,10 @@ export default function App() {
     postMessage({ type: "markFalsePositive", findingId });
   };
 
+  const handleMarkFixed = (findingId: string) => {
+    postMessage({ type: "markFixed", findingId });
+  };
+
   const handleSendToValidator = (findingId: string) => {
     markFindingValidating(findingId);
     postMessage({ type: "sendToValidator", findingId });
@@ -314,6 +318,7 @@ export default function App() {
               onSendToValidator={handleSendToValidator}
               onExplain={handleExplain}
               onSendToCodingAgent={handleSendToCodingAgent}
+              onMarkFixed={handleMarkFixed}
               onReReview={handleReReview}
               className="h-full"
             />

@@ -57,9 +57,13 @@ export async function migrateKeysToSecretStorage(
       if (plainTextValue && plainTextValue.trim()) {
         // Migrate to SecretStorage
         await storeApiKeySecurely(secrets, envName, plainTextValue.trim());
-        // Clear from plain-text settings (best-effort)
-        await config.update(settingName, undefined, vscode.ConfigurationTarget.Global).then(undefined, () => {});
-        await config.update(settingName, undefined, vscode.ConfigurationTarget.Workspace).then(undefined, () => {});
+        // Clear from plain-text settings (best-effort — log failures for debugging)
+        await config.update(settingName, undefined, vscode.ConfigurationTarget.Global).then(undefined, (err: unknown) => {
+          console.warn(`ChainReview: failed to clear global setting "${settingName}":`, err);
+        });
+        await config.update(settingName, undefined, vscode.ConfigurationTarget.Workspace).then(undefined, (err: unknown) => {
+          console.warn(`ChainReview: failed to clear workspace setting "${settingName}":`, err);
+        });
       }
     }
   } catch {
@@ -412,10 +416,14 @@ export class CrpClient {
 
   async chatQuery(
     query: string,
-    runId?: string
+    runId?: string,
+    conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>,
   ): Promise<{ answer: string; toolCalls: Array<{ tool: string; args: Record<string, unknown>; result: string }> }> {
     const args: Record<string, unknown> = { query };
     if (runId) args.runId = runId;
+    if (conversationHistory && conversationHistory.length > 0) {
+      args.conversationHistory = conversationHistory;
+    }
     const result = await this.callTool("crp.chat.query", args);
     return JSON.parse(result);
   }

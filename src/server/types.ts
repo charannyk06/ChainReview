@@ -99,6 +99,74 @@ export interface ImportGraphResult {
   totalFiles: number;
 }
 
+// ── Call Graph ──
+
+export interface CallGraphEdge {
+  sourceFile: string;
+  sourceSymbol: string;
+  targetFile: string;
+  targetSymbol: string;
+  callLine: number;
+}
+
+export interface FileMetrics {
+  file: string;
+  fanIn: number;
+  fanOut: number;
+  symbolCount: number;
+  exportedSymbolCount: number;
+}
+
+export interface CallGraphResult {
+  edges: CallGraphEdge[];
+  fileMetrics: FileMetrics[];
+  totalFunctions: number;
+  totalEdges: number;
+}
+
+// ── Symbol Lookup ──
+
+export interface SymbolLocation {
+  file: string;
+  line: number;
+  column: number;
+  kind: string; // "function" | "method" | "class" | "variable" | "interface" | "type"
+}
+
+export interface SymbolLookupResult {
+  name: string;
+  definition: SymbolLocation | null;
+  references: SymbolLocation[];
+  totalReferences: number;
+  exported: boolean;
+}
+
+// ── Impact Analysis ──
+
+export interface ImpactedFile {
+  file: string;
+  distance: number;
+  fanIn: number;
+  affectedSymbols: string[];
+}
+
+export interface ImpactResult {
+  sourceFile: string;
+  impactedFiles: ImpactedFile[];
+  totalImpacted: number;
+  maxDepth: number;
+}
+
+// ── Module Criticality ──
+
+export interface CriticalFile {
+  file: string;
+  score: number; // 0-1
+  fanIn: number;
+  fanOut: number;
+  reason: string;
+}
+
 // ── Semgrep ──
 
 export interface SemgrepResult {
@@ -123,6 +191,12 @@ export interface AgentContext {
   diffContent?: string;
   /** Summary of prior active findings for this repo — agents should skip these */
   priorFindings?: string;
+  /** Function-level call graph for deep structural understanding */
+  callGraph?: CallGraphResult;
+  /** Files ranked by architectural criticality (fan-in/fan-out scoring) */
+  criticalFiles?: CriticalFile[];
+  /** Files impacted by the current diff (blast radius analysis) */
+  impactedModules?: ImpactedFile[];
 }
 
 // ── Callbacks for streaming progress ──

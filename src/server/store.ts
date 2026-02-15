@@ -205,7 +205,7 @@ export function createStore(dbPath: string): Store {
   }
 
   function safeJsonParse<T>(json: string | null | undefined, fallback: T): T {
-    if (json == null) return fallback;
+    if (json === null || json === undefined) return fallback;
     try {
       const parsed = JSON.parse(json);
       return parsed ?? fallback;

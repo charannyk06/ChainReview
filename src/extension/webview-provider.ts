@@ -96,6 +96,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   private _validateStreamingThinkingBlockId: string | null = null;
   private _validateStreamingThinkingAccum = "";
 
+  // ── Conversation memory ──
+  /** Conversation history for multi-turn LLM context (persisted across panel reloads) */
+  private _conversationHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
+
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _crpClient?: CrpClient,
@@ -203,6 +207,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         break;
       case "markFalsePositive":
         await this._markFalsePositive(this._safeStr(message.findingId, 100));
+        break;
+      case "markFixed":
+        await this._markFixed(this._safeStr(message.findingId, 100));
         break;
       case "explainFinding":
         await this._explainFinding(this._safeStr(message.findingId, 100));
@@ -1183,6 +1190,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     // Create the streaming assistant message
     this.postMessage({ type: "chatResponseStart", messageId });
 
+    // Add user query to conversation history
+    this._conversationHistory.push({ role: "user", content: query });
+
     try {
       // The chatQuery MCP call blocks until complete, BUT during execution
       // the server streams events via stderr → _handleStreamEvent → chatThinking/chatText/chatToolCall/chatToolResult
@@ -1191,7 +1201,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       // RACE CONDITION FIX: stderr events from the final LLM turn may still be
       // in transit when the MCP result arrives via stdout. We flush stderr by
       // waiting a few event-loop ticks before marking the message complete.
-      const result = await this._crpClient.chatQuery(query, this._currentRunId);
+      const result = await this._crpClient.chatQuery(query, this._currentRunId, this._conversationHistory.slice(0, -1));
 
       // ── Flush stderr: wait for any in-flight events to be processed ──
       // Node.js processes I/O callbacks in phases. Multiple ticks allow
@@ -1214,12 +1224,25 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         });
       }
 
+      // Add assistant answer to conversation history for multi-turn context
+      if (result.answer && result.answer.trim()) {
+        this._conversationHistory.push({ role: "assistant", content: result.answer });
+      }
+
+      // Persist conversation history to workspaceState for cross-reload memory
+      this._persistConversationHistory();
+
       // Mark the message as complete
       this.postMessage({ type: "chatResponseEnd", messageId });
 
       // Persist chat messages after chat completes
       this.postMessage({ type: "requestPersistMessages" });
     } catch (err: any) {
+      // Remove the optimistically-added user message from history on error
+      if (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1].role === "user") {
+        this._conversationHistory.pop();
+      }
+
       // Emit error block
       this.postMessage({
         type: "chatResponseBlock",
@@ -1569,6 +1592,39 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async _markFixed(findingId: string) {
+    if (!this._crpClient?.isConnected() || !this._currentRunId) return;
+    try {
+      await this._crpClient.recordEvent(this._currentRunId, "issue_fixed", undefined, { findingId });
+
+      // Get finding title for the timeline event
+      const finding = this._findings.find((f) => f.id === findingId);
+      const findingTitle = finding?.title || "Finding";
+
+      // Remove finding from in-memory list
+      this._findings = this._findings.filter((f) => f.id !== findingId);
+
+      // Notify webview to remove the finding from UI and track as fixed
+      this.postMessage({ type: "fixedMarked", findingId });
+
+      // Emit a timeline event so the timeline tab shows this action
+      this.postMessage({
+        type: "addEvent",
+        event: {
+          id: `fixed-${findingId}-${Date.now()}`,
+          runId: this._currentRunId,
+          type: "issue_fixed",
+          timestamp: new Date().toISOString(),
+          data: { findingId, findingTitle },
+        },
+      });
+
+      vscode.window.showInformationMessage("ChainReview: Finding marked as fixed — will be re-checked on next review");
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`ChainReview: Failed to record — ${err.message}`);
+    }
+  }
+
   // ── Send to Coding Agent ──
 
   private async _sendToCodingAgent(findingId: string, agentId?: string) {
@@ -1841,6 +1897,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         this._crpClient.getFindings(runId),
         this._crpClient.getEvents(runId),
       ]);
+
+      if (!Array.isArray(findings) || !Array.isArray(events)) {
+        throw new Error("Invalid findings or events data");
+      }
 
       this._currentRunId = runId;
       this._findings = findings;
@@ -2146,12 +2206,61 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private _persistConversationHistory() {
+    if (!this._context) return;
+    try {
+      // Keep only last 40 turns to avoid workspace storage bloat
+      const trimmed = this._conversationHistory.slice(-40);
+
+      // Deduplicate: if consecutive assistant messages contain the same file content,
+      // replace duplicates with a reference marker to save storage and tokens
+      const deduped = this._deduplicateHistory(trimmed);
+
+      this._context.workspaceState.update("chainreview.conversationHistory", deduped);
+    } catch (err: any) {
+      console.error("ChainReview: Failed to persist conversation history:", err.message);
+    }
+  }
+
+  /** Detect and collapse duplicate file content blocks in history */
+  private _deduplicateHistory(
+    history: Array<{ role: "user" | "assistant"; content: string }>
+  ): Array<{ role: "user" | "assistant"; content: string }> {
+    const seenFileContents = new Set<string>();
+
+    return history.map((msg) => {
+      if (msg.role !== "assistant") return msg;
+
+      // Find file content blocks (```...``` with file paths)
+      const cleaned = msg.content.replace(
+        /(?:File: ([^\n]+)\n)?```[\w]*\n([\s\S]{500,}?)\n```/g,
+        (match, filePath, content) => {
+          // Create a fingerprint from first 200 chars of the content block
+          const fingerprint = (filePath || "") + ":" + content.slice(0, 200);
+          if (seenFileContents.has(fingerprint)) {
+            return `[Previously shown: ${filePath || "code block"}]`;
+          }
+          seenFileContents.add(fingerprint);
+          return match;
+        }
+      );
+
+      return cleaned !== msg.content ? { ...msg, content: cleaned } : msg;
+    });
+  }
+
   private _restorePersistedState() {
     if (!this._context) return;
 
     // Small delay to ensure webview is ready to receive messages
     setTimeout(() => {
       try {
+        // Restore conversation history for LLM multi-turn context
+        const history = this._context!.workspaceState.get<Array<{ role: "user" | "assistant"; content: string }>>("chainreview.conversationHistory");
+        if (history && history.length > 0) {
+          this._conversationHistory = history;
+        }
+
         // Restore chat messages
         const messages = this._context!.workspaceState.get<unknown[]>("chainreview.chatMessages");
         if (messages && messages.length > 0) {
@@ -2199,8 +2308,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   private _clearPersistedChat() {
     if (!this._context) return;
-    // Only clear chat messages — keep review state and verdicts
+    // Clear chat messages and conversation history
     this._context.workspaceState.update("chainreview.chatMessages", undefined);
+    this._context.workspaceState.update("chainreview.conversationHistory", undefined);
+    this._conversationHistory = [];
   }
 
   // ── Webview HTML ──

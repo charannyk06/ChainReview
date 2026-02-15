@@ -103,8 +103,10 @@ export function ChatContainer({
                 alignItems: "center",
                 justifyContent: "center",
               }}>
-                <svg style={{ width: 18, height: 18, color: "var(--cr-text-tertiary)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+                <svg width={18} height={18} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 7L4 16L10 25" stroke="var(--cr-text-tertiary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M22 7L28 16L22 25" stroke="var(--cr-text-tertiary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M19 9L13 23" stroke="var(--cr-text-tertiary)" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
                 </svg>
               </div>
               <div>

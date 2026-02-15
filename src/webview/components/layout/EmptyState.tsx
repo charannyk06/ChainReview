@@ -17,9 +17,19 @@ function ChainReviewLogo({ size = 40 }: { size?: number }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path d="M10 7L4 16L10 25" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M22 7L28 16L22 25" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M19 9L13 23" stroke="#a5b4fc" strokeWidth="2" strokeLinecap="round" />
+      <path d="M10 7L4 16L10 25" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M22 7L28 16L22 25" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M19 9L13 23" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/* Anthropic logo — used in "Powered by" footer */
+function AnthropicIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 46 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M27.02 0h5.868L46 32h-5.868L27.02 0Z" fill="#d4a574" />
+      <path d="M13.112 0H7.244L0 32h5.868l2.35-10.404h10.14L20.708 32h5.868L13.112 0Zm-3.16 16.096L13.112 4.8l3.16 11.296H9.952Z" fill="#d4a574" />
     </svg>
   );
 }
@@ -44,25 +54,38 @@ export function EmptyState({
         overflow: "hidden",
       }}
     >
-      {/* Subtle radial glow behind logo */}
+      {/* Subtle radial glow behind logo — very faint */}
       <div
         style={{
           position: "absolute",
           top: "30%",
           left: "50%",
           transform: "translate(-50%, -50%)",
-          width: 300,
-          height: 300,
+          width: 200,
+          height: 200,
           borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 70%)",
+          background: "radial-gradient(circle, rgba(255,255,255,0.02) 0%, transparent 70%)",
           pointerEvents: "none",
         }}
       />
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 36, position: "relative", zIndex: 1 }}>
-        {/* Logo + Brand */}
+        {/* Logo + Online indicator */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-          <ChainReviewLogo size={56} />
+          <div style={{ position: "relative", display: "inline-flex" }}>
+            <ChainReviewLogo size={48} />
+            {/* Online dot */}
+            <div style={{
+              position: "absolute",
+              bottom: -2,
+              right: -4,
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: "#22c55e",
+              border: "2px solid #0f0f0f",
+            }} />
+          </div>
           <div style={{ textAlign: "center" }}>
             <h1 style={{
               fontSize: 22,
@@ -80,7 +103,7 @@ export function EmptyState({
               marginTop: 6,
               fontWeight: 500,
             }}>
-              AI-powered repo-scale code review
+              Start a review or ask about your codebase
             </p>
           </div>
         </div>
@@ -221,16 +244,22 @@ export function EmptyState({
 
         {/* Version + Powered by */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <p style={{
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
             fontSize: 9,
             color: "#404040",
             letterSpacing: "0.08em",
             textTransform: "uppercase",
             fontWeight: 600,
-            margin: 0,
           }}>
-            v0.1.0 &middot; Powered by Claude Opus 4.6
-          </p>
+            <span>v0.1.0</span>
+            <span>&middot;</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+              Powered by <AnthropicIcon size={10} /> Claude Opus 4.6
+            </span>
+          </div>
         </div>
       </div>
     </div>

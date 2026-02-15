@@ -134,6 +134,52 @@ server.tool(
   }
 );
 
+// ── Call Graph + Symbol Resolution Tools (FastCode-inspired) ──
+
+server.tool(
+  "crp.code.call_graph",
+  "Build a function-level call graph showing which functions call which, with fan-in/fan-out metrics per file. Fan-in = how many files depend on this file. Fan-out = how many files this file depends on.",
+  {
+    path: z.string().optional().describe("Subdirectory to analyze (relative to repo root)"),
+  },
+  async (args) => {
+    await ensureRepoOpen();
+    const { codeCallGraph } = await import("./tools/graph");
+    const result = await codeCallGraph(args);
+    return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+  }
+);
+
+server.tool(
+  "crp.code.symbol_lookup",
+  "Find the definition and all references/usages of a symbol (function, class, variable, interface) across the codebase. Returns definition location, all reference locations, and whether the symbol is exported.",
+  {
+    symbol: z.string().describe("Symbol name to look up (e.g. function name, class name)"),
+    file: z.string().optional().describe("Optional file path to narrow the search"),
+  },
+  async (args) => {
+    await ensureRepoOpen();
+    const { codeSymbolLookup } = await import("./tools/graph");
+    const result = await codeSymbolLookup(args);
+    return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+  }
+);
+
+server.tool(
+  "crp.code.impact_analysis",
+  "Analyze the blast radius of changing a file — shows all files that transitively depend on it via function calls. Useful for understanding the downstream impact of modifications.",
+  {
+    file: z.string().describe("Relative file path to analyze impact for"),
+    depth: z.number().optional().describe("Max traversal depth (default: 3)"),
+  },
+  async (args) => {
+    await ensureRepoOpen();
+    const { codeImpactAnalysis } = await import("./tools/graph");
+    const result = await codeImpactAnalysis(args);
+    return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+  }
+);
+
 // ── Patch + Validation Tools ──
 
 server.tool(
@@ -373,6 +419,10 @@ server.tool(
   {
     query: z.string().describe("The user's question about the repository"),
     runId: z.string().optional().describe("Optional review run ID for context"),
+    conversationHistory: z.array(z.object({
+      role: z.enum(["user", "assistant"]),
+      content: z.string(),
+    })).optional().describe("Previous conversation messages for multi-turn context"),
   },
   async (args) => {
     requireApiKey("crp.chat.query");
@@ -414,7 +464,7 @@ server.tool(
           streamEvent({ type: "patch", patch });
         },
       },
-    });
+    }, args.conversationHistory);
 
     // If the chat agent spawned a review, include the review result
     // The extension uses this to transition UI state

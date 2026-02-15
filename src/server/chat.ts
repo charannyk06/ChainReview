@@ -21,6 +21,91 @@ interface ChatToolCall {
   result: string;
 }
 
+// ── Conversation History Utilities ──
+// Token budget management: reverse-iterate history to fit within budget,
+// strip thinking blocks, and compress verbose content before sending.
+
+/** Rough token estimate: ~4 chars per token for English text */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/** Max tokens to allocate for conversation history (leaves room for system prompt + current query + response) */
+const HISTORY_TOKEN_BUDGET = 30_000;
+
+/** Max content length per individual history message (truncate verbose tool outputs) */
+const MAX_MESSAGE_CONTENT_LENGTH = 6_000;
+
+/** Patterns to strip from history content — these waste tokens on re-send */
+const THINKING_BLOCK_RE = /<thinking>[\s\S]*?<\/thinking>/g;
+const TOOL_RESULT_VERBOSE_RE = /```(?:json|text|typescript|javascript)?\n[\s\S]{2000,}?\n```/g;
+
+/**
+ * Clean a history message's content:
+ * - Strip <thinking> blocks (no multi-turn value)
+ * - Truncate excessively long content (tool results, file dumps)
+ * - Deduplicate repeated file content markers
+ */
+function cleanHistoryContent(content: string): string {
+  let cleaned = content;
+
+  // Strip thinking blocks
+  cleaned = cleaned.replace(THINKING_BLOCK_RE, "");
+
+  // Truncate very long code blocks to first/last portions
+  cleaned = cleaned.replace(TOOL_RESULT_VERBOSE_RE, (match) => {
+    if (match.length <= 2000) return match;
+    const firstPart = match.slice(0, 800);
+    const lastPart = match.slice(-400);
+    return `${firstPart}\n... [truncated ${match.length - 1200} chars] ...\n${lastPart}`;
+  });
+
+  // Final length cap per message
+  if (cleaned.length > MAX_MESSAGE_CONTENT_LENGTH) {
+    cleaned = cleaned.slice(0, MAX_MESSAGE_CONTENT_LENGTH) + "\n... [truncated]";
+  }
+
+  return cleaned.trim();
+}
+
+/**
+ * Build history messages that fit within a token budget.
+ * Iterates from most recent to oldest, adding messages until budget is exhausted.
+ * This ensures the most recent context is always preserved.
+ */
+function buildBudgetedHistory(
+  history: Array<{ role: "user" | "assistant"; content: string }>,
+): MessageParam[] {
+  if (!history || history.length === 0) return [];
+
+  const result: MessageParam[] = [];
+  let tokensUsed = 0;
+
+  // Reverse-iterate: most recent messages get priority
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    const cleaned = cleanHistoryContent(msg.content);
+    if (!cleaned) continue;
+
+    const msgTokens = estimateTokens(cleaned);
+
+    if (tokensUsed + msgTokens > HISTORY_TOKEN_BUDGET) {
+      // Budget exceeded — stop adding older messages
+      break;
+    }
+
+    result.unshift({ role: msg.role, content: cleaned });
+    tokensUsed += msgTokens;
+  }
+
+  // Ensure messages start with "user" role (Anthropic API requirement)
+  while (result.length > 0 && result[0].role !== "user") {
+    result.shift();
+  }
+
+  return result;
+}
+
 export interface ChatQueryResult {
   answer: string;
   toolCalls: ChatToolCall[];
@@ -352,6 +437,7 @@ export async function chatQuery(
   store?: Store,
   callbacks?: ChatCallbacks,
   options?: ChatQueryOptions,
+  conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>,
 ): Promise<ChatQueryResult> {
   const client = new Anthropic();
   // Allow up to 50 turns for deep investigation — the agent stops naturally
@@ -365,9 +451,13 @@ export async function chatQuery(
     systemPrompt += buildContextPrompt(store, runId);
   }
 
-  const messages: MessageParam[] = [
-    { role: "user", content: query },
-  ];
+  // Build messages array: prior conversation history + current query
+  // Uses token-budgeted history with content cleaning (strips thinking blocks,
+  // truncates verbose tool results, caps total at ~30k tokens)
+  const historyMessages = buildBudgetedHistory(conversationHistory ?? []);
+  const messages: MessageParam[] = [...historyMessages];
+
+  messages.push({ role: "user", content: query });
 
   let answer = "";
   let turn = 0;
