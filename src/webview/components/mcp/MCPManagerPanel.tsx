@@ -3,13 +3,23 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeftIcon,
   PlusIcon,
-  SparklesIcon,
   PlugIcon,
   ServerIcon,
   WrenchIcon,
   GlobeIcon,
   ShieldCheckIcon,
 } from "lucide-react";
+
+/* ChainReview logo — code brackets with chain links (white for green bg) */
+function CRPLogo({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10 7L4 16L10 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M22 7L28 16L22 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M19 9L13 23" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
 import { MCPServerCard } from "./MCPServerCard";
 import { MCPEditor } from "./MCPEditor";
 import type { MCPServerInfo, MCPServerConfig } from "@/lib/types";
@@ -203,7 +213,7 @@ export function MCPManagerPanel({
                           justifyContent: "center",
                           boxShadow: "0 4px 12px rgba(52,211,153,0.20)",
                         }}>
-                          <SparklesIcon style={{ width: 22, height: 22, color: "white" }} />
+                          <CRPLogo size={24} />
                         </div>
                         {/* Connected dot */}
                         <span style={{

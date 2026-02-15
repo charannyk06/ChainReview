@@ -1,5 +1,4 @@
-import { PlusIcon, ServerIcon, ClockIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { PlusIcon, ServerIcon, ClockIcon, CodeIcon } from "lucide-react";
 
 interface HeaderProps {
   onNewThread?: () => void;
@@ -8,30 +7,27 @@ interface HeaderProps {
   className?: string;
 }
 
-/* Anthropic sparkle logo — inline SVG */
-function AnthropicLogo({ size = 18 }: { size?: number }) {
+/* ChainReview logo — code brackets with chain links */
+function ChainReviewLogo({ size = 20 }: { size?: number }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 256 256"
+      viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       style={{ flexShrink: 0 }}
     >
-      <path
-        d="M147.487 28H181.749L256 228H221.738L147.487 28Z"
-        fill="#D4A27F"
-      />
-      <path
-        d="M74.2507 28H108.513L182.764 228H148.502L74.2507 28Z"
-        fill="#D4A27F"
-      />
+      {/* Code brackets */}
+      <path d="M10 7L4 16L10 25" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M22 7L28 16L22 25" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Chain link slash */}
+      <path d="M19 9L13 23" stroke="#a5b4fc" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
 
-export function Header({ onNewThread, onOpenMCPManager, onOpenHistory, className }: HeaderProps) {
+export function Header({ onNewThread, onOpenMCPManager, onOpenHistory }: HeaderProps) {
   return (
     <div
       style={{
@@ -39,12 +35,14 @@ export function Header({ onNewThread, onOpenMCPManager, onOpenHistory, className
         borderBottom: "1px solid rgba(255,255,255,0.06)",
         background: "linear-gradient(180deg, #1a1a1a 0%, #161616 100%)",
         flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
       }}
-      className={cn("flex items-center gap-2.5", className)}
     >
       {/* Left: Brand */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-        <AnthropicLogo size={20} />
+        <ChainReviewLogo size={22} />
         <span style={{
           fontSize: 13,
           fontWeight: 700,

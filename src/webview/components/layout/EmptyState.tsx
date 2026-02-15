@@ -7,24 +7,19 @@ interface EmptyStateProps {
   onOpenHistory?: () => void;
 }
 
-/* Anthropic logo — inline SVG matching the header */
-function AnthropicLogo({ size = 40 }: { size?: number }) {
+/* ChainReview logo — code brackets with chain links (large) */
+function ChainReviewLogo({ size = 40 }: { size?: number }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 256 256"
+      viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path
-        d="M147.487 28H181.749L256 228H221.738L147.487 28Z"
-        fill="#D4A27F"
-      />
-      <path
-        d="M74.2507 28H108.513L182.764 228H148.502L74.2507 28Z"
-        fill="#D4A27F"
-      />
+      <path d="M10 7L4 16L10 25" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M22 7L28 16L22 25" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M19 9L13 23" stroke="#a5b4fc" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -68,16 +63,16 @@ export function EmptyState({
         {/* Logo + Brand */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
           <div style={{
-            width: 64,
-            height: 64,
-            borderRadius: 16,
+            width: 72,
+            height: 72,
+            borderRadius: 18,
             background: "linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.08) 100%)",
-            border: "1px solid rgba(99,102,241,0.15)",
+            border: "1px solid rgba(99,102,241,0.18)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}>
-            <AnthropicLogo size={36} />
+            <ChainReviewLogo size={42} />
           </div>
           <div style={{ textAlign: "center" }}>
             <h1 style={{
@@ -245,7 +240,7 @@ export function EmptyState({
             fontWeight: 600,
             margin: 0,
           }}>
-            v0.1.0 &middot; Powered by Claude Opus 4
+            v0.1.0 &middot; Powered by Claude Opus 4.6
           </p>
         </div>
       </div>

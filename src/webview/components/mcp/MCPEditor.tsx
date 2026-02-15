@@ -12,7 +12,6 @@ import {
   ListIcon,
   SparklesIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { MCPServerConfig } from "@/lib/types";
 
 interface MCPEditorProps {
@@ -20,6 +19,25 @@ interface MCPEditorProps {
   onSave: (config: MCPServerConfig) => void;
   onCancel: () => void;
 }
+
+/* Shared input style */
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  background: "#0f0f0f",
+  border: "1px solid rgba(255,255,255,0.06)",
+  borderRadius: 10,
+  padding: "9px 12px",
+  fontSize: 12,
+  color: "#e5e5e5",
+  outline: "none",
+  transition: "all 150ms ease",
+  fontFamily: "inherit",
+};
+
+const monoInputStyle: React.CSSProperties = {
+  ...inputStyle,
+  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+};
 
 export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
   const isEditing = !!initialConfig;
@@ -109,73 +127,131 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
     : name.trim().length > 0 && command.trim().length > 0;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="flex flex-col h-full"
-    >
-      {/* Header */}
-      <div style={{ padding: "12px 16px" }} className="relative border-b border-[var(--cr-border)] bg-gradient-to-b from-[var(--cr-bg-secondary)] to-[var(--cr-bg-primary)] shrink-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,rgba(99,102,241,0.05),transparent_50%)]" />
-        
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-9 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-indigo-500/20 flex items-center justify-center">
-              <ServerIcon className="size-4 text-indigo-400" />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* ── Header ── */}
+      <div style={{
+        padding: "14px 16px",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        background: "linear-gradient(180deg, #1a1a1a 0%, #161616 100%)",
+        flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: "linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.10) 100%)",
+              border: "1px solid rgba(99,102,241,0.15)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <ServerIcon style={{ width: 16, height: 16, color: "#818cf8" }} />
             </div>
             <div>
-              <h2 className="text-[14px] font-semibold text-[var(--cr-text-primary)]">
+              <h2 style={{ fontSize: 14, fontWeight: 700, color: "#e5e5e5", margin: 0, lineHeight: 1 }}>
                 {isEditing ? "Edit Server" : "Add MCP Server"}
               </h2>
-              <p className="text-[10px] text-[var(--cr-text-muted)]">
+              <p style={{ fontSize: 10, color: "#525252", marginTop: 3, fontWeight: 500 }}>
                 Configure server connection
               </p>
             </div>
           </div>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          <button
             onClick={onCancel}
-            className="size-8 flex items-center justify-center rounded-lg text-[var(--cr-text-muted)] hover:text-[var(--cr-text-primary)] hover:bg-[var(--cr-bg-hover)] transition-colors"
+            style={{
+              width: 32,
+              height: 32,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 8,
+              border: "none",
+              background: "transparent",
+              color: "#525252",
+              cursor: "pointer",
+              transition: "all 150ms ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "#e5e5e5";
+              e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "#525252";
+              e.currentTarget.style.background = "transparent";
+            }}
           >
-            <XIcon className="size-4" />
-          </motion.button>
+            <XIcon style={{ width: 16, height: 16 }} />
+          </button>
         </div>
       </div>
 
-      {/* Mode toggle */}
-      <div style={{ padding: "16px 16px 8px 16px" }}>
-        <div className="flex gap-1 bg-[var(--cr-bg-root)] border border-[var(--cr-border-subtle)] rounded-xl p-1">
+      {/* ── Mode toggle (Form / JSON) ── */}
+      <div style={{ padding: "14px 16px 8px 16px" }}>
+        <div style={{
+          display: "flex",
+          gap: 4,
+          background: "#0f0f0f",
+          border: "1px solid rgba(255,255,255,0.04)",
+          borderRadius: 12,
+          padding: 4,
+        }}>
           <button
             onClick={() => setJsonMode(false)}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-2 rounded-lg transition-all duration-200",
-              !jsonMode
-                ? "bg-gradient-to-r from-indigo-500/10 to-violet-500/10 text-indigo-400 border border-indigo-500/20 shadow-sm"
-                : "text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)]"
-            )}
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "8px 0",
+              borderRadius: 9,
+              border: !jsonMode ? "1px solid rgba(99,102,241,0.20)" : "1px solid transparent",
+              background: !jsonMode
+                ? "linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(139,92,246,0.06) 100%)"
+                : "transparent",
+              color: !jsonMode ? "#818cf8" : "#525252",
+              cursor: "pointer",
+              transition: "all 150ms ease",
+              lineHeight: 1,
+            }}
           >
-            <ListIcon className="size-3.5" />
+            <ListIcon style={{ width: 14, height: 14 }} />
             Form
           </button>
           <button
             onClick={() => setJsonMode(true)}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-2 rounded-lg transition-all duration-200",
-              jsonMode
-                ? "bg-gradient-to-r from-indigo-500/10 to-violet-500/10 text-indigo-400 border border-indigo-500/20 shadow-sm"
-                : "text-[var(--cr-text-muted)] hover:text-[var(--cr-text-secondary)]"
-            )}
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "8px 0",
+              borderRadius: 9,
+              border: jsonMode ? "1px solid rgba(99,102,241,0.20)" : "1px solid transparent",
+              background: jsonMode
+                ? "linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(139,92,246,0.06) 100%)"
+                : "transparent",
+              color: jsonMode ? "#818cf8" : "#525252",
+              cursor: "pointer",
+              transition: "all 150ms ease",
+              lineHeight: 1,
+            }}
           >
-            <FileJsonIcon className="size-3.5" />
+            <FileJsonIcon style={{ width: 14, height: 14 }} />
             JSON
           </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div style={{ padding: "8px 16px" }} className="flex-1 overflow-y-auto cr-scrollbar">
+      {/* ── Content ── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px 16px 16px" }} className="cr-scrollbar">
         <AnimatePresence mode="wait">
           {jsonMode ? (
             <motion.div
@@ -184,47 +260,62 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
-              className="space-y-2"
             >
-              <div className="relative">
-                <textarea
-                  value={jsonText}
-                  onChange={(e) => {
-                    setJsonText(e.target.value);
-                    setJsonError(null);
-                  }}
-                  placeholder={`{
+              <textarea
+                value={jsonText}
+                onChange={(e) => {
+                  setJsonText(e.target.value);
+                  setJsonError(null);
+                }}
+                placeholder={`{
   "name": "My Server",
   "command": "node",
   "args": ["server.js"],
   "env": {}
 }`}
-                  className={cn(
-                    "w-full h-56 bg-[var(--cr-bg-root)] border rounded-xl px-4 py-3 text-[12px] font-mono text-[var(--cr-text-secondary)] resize-none focus:outline-none focus:ring-2 transition-all duration-200",
-                    jsonError
-                      ? "border-red-500/50 focus:ring-red-500/20"
-                      : "border-[var(--cr-border-subtle)] focus:ring-indigo-500/20 focus:border-indigo-500/30"
-                  )}
-                  spellCheck={false}
-                />
-                {/* Line numbers effect */}
-                <div className="absolute left-4 top-3 pointer-events-none">
-                  <div className="text-[10px] font-mono text-[var(--cr-text-muted)]/30 leading-[1.65]">
-                    {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => (
-                      <div key={n}>{n}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+                style={{
+                  width: "100%",
+                  height: 240,
+                  background: "#0f0f0f",
+                  border: jsonError
+                    ? "1px solid rgba(239,68,68,0.40)"
+                    : "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  fontSize: 12,
+                  fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                  color: "#a3a3a3",
+                  resize: "none",
+                  outline: "none",
+                  lineHeight: 1.65,
+                  transition: "border-color 150ms ease",
+                }}
+                spellCheck={false}
+                onFocus={(e) => {
+                  if (!jsonError) e.currentTarget.style.borderColor = "rgba(99,102,241,0.30)";
+                }}
+                onBlur={(e) => {
+                  if (!jsonError) e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
+                }}
+              />
               {jsonError && (
-                <motion.p
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center gap-1.5 text-[11px] text-red-400"
-                >
-                  <span className="size-1.5 rounded-full bg-red-400" />
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 8,
+                  fontSize: 11,
+                  color: "#f87171",
+                }}>
+                  <span style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: "#f87171",
+                    flexShrink: 0,
+                  }} />
                   {jsonError}
-                </motion.p>
+                </div>
               )}
             </motion.div>
           ) : (
@@ -234,66 +325,105 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
-              className="space-y-4"
+              style={{ display: "flex", flexDirection: "column", gap: 18 }}
             >
-              {/* Name */}
-              <div className="space-y-1.5">
-                <label className="flex items-center gap-1.5 text-[10px] text-[var(--cr-text-muted)] font-medium uppercase tracking-wider">
-                  <SparklesIcon className="size-3" />
+              {/* Server Name */}
+              <div>
+                <label style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: "#525252",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  marginBottom: 6,
+                }}>
+                  <SparklesIcon style={{ width: 12, height: 12 }} />
                   Server Name
-                  <span className="text-red-400">*</span>
+                  <span style={{ color: "#ef4444" }}>*</span>
                 </label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="My MCP Server"
-                  className="w-full bg-[var(--cr-bg-root)] border border-[var(--cr-border-subtle)] hover:border-[var(--cr-border)] focus:border-indigo-500/30 rounded-xl px-3 py-2.5 text-[12px] text-[var(--cr-text-primary)] placeholder:text-[var(--cr-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all duration-200"
+                  style={inputStyle}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(99,102,241,0.30)"; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"; }}
                 />
               </div>
 
               {/* Command */}
-              <div className="space-y-1.5">
-                <label className="flex items-center gap-1.5 text-[10px] text-[var(--cr-text-muted)] font-medium uppercase tracking-wider">
-                  <TerminalIcon className="size-3" />
+              <div>
+                <label style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: "#525252",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  marginBottom: 6,
+                }}>
+                  <TerminalIcon style={{ width: 12, height: 12 }} />
                   Command
-                  <span className="text-red-400">*</span>
+                  <span style={{ color: "#ef4444" }}>*</span>
                 </label>
                 <input
                   type="text"
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
                   placeholder="node, npx, python, etc."
-                  className="w-full bg-[var(--cr-bg-root)] border border-[var(--cr-border-subtle)] hover:border-[var(--cr-border)] focus:border-indigo-500/30 rounded-xl px-3 py-2.5 text-[12px] text-[var(--cr-text-primary)] placeholder:text-[var(--cr-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all duration-200 font-mono"
+                  style={monoInputStyle}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(99,102,241,0.30)"; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"; }}
                 />
               </div>
 
               {/* Arguments */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-[10px] text-[var(--cr-text-muted)] font-medium uppercase tracking-wider">
-                    <ListIcon className="size-3" />
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <label style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: "#525252",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}>
+                    <ListIcon style={{ width: 12, height: 12 }} />
                     Arguments
                   </label>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                  <button
                     onClick={addArg}
-                    className="flex items-center gap-1 text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: "#818cf8",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      transition: "color 150ms ease",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = "#a5b4fc"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "#818cf8"; }}
                   >
-                    <PlusIcon className="size-3" />
+                    <PlusIcon style={{ width: 12, height: 12 }} />
                     Add
-                  </motion.button>
+                  </button>
                 </div>
-                <div className="space-y-1.5">
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {args.map((arg, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="flex items-center gap-1.5"
-                    >
-                      <span className="text-[10px] text-[var(--cr-text-muted)] font-mono w-4 text-right">
+                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 10, color: "#404040", fontFamily: "monospace", width: 16, textAlign: "right", flexShrink: 0 }}>
                         {idx + 1}
                       </span>
                       <input
@@ -301,74 +431,138 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
                         value={arg}
                         onChange={(e) => updateArg(idx, e.target.value)}
                         placeholder={`argument ${idx + 1}`}
-                        className="flex-1 bg-[var(--cr-bg-root)] border border-[var(--cr-border-subtle)] hover:border-[var(--cr-border)] focus:border-indigo-500/30 rounded-lg px-3 py-2 text-[12px] text-[var(--cr-text-primary)] placeholder:text-[var(--cr-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all duration-200 font-mono"
+                        style={{ ...monoInputStyle, borderRadius: 8 }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(99,102,241,0.30)"; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"; }}
                       />
                       {args.length > 1 && (
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
+                        <button
                           onClick={() => removeArg(idx)}
-                          className="size-7 flex items-center justify-center rounded-lg text-[var(--cr-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderRadius: 6,
+                            border: "none",
+                            background: "transparent",
+                            color: "#525252",
+                            cursor: "pointer",
+                            flexShrink: 0,
+                            transition: "all 150ms ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.color = "#f87171";
+                            e.currentTarget.style.background = "rgba(239,68,68,0.08)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.color = "#525252";
+                            e.currentTarget.style.background = "transparent";
+                          }}
                         >
-                          <TrashIcon className="size-3" />
-                        </motion.button>
+                          <TrashIcon style={{ width: 12, height: 12 }} />
+                        </button>
                       )}
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               </div>
 
               {/* Environment Variables */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-[10px] text-[var(--cr-text-muted)] font-medium uppercase tracking-wider">
-                    <KeyIcon className="size-3" />
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <label style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: "#525252",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}>
+                    <KeyIcon style={{ width: 12, height: 12 }} />
                     Environment Variables
                   </label>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                  <button
                     onClick={addEnvPair}
-                    className="flex items-center gap-1 text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: "#818cf8",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      transition: "color 150ms ease",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = "#a5b4fc"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "#818cf8"; }}
                   >
-                    <PlusIcon className="size-3" />
+                    <PlusIcon style={{ width: 12, height: 12 }} />
                     Add
-                  </motion.button>
+                  </button>
                 </div>
-                <div className="space-y-1.5">
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {envPairs.map((pair, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="flex items-center gap-1.5"
-                    >
+                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <input
                         type="text"
                         value={pair.key}
                         onChange={(e) => updateEnvPair(idx, "key", e.target.value)}
                         placeholder="KEY"
-                        className="w-[35%] bg-[var(--cr-bg-root)] border border-[var(--cr-border-subtle)] hover:border-[var(--cr-border)] focus:border-emerald-500/30 rounded-lg px-3 py-2 text-[12px] text-emerald-400 placeholder:text-[var(--cr-text-muted)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200 font-mono"
+                        style={{
+                          ...monoInputStyle,
+                          width: "35%",
+                          borderRadius: 8,
+                          color: "#34d399",
+                        }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(52,211,153,0.30)"; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"; }}
                       />
-                      <span className="text-[12px] text-[var(--cr-text-muted)] font-mono">=</span>
+                      <span style={{ fontSize: 12, color: "#404040", fontFamily: "monospace" }}>=</span>
                       <input
                         type="text"
                         value={pair.value}
                         onChange={(e) => updateEnvPair(idx, "value", e.target.value)}
                         placeholder="value"
-                        className="flex-1 bg-[var(--cr-bg-root)] border border-[var(--cr-border-subtle)] hover:border-[var(--cr-border)] focus:border-indigo-500/30 rounded-lg px-3 py-2 text-[12px] text-[var(--cr-text-primary)] placeholder:text-[var(--cr-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all duration-200 font-mono"
+                        style={{ ...monoInputStyle, flex: 1, borderRadius: 8 }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(99,102,241,0.30)"; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"; }}
                       />
                       {envPairs.length > 1 && (
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
+                        <button
                           onClick={() => removeEnvPair(idx)}
-                          className="size-7 flex items-center justify-center rounded-lg text-[var(--cr-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderRadius: 6,
+                            border: "none",
+                            background: "transparent",
+                            color: "#525252",
+                            cursor: "pointer",
+                            flexShrink: 0,
+                            transition: "all 150ms ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.color = "#f87171";
+                            e.currentTarget.style.background = "rgba(239,68,68,0.08)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.color = "#525252";
+                            e.currentTarget.style.background = "transparent";
+                          }}
                         >
-                          <TrashIcon className="size-3" />
-                        </motion.button>
+                          <TrashIcon style={{ width: 12, height: 12 }} />
+                        </button>
                       )}
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -377,37 +571,87 @@ export function MCPEditor({ initialConfig, onSave, onCancel }: MCPEditorProps) {
         </AnimatePresence>
       </div>
 
-      {/* Footer */}
-      <div style={{ padding: "12px 16px" }} className="flex items-center justify-between gap-3 border-t border-[var(--cr-border)] bg-[var(--cr-bg-secondary)]/30 shrink-0">
-        <p className="text-[9px] text-[var(--cr-text-muted)]">
+      {/* ── Footer ── */}
+      <div style={{
+        padding: "12px 16px",
+        borderTop: "1px solid rgba(255,255,255,0.06)",
+        background: "#131313",
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}>
+        <p style={{ fontSize: 10, color: canSave ? "#525252" : "#404040", fontWeight: 500 }}>
           {canSave ? "Ready to save" : "Fill required fields"}
         </p>
-        <div className="flex items-center gap-2">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
             onClick={onCancel}
-            className="px-4 py-2 text-[11px] font-medium text-[var(--cr-text-secondary)] hover:text-[var(--cr-text-primary)] bg-[var(--cr-bg-secondary)] hover:bg-[var(--cr-bg-hover)] border border-[var(--cr-border-subtle)] rounded-lg transition-all duration-200"
+            style={{
+              padding: "8px 16px",
+              fontSize: 11,
+              fontWeight: 600,
+              color: "#a3a3a3",
+              background: "#1c1c1c",
+              border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 8,
+              cursor: "pointer",
+              transition: "all 150ms ease",
+              lineHeight: 1,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "#e5e5e5";
+              e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
+              e.currentTarget.style.background = "#222222";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "#a3a3a3";
+              e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
+              e.currentTarget.style.background = "#1c1c1c";
+            }}
           >
             Cancel
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: canSave ? 1.02 : 1 }}
-            whileTap={{ scale: canSave ? 0.98 : 1 }}
+          </button>
+          <button
             onClick={handleSave}
             disabled={!canSave}
-            className={cn(
-              "flex items-center gap-1.5 px-4 py-2 text-[11px] font-medium rounded-lg transition-all duration-200",
-              canSave
-                ? "bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white shadow-lg shadow-indigo-500/20"
-                : "bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-muted)] cursor-not-allowed"
-            )}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 16px",
+              fontSize: 11,
+              fontWeight: 600,
+              borderRadius: 8,
+              border: "none",
+              cursor: canSave ? "pointer" : "not-allowed",
+              transition: "all 150ms ease",
+              lineHeight: 1,
+              background: canSave
+                ? "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)"
+                : "#222222",
+              color: canSave ? "white" : "#525252",
+              boxShadow: canSave ? "0 2px 8px rgba(99,102,241,0.25)" : "none",
+              opacity: canSave ? 1 : 0.5,
+            }}
+            onMouseEnter={(e) => {
+              if (canSave) {
+                e.currentTarget.style.background = "linear-gradient(135deg, #818cf8 0%, #6366f1 100%)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(99,102,241,0.35)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (canSave) {
+                e.currentTarget.style.background = "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)";
+                e.currentTarget.style.boxShadow = "0 2px 8px rgba(99,102,241,0.25)";
+              }
+            }}
           >
-            <SaveIcon className="size-3.5" />
+            <SaveIcon style={{ width: 14, height: 14 }} />
             {isEditing ? "Update Server" : "Add Server"}
-          </motion.button>
+          </button>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
