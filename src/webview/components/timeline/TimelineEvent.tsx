@@ -10,6 +10,8 @@ import {
   PinIcon,
   LandmarkIcon,
   ShieldAlertIcon,
+  BugIcon,
+  BookOpenIcon,
   SettingsIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -44,7 +46,9 @@ const EVENT_COLORS: Record<string, string> = {
 const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
   architecture: LandmarkIcon,
   security: ShieldAlertIcon,
+  bugs: BugIcon,
   validator: ShieldCheckIcon,
+  explainer: BookOpenIcon,
   system: SettingsIcon,
 };
 

@@ -12,6 +12,18 @@ import {
   LoaderCircleIcon,
   CheckCircle2Icon,
   CircleXIcon,
+  SearchIcon,
+  FileIcon,
+  FolderTreeIcon,
+  GitCompareArrowsIcon,
+  ShieldIcon,
+  NetworkIcon,
+  TerminalIcon,
+  CheckIcon,
+  BrainIcon,
+  ScanSearchIcon,
+  GlobeIcon,
+  MessageSquareIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAgentConfig } from "@/lib/constants";
@@ -27,6 +39,7 @@ import type {
   SubAgentEventBlock,
   StatusBlock,
   AgentName,
+  ToolIcon,
 } from "@/lib/types";
 
 export interface FindingActions {
@@ -72,15 +85,41 @@ function renderInnerBlock(block: ContentBlock) {
   }
 }
 
-/** Compute a summary of tool calls for the collapsed header */
+/** Tool icon map for collapsed summary */
+const TOOL_ICON_MAP: Record<ToolIcon, React.FC<{ className?: string }>> = {
+  search: SearchIcon,
+  file: FileIcon,
+  tree: FolderTreeIcon,
+  "git-diff": GitCompareArrowsIcon,
+  shield: ShieldIcon,
+  graph: NetworkIcon,
+  terminal: TerminalIcon,
+  check: CheckIcon,
+  brain: BrainIcon,
+  scan: ScanSearchIcon,
+  bug: BugIcon,
+  web: GlobeIcon,
+};
+
+/** Compute a summary of tool calls, messages, and unique tool icons for the collapsed header */
 function useToolSummary(blocks: ContentBlock[]) {
   return useMemo(() => {
-    const toolCalls = blocks.filter(
+    const toolCallBlocks = blocks.filter(
       (b): b is ToolCallBlock => b.kind === "tool_call"
-    ).length;
+    );
+    const toolCalls = toolCallBlocks.length;
     const findings = blocks.filter((b) => b.kind === "finding_card").length;
     const thinking = blocks.filter((b) => b.kind === "thinking").length;
-    return { toolCalls, findings, thinking };
+    const messages = blocks.filter((b) => b.kind === "text").length;
+
+    // Collect unique tool icons used
+    const iconSet = new Set<ToolIcon>();
+    for (const tc of toolCallBlocks) {
+      if (tc.icon) iconSet.add(tc.icon);
+    }
+    const uniqueIcons = Array.from(iconSet);
+
+    return { toolCalls, findings, thinking, messages, uniqueIcons };
   }, [blocks]);
 }
 
@@ -219,6 +258,32 @@ export function ChatMessage({
             />
           )}
         </button>
+
+        {/* Collapsed summary — tool/message count + unique tool icons */}
+        {shouldCollapse && !expanded && (
+          <div className="flex items-center gap-2 pl-[18px] pb-1">
+            <span className="text-[10px] text-[var(--cr-text-ghost)]">
+              {summary.toolCalls} tool call{summary.toolCalls !== 1 ? "s" : ""}
+              {summary.messages > 0 && `, ${summary.messages} message${summary.messages !== 1 ? "s" : ""}`}
+            </span>
+            {summary.uniqueIcons.length > 0 && (
+              <div className="flex items-center gap-1">
+                {summary.uniqueIcons.map((icon) => {
+                  const Ic = TOOL_ICON_MAP[icon];
+                  return Ic ? (
+                    <Ic
+                      key={icon}
+                      className="size-3 text-[var(--cr-text-ghost)]"
+                    />
+                  ) : null;
+                })}
+                {summary.messages > 0 && (
+                  <MessageSquareIcon className="size-3 text-[var(--cr-text-ghost)]" />
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Inner blocks — flow directly */}
         <AnimatePresence initial={false}>
