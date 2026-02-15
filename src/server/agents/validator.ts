@@ -199,7 +199,7 @@ Set confidence to 0 for false positives. Add explanation for any changes.`;
     onThinking: callbacks.onThinking,
     onEvent: callbacks.onEvent,
     maxTurns: 50,
-    model: "claude-opus-4-5-20250120", // Opus 4.6 for deep challenge validation
+    model: "claude-haiku-4-5-20251001", // Haiku 4.5 for fast challenge validation
     // Validator must also investigate — force it to read files and verify claims
     forcedToolTurns: 2,
     signal,
@@ -251,7 +251,7 @@ Use the crp_patch_validate tool with patchId "${patchId}" to validate.`;
     onText: callbacks.onText,
     onEvent: callbacks.onEvent,
     maxTurns: 20,
-    model: "claude-opus-4-5-20250120", // Opus 4.6 for thorough patch validation
+    model: "claude-haiku-4-5-20251001", // Haiku 4.5 for patch validation
   });
 
   // Check the patch validation status from the store
