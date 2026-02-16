@@ -1,5 +1,4 @@
 import { motion, AnimatePresence } from "motion/react";
-import { cn } from "@/lib/utils";
 import { DiffViewer } from "./DiffViewer";
 import type { Patch } from "@/lib/types";
 
@@ -23,17 +22,29 @@ export function PatchPreview({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className={cn(
-            "fixed inset-0 z-50 flex items-center justify-center p-4",
-            className
-          )}
+          className={className}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 50,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
         >
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0, 0, 0, 0.70)",
+              backdropFilter: "blur(4px)",
+              WebkitBackdropFilter: "blur(4px)",
+            }}
             onClick={onDismiss}
           />
 
@@ -43,41 +54,128 @@ export function PatchPreview({
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 10 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            className="relative z-10 w-full max-w-lg max-h-[80vh] flex flex-col rounded-xl border border-[var(--cr-border-strong)] bg-[var(--cr-bg-secondary)] shadow-2xl overflow-hidden"
+            style={{
+              position: "relative",
+              zIndex: 10,
+              width: "100%",
+              maxWidth: 520,
+              maxHeight: "80vh",
+              display: "flex",
+              flexDirection: "column",
+              borderRadius: "var(--cr-radius-xl)",
+              border: "1px solid var(--cr-border-strong)",
+              background: "var(--cr-bg-secondary)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.3)",
+              overflow: "hidden",
+            }}
           >
             {/* Header */}
-            <div className="px-4 py-3 border-b border-[var(--cr-border)] flex items-center justify-between">
+            <div
+              style={{
+                padding: "12px 16px",
+                borderBottom: "1px solid var(--cr-border)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexShrink: 0,
+              }}
+            >
               <div>
-                <h3 className="text-sm font-semibold text-[var(--cr-text-primary)]">
+                <h3
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "var(--cr-text-primary)",
+                    margin: 0,
+                  }}
+                >
                   Patch Proposal
                 </h3>
-                <p className="text-[11px] text-[var(--cr-text-muted)] mt-0.5 font-mono">
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: "var(--cr-text-muted)",
+                    marginTop: 2,
+                    fontFamily: "var(--cr-font-mono)",
+                  }}
+                >
                   Finding: {patch.findingId}
                 </p>
               </div>
               {patch.validated ? (
-                <span className="text-[10px] font-medium bg-emerald-500/15 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    background: "rgba(52, 211, 153, 0.12)",
+                    color: "#6ee7b7",
+                    padding: "3px 10px",
+                    borderRadius: "var(--cr-radius-full)",
+                    border: "1px solid rgba(52, 211, 153, 0.20)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   Validated
                 </span>
               ) : (
-                <span className="text-[10px] font-medium bg-yellow-500/15 text-yellow-300 px-2.5 py-0.5 rounded-full border border-yellow-500/20">
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    background: "rgba(234, 179, 8, 0.12)",
+                    color: "#fde047",
+                    padding: "3px 10px",
+                    borderRadius: "var(--cr-radius-full)",
+                    border: "1px solid rgba(234, 179, 8, 0.20)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   Pending Validation
                 </span>
               )}
             </div>
 
-            {/* Diff */}
-            <div className="flex-1 overflow-y-auto p-4">
+            {/* Diff body — scrollable */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: 16,
+                minHeight: 0,
+              }}
+              className="thin-scrollbar"
+            >
               <DiffViewer diff={patch.diff} />
               {patch.validationMessage && (
-                <p className="mt-3 text-xs text-[var(--cr-text-muted)] bg-[var(--cr-bg-tertiary)] rounded-lg p-3 border border-[var(--cr-border-subtle)]">
+                <p
+                  style={{
+                    marginTop: 12,
+                    fontSize: 12,
+                    color: "var(--cr-text-muted)",
+                    background: "var(--cr-bg-tertiary)",
+                    borderRadius: "var(--cr-radius-lg)",
+                    padding: 12,
+                    border: "1px solid var(--cr-border-subtle)",
+                    lineHeight: 1.5,
+                  }}
+                >
                   {patch.validationMessage}
                 </p>
               )}
             </div>
 
-            {/* Actions */}
-            <div className="px-4 py-3 border-t border-[var(--cr-border)] flex gap-2 justify-end">
+            {/* Footer actions — sticky bottom */}
+            <div
+              style={{
+                padding: "12px 16px",
+                borderTop: "1px solid var(--cr-border)",
+                display: "flex",
+                gap: 8,
+                justifyContent: "flex-end",
+                flexShrink: 0,
+                background: "var(--cr-bg-secondary)",
+              }}
+            >
               <button
                 onClick={onDismiss}
                 className="cr-btn cr-btn-secondary"
@@ -87,12 +185,21 @@ export function PatchPreview({
               <button
                 onClick={() => onApply?.(patch.id)}
                 disabled={!patch.validated}
-                className={cn(
-                  "cr-btn",
+                className={
                   patch.validated
-                    ? "cr-btn-emerald"
-                    : "bg-[var(--cr-bg-tertiary)] text-[var(--cr-text-muted)] cursor-not-allowed border-[var(--cr-border-subtle)]"
-                )}
+                    ? "cr-btn cr-btn-emerald"
+                    : "cr-btn"
+                }
+                style={
+                  !patch.validated
+                    ? {
+                        background: "var(--cr-bg-tertiary)",
+                        color: "var(--cr-text-muted)",
+                        cursor: "not-allowed",
+                        borderColor: "var(--cr-border-subtle)",
+                      }
+                    : undefined
+                }
               >
                 Apply Patch
               </button>

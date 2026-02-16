@@ -30,6 +30,7 @@ interface FindingsGridProps {
   onSendToCodingAgent?: (findingId: string, agentId: string) => void;
   onMarkFixed?: (findingId: string) => void;
   onReReview?: () => void;
+  className?: string;
 }
 
 export function FindingsGrid({
@@ -43,6 +44,7 @@ export function FindingsGrid({
   onSendToCodingAgent,
   onMarkFixed,
   onReReview,
+  className,
 }: FindingsGridProps) {
   const [filter, setFilter] = useState<FilterOption>("all");
   const [selectionMode, setSelectionMode] = useState(false);
@@ -119,7 +121,7 @@ export function FindingsGrid({
 
   if (findings.length === 0) {
     return (
-      <div style={{
+      <div className={className} style={{
         height: "100%",
         display: "flex",
         flexDirection: "column",
@@ -141,7 +143,7 @@ export function FindingsGrid({
   }
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div className={className} style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       {/* ═══ Summary Header ═══ */}
       <div style={{ padding: "16px 16px 10px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
