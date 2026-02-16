@@ -195,6 +195,7 @@ server.tool(
   },
   async (args) => {
     const { runId, ...patchArgs } = args;
+    await ensureRepoOpen({ runId });
     const result = await patchPropose(patchArgs, store, runId);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -207,6 +208,7 @@ server.tool(
     patchId: z.string().describe("ID of the patch to validate"),
   },
   async (args) => {
+    await ensureRepoOpen();
     const result = await patchValidate(args, store);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -221,15 +223,18 @@ server.tool(
     runId: z.string().describe("Review run ID"),
     type: z.enum([
       "agent_started",
+      "agent_completed",
       "evidence_collected",
       "finding_emitted",
+      "finding_explained",
       "patch_proposed",
       "patch_validated",
       "human_accepted",
       "human_rejected",
       "false_positive_marked",
+      "issue_fixed",
     ]).describe("Event type"),
-    agent: z.enum(["architecture", "security", "validator"]).optional().describe("Agent name"),
+    agent: z.enum(["architecture", "security", "validator", "bugs", "explainer", "system"]).optional().describe("Agent name"),
     data: z.record(z.unknown()).describe("Event data"),
   },
   async (args) => {
@@ -308,6 +313,7 @@ server.tool(
     patchId: z.string().describe("ID of the patch to apply"),
   },
   async (args) => {
+    await ensureRepoOpen();
     const result = await applyPatchToFile(args.patchId, store);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   }
@@ -617,7 +623,13 @@ async function main() {
   }
 }
 
+// Ensure database is cleanly closed on process exit
+process.on("SIGINT", () => { store.close(); process.exit(0); });
+process.on("SIGTERM", () => { store.close(); process.exit(0); });
+process.on("exit", () => { try { store.close(); } catch { /* already closed */ } });
+
 main().catch((err) => {
   console.error("Fatal error:", err);
+  store.close();
   process.exit(1);
 });

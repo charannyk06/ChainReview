@@ -16,7 +16,8 @@ export type EventType =
   | "patch_validated"
   | "human_accepted"
   | "human_rejected"
-  | "false_positive_marked";
+  | "false_positive_marked"
+  | "issue_fixed";
 
 // ── Review Run ──
 

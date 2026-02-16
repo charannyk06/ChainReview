@@ -2,19 +2,22 @@
 // Mirrors the server types for the extension host context
 
 export type ReviewMode = "repo" | "diff";
-export type AgentName = "architecture" | "security" | "validator" | "system";
+export type AgentName = "architecture" | "security" | "validator" | "bugs" | "explainer" | "system";
 export type FindingSeverity = "critical" | "high" | "medium" | "low" | "info";
 export type FindingCategory = "architecture" | "security" | "bugs";
 
 export type EventType =
   | "agent_started"
+  | "agent_completed"
   | "evidence_collected"
   | "finding_emitted"
+  | "finding_explained"
   | "patch_proposed"
   | "patch_validated"
   | "human_accepted"
   | "human_rejected"
-  | "false_positive_marked";
+  | "false_positive_marked"
+  | "issue_fixed";
 
 export interface Evidence {
   filePath: string;
