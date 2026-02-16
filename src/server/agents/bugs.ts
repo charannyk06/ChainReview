@@ -449,7 +449,12 @@ Begin your investigation now. Use tools aggressively.`;
 
   // NOTE: The orchestrator already emits agent_started for bugs — don't duplicate it here.
 
-  await runAgentLoop({
+  // The bugs agent uses emit_finding tool for real-time finding emission.
+  // We skip the FINDING_EXTRACTION_PROMPT to avoid conflicting instructions
+  // (which tell the model to output <findings> tags instead of calling emit_finding).
+  // We still capture runAgentLoop's return as a fallback — if the model outputs
+  // <findings> tags despite our instructions, we merge those into the findings array.
+  const textExtractedFindings = await runAgentLoop({
     name: "bugs",
     systemPrompt: SYSTEM_PROMPT,
     userPrompt: initialMessage,
@@ -461,7 +466,22 @@ Begin your investigation now. Use tools aggressively.`;
     maxTurns: 25,
     signal,
     forcedToolTurns: 5,
+    skipFindingExtractionPrompt: true,
   });
+
+  // Merge text-extracted findings (fallback) with tool-emitted findings,
+  // deduplicating by title to avoid reporting the same bug twice.
+  if (textExtractedFindings.length > 0) {
+    const existingTitles = new Set(findings.map((f) => f.title.toLowerCase()));
+    for (const tf of textExtractedFindings) {
+      if (!existingTitles.has(tf.title.toLowerCase())) {
+        // Ensure category is "bugs" for text-extracted findings
+        tf.category = "bugs";
+        findings.push(tf);
+        callbacks.onFinding(tf);
+      }
+    }
+  }
 
   // Emit completion event
   callbacks.onEvent({

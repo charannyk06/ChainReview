@@ -359,7 +359,7 @@ export async function runReview(
     // Helper to store+emit findings for an agent (with dedup)
     function processFindings(
       agentFindings: AgentFinding[],
-      agentName: "architecture" | "security" | "validator"
+      agentName: "architecture" | "security" | "validator" | "bugs"
     ) {
       for (const af of agentFindings) {
         const evidence = af.evidence || [];

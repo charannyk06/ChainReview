@@ -201,17 +201,12 @@ export async function runExplainerAgent(
 - **Category:** ${f.category}
 - **Severity:** ${f.severity}
 - **Confidence:** ${f.confidence}
-- **File:** ${f.filePath}${f.lineStart ? `:${f.lineStart}` : ""}${f.lineEnd ? `-${f.lineEnd}` : ""}
-- **Agent:** ${f.agentId}
+- **Agent:** ${f.agent}
+- **Evidence:**
+${f.evidence.length > 0 ? f.evidence.map(e => `  - ${e.filePath}:${e.startLine}-${e.endLine}: ${e.snippet.slice(0, 200)}`).join("\n") : "  None provided"}
 
 **Description:**
 ${f.description}
-
-**Evidence:**
-${f.evidence || "None provided"}
-
-**Suggested Fix:**
-${f.suggestedFix || "None provided"}
 `).join("\n---\n");
 
   const initialMessage = `You have received ${findings.length} validated finding(s) from the code review. Your task is to explain each one clearly for developers and stakeholders.
