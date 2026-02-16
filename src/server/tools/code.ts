@@ -1,5 +1,6 @@
+import * as fs from "fs";
 import * as path from "path";
-import { execFile } from "child_process";
+import { execFile, execSync as nodeExecSync } from "child_process";
 import { promisify } from "util";
 import { Project, SourceFile } from "ts-morph";
 import { getActiveRepoPath } from "./repo";
@@ -110,8 +111,7 @@ function resolveImport(
       const candidate = relative + ext;
       const fullPath = path.join(repoPath, candidate);
       try {
-        const { statSync } = require("fs");
-        const stat = statSync(fullPath);
+        const stat = fs.statSync(fullPath);
         if (stat.isFile()) {
           return candidate;
         }
@@ -250,7 +250,7 @@ export async function codePatternScan(args: {
  *  Accepts an optional AbortSignal to kill the child process externally (e.g. on timeout). */
 function runSemgrep(bin: string, args: string[], signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    const { execFile: exec } = require("child_process");
+    const exec = execFile;
     // Ensure child process inherits augmented PATH so semgrep can find its dependencies
     const env = { ...process.env };
     const currentPath = env.PATH || "";
@@ -332,7 +332,6 @@ function parseSemgrepOutput(
 
 /** Find the semgrep binary, checking common paths on macOS */
 function findSemgrepBinary(): string | null {
-  const { existsSync } = require("fs");
   const candidates = [
     "semgrep",                              // on PATH
     "/opt/homebrew/bin/semgrep",            // macOS ARM homebrew
@@ -344,13 +343,12 @@ function findSemgrepBinary(): string | null {
     // For bare "semgrep", check if it's on PATH
     if (candidate === "semgrep") {
       try {
-        const { execSync } = require("child_process");
-        const result = execSync("which semgrep", { encoding: "utf-8" }).trim();
+        const result = nodeExecSync("which semgrep", { encoding: "utf-8" }).trim();
         if (result) return result;
       } catch {
         continue;
       }
-    } else if (existsSync(candidate)) {
+    } else if (fs.existsSync(candidate)) {
       return candidate;
     }
   }

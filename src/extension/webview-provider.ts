@@ -282,7 +282,14 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         ? filePath
         : path.join(workspaceFolder, filePath);
 
-      const uri = vscode.Uri.file(fullPath);
+      // Prevent path traversal — resolved path must stay within workspace
+      const resolved = path.resolve(fullPath);
+      if (!resolved.startsWith(workspaceFolder + path.sep) && resolved !== workspaceFolder) {
+        console.error("ChainReview: blocked path traversal attempt:", filePath);
+        return;
+      }
+
+      const uri = vscode.Uri.file(resolved);
       const doc = await vscode.workspace.openTextDocument(uri);
       const editor = await vscode.window.showTextDocument(doc, {
         preview: true,
@@ -2388,10 +2395,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 }
 
 function getNonce(): string {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
+  // Use cryptographically secure random bytes for CSP nonce
+  const crypto = require("crypto");
+  return crypto.randomBytes(16).toString("hex");
 }

@@ -31,7 +31,11 @@ export function useVSCodeAPI(onMessage?: (message: ExtensionMessage) => void) {
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
-      callbackRef.current?.(event.data as ExtensionMessage);
+      // Validate message shape before processing — prevent untrusted messages
+      const data = event.data;
+      if (data && typeof data === "object" && typeof data.type === "string") {
+        callbackRef.current?.(data as ExtensionMessage);
+      }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);

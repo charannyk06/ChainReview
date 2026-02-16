@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as path from "path";
 
 // Global repo path set by repoOpen
@@ -145,7 +145,11 @@ export async function execCommand(args: {
   }
 
   try {
-    const output = execSync(command, {
+    // Use execFileSync to avoid shell interpretation — prevents command injection entirely
+    const parts = command.trim().split(/\s+/);
+    const cmd = parts[0];
+    const cmdArgs = parts.slice(1);
+    const output = execFileSync(cmd, cmdArgs, {
       cwd,
       timeout,
       maxBuffer: 1024 * 1024, // 1MB
