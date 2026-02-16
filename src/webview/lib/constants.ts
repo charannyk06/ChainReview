@@ -230,23 +230,33 @@ export function getCategoryConfig(category: string) {
 /** Only these event types are meaningful milestones shown in the timeline */
 export const MILESTONE_EVENTS: Set<EventType> = new Set([
   "agent_started",
+  "agent_completed",
   "finding_emitted",
+  "finding_explained",
   "patch_proposed",
   "patch_validated",
+  "patch_generated",
   "human_accepted",
   "human_rejected",
   "false_positive_marked",
   "issue_fixed",
+  "handoff_to_agent",
+  "validation_completed",
 ]);
 
 export const EVENT_LABELS: Record<string, string> = {
   agent_started: "Agent Started",
+  agent_completed: "Agent Completed",
   evidence_collected: "Evidence Collected",
   finding_emitted: "Finding Emitted",
+  finding_explained: "Finding Explained",
   patch_proposed: "Patch Proposed",
   patch_validated: "Patch Validated",
-  human_accepted: "Accepted",
-  human_rejected: "Rejected",
+  patch_generated: "Fix Generated",
+  human_accepted: "Patch Applied",
+  human_rejected: "Patch Dismissed",
   false_positive_marked: "Marked False Positive",
   issue_fixed: "Issue Fixed",
+  handoff_to_agent: "Handed Off",
+  validation_completed: "Verification Complete",
 };
