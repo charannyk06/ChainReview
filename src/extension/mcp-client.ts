@@ -242,6 +242,11 @@ export class CrpClient {
   }
 
   private _processStderrBuffer() {
+    // Prevent unbounded buffer growth — cap at 64KB
+    if (this._stderrBuffer.length > 65536) {
+      const cutoff = this._stderrBuffer.lastIndexOf("\n", 65536);
+      this._stderrBuffer = cutoff > 0 ? this._stderrBuffer.slice(cutoff + 1) : this._stderrBuffer.slice(-16384);
+    }
     const lines = this._stderrBuffer.split("\n");
     // Keep the last incomplete line in the buffer
     this._stderrBuffer = lines.pop() || "";
@@ -309,24 +314,24 @@ export class CrpClient {
       args.agents = agents;
     }
     const result = await this.callTool("crp.review.run", args);
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.review.run");
   }
 
   // ── Repo Tools ──
 
   async repoOpen(repoPath: string): Promise<{ path: string; name: string; branch: string }> {
     const result = await this.callTool("crp.repo.open", { repoPath });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.repo.open");
   }
 
   async repoTree(): Promise<{ files: string[]; totalFiles: number }> {
     const result = await this.callTool("crp.repo.tree", {});
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.repo.tree");
   }
 
   async repoFile(filePath: string): Promise<{ content: string; lineCount: number }> {
     const result = await this.callTool("crp.repo.file", { path: filePath });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.repo.file");
   }
 
   // ── Patch Tools ──
@@ -347,17 +352,17 @@ export class CrpClient {
       patchedCode,
       description,
     });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.patch.propose");
   }
 
   async validatePatch(patchId: string): Promise<{ validated: boolean; message: string }> {
     const result = await this.callTool("crp.patch.validate", { patchId });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.patch.validate");
   }
 
   async applyPatch(patchId: string): Promise<{ success: boolean; message: string }> {
     const result = await this.callTool("crp.patch.apply", { patchId });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.patch.apply");
   }
 
   // ── Audit Tools ──
@@ -374,19 +379,19 @@ export class CrpClient {
       agent,
       data,
     });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.review.record_event");
   }
 
   // ── Query Tools ──
 
   async getFindings(runId: string): Promise<Finding[]> {
     const result = await this.callTool("crp.review.get_findings", { runId });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.review.get_findings");
   }
 
   async getEvents(runId: string): Promise<AuditEvent[]> {
     const result = await this.callTool("crp.review.get_events", { runId });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.review.get_events");
   }
 
   // ── History Tools ──
@@ -404,12 +409,12 @@ export class CrpClient {
     highCount: number;
   }>> {
     const result = await this.callTool("crp.review.list_runs", { limit });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.review.list_runs");
   }
 
   async deleteRun(runId: string): Promise<{ deleted: boolean; runId: string }> {
     const result = await this.callTool("crp.review.delete_run", { runId });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.review.delete_run");
   }
 
   // ── Chat Message Persistence ──
@@ -419,12 +424,12 @@ export class CrpClient {
       runId,
       messagesJson: JSON.stringify(messages),
     });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.review.save_chat_messages");
   }
 
   async getChatMessages(runId: string): Promise<unknown[]> {
     const result = await this.callTool("crp.review.get_chat_messages", { runId });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.review.get_chat_messages");
   }
 
   // ── Chat Query ──
@@ -440,7 +445,7 @@ export class CrpClient {
       args.conversationHistory = conversationHistory;
     }
     const result = await this.callTool("crp.chat.query", args);
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.chat.query");
   }
 
   // ── LLM-Powered Patch Generation ──
@@ -452,7 +457,7 @@ export class CrpClient {
     findingDescription: string;
   }): Promise<{ patchedCode: string; explanation: string }> {
     const result = await this.callTool("crp.patch.generate", args);
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.patch.generate");
   }
 
   // ── Finding Validation (Real Validator Agent) ──
@@ -465,7 +470,18 @@ export class CrpClient {
     toolCalls: Array<{ tool: string; args: Record<string, unknown>; result: string }>;
   }> {
     const result = await this.callTool("crp.review.validate_finding", { findingJson });
-    return JSON.parse(result);
+    return this.parseToolResult(result, "crp.review.validate_finding");
+  }
+
+  // ── Internal Helpers ──
+
+  /** Safely parse JSON from a tool result, providing a meaningful error on failure. */
+  private parseToolResult<T>(result: string, toolName: string): T {
+    try {
+      return JSON.parse(result);
+    } catch (err: any) {
+      throw new Error(`Failed to parse response from ${toolName}: ${err.message}`);
+    }
   }
 
   // ── Low-level ──

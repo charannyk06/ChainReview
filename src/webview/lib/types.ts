@@ -41,14 +41,19 @@ export interface Patch {
 
 export type EventType =
   | "agent_started"
+  | "agent_completed"
   | "evidence_collected"
   | "finding_emitted"
+  | "finding_explained"
   | "patch_proposed"
   | "patch_validated"
+  | "patch_generated"
   | "human_accepted"
   | "human_rejected"
   | "false_positive_marked"
-  | "issue_fixed";
+  | "issue_fixed"
+  | "handoff_to_agent"
+  | "validation_completed";
 
 export interface AuditEvent {
   id: string;

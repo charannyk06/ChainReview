@@ -37,8 +37,13 @@ export function AuditTimeline({ events, className }: AuditTimelineProps) {
     const c = { findings: 0, patches: 0, actions: 0 };
     for (const e of milestones) {
       if (e.type === "finding_emitted") c.findings++;
-      else if (e.type === "patch_proposed" || e.type === "patch_validated") c.patches++;
-      else if (e.type === "human_accepted" || e.type === "human_rejected" || e.type === "false_positive_marked") c.actions++;
+      else if (e.type === "patch_proposed" || e.type === "patch_validated" || e.type === "patch_generated") c.patches++;
+      else if (
+        e.type === "human_accepted" || e.type === "human_rejected" ||
+        e.type === "false_positive_marked" || e.type === "issue_fixed" ||
+        e.type === "finding_explained" || e.type === "handoff_to_agent" ||
+        e.type === "validation_completed"
+      ) c.actions++;
     }
     return c;
   }, [milestones]);

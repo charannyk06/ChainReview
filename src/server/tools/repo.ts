@@ -317,6 +317,13 @@ async function _searchWithGrep(
 
 // ── crp.repo.diff ──
 
+/** Validate that a git ref argument is safe (no shell metacharacters or flags) */
+function isValidGitRef(ref: string): boolean {
+  // Allow alphanumeric, dots, slashes, dashes, underscores, tildes, carets, colons
+  // Reject anything that looks like a flag (--) or contains shell metacharacters
+  return /^[a-zA-Z0-9._\/\-~^:@{}]+$/.test(ref) && !ref.startsWith("-");
+}
+
 export async function repoDiff(args: {
   ref1?: string;
   ref2?: string;
@@ -324,6 +331,14 @@ export async function repoDiff(args: {
 }): Promise<{ diff: string; filesChanged: number }> {
   const repoPath = getActiveRepoPath();
   const git = simpleGit(repoPath);
+
+  // Validate git refs to prevent argument injection
+  if (args.ref1 && !isValidGitRef(args.ref1)) {
+    throw new Error(`Invalid git ref: ${args.ref1}`);
+  }
+  if (args.ref2 && !isValidGitRef(args.ref2)) {
+    throw new Error(`Invalid git ref: ${args.ref2}`);
+  }
 
   let diff: string;
 

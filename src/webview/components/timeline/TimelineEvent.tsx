@@ -14,6 +14,11 @@ import {
   BookOpenIcon,
   SettingsIcon,
   CheckCircle2Icon,
+  WrenchIcon,
+  SendIcon,
+  SearchCheckIcon,
+  FlagIcon,
+  LightbulbIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAgentConfig, EVENT_LABELS } from "@/lib/constants";
@@ -26,24 +31,34 @@ interface TimelineEventProps {
 
 const EVENT_ICONS: Record<string, React.FC<{ className?: string }>> = {
   agent_started: RocketIcon,
+  agent_completed: FlagIcon,
   finding_emitted: ClipboardListIcon,
+  finding_explained: LightbulbIcon,
   patch_proposed: BandageIcon,
   patch_validated: ShieldCheckIcon,
+  patch_generated: WrenchIcon,
   human_accepted: ThumbsUpIcon,
   human_rejected: ThumbsDownIcon,
   false_positive_marked: BanIcon,
   issue_fixed: CheckCircle2Icon,
+  handoff_to_agent: SendIcon,
+  validation_completed: SearchCheckIcon,
 };
 
 const EVENT_COLORS: Record<string, string> = {
   agent_started: "bg-indigo-500",
+  agent_completed: "bg-indigo-400",
   finding_emitted: "bg-orange-500",
+  finding_explained: "bg-sky-500",
   patch_proposed: "bg-purple-500",
   patch_validated: "bg-emerald-500",
+  patch_generated: "bg-violet-500",
   human_accepted: "bg-emerald-400",
   human_rejected: "bg-red-400",
   false_positive_marked: "bg-[var(--cr-text-muted)]",
   issue_fixed: "bg-emerald-500",
+  handoff_to_agent: "bg-amber-500",
+  validation_completed: "bg-teal-500",
 };
 
 const AGENT_ICONS: Record<AgentName, React.FC<{ className?: string }>> = {
@@ -68,11 +83,15 @@ function getEventSummary(event: AuditEvent): string | null {
   switch (event.type) {
     case "agent_started":
       return (data?.message as string) || null;
+    case "agent_completed":
+      return (data?.message as string) || "Agent finished analysis";
     case "finding_emitted": {
       const title = data?.title as string;
       const severity = data?.severity as string;
       return title ? `${severity ? `[${severity.toUpperCase()}] ` : ""}${title}` : null;
     }
+    case "finding_explained":
+      return (data?.findingTitle as string) ? `Explained: ${data.findingTitle as string}` : "Finding explained";
     case "patch_proposed":
       return (data?.filePath as string) || (data?.description as string) || null;
     case "patch_validated": {
@@ -86,13 +105,38 @@ function getEventSummary(event: AuditEvent): string | null {
       }
       return title ? `Validated: ${title}` : "Finding validated";
     }
+    case "patch_generated":
+      return (data?.findingTitle as string) ? `Generated fix: ${data.findingTitle as string}` : "Fix generated";
     case "human_accepted":
+      return (data?.findingTitle as string)
+        ? `Applied: ${data.findingTitle as string}`
+        : (data?.patchId as string) ? `Patch: ${(data.patchId as string).slice(0, 12)}...` : "Patch applied";
     case "human_rejected":
-      return (data?.patchId as string) ? `Patch: ${(data.patchId as string).slice(0, 12)}...` : null;
+      return (data?.findingTitle as string)
+        ? `Dismissed: ${data.findingTitle as string}`
+        : (data?.patchId as string) ? `Patch: ${(data.patchId as string).slice(0, 12)}...` : "Patch dismissed";
     case "false_positive_marked":
-      return (data?.findingId as string) ? `Finding marked as false positive` : null;
+      return (data?.findingTitle as string) ? `${data.findingTitle as string}` : "Finding marked as false positive";
     case "issue_fixed":
       return (data?.findingTitle as string) ? `Fixed: ${data.findingTitle as string}` : "Finding marked as fixed";
+    case "handoff_to_agent": {
+      const agent = data?.targetAgent as string;
+      const title = data?.findingTitle as string;
+      return title ? `${title} → ${agent || "external agent"}` : `Handed off to ${agent || "external agent"}`;
+    }
+    case "validation_completed": {
+      const verdict = data?.verdict as string;
+      const title = data?.findingTitle as string;
+      const verdictLabel: Record<string, string> = {
+        still_present: "Still Present",
+        partially_fixed: "Partially Fixed",
+        fixed: "Fixed ✓",
+        unable_to_determine: "Inconclusive",
+      };
+      return title
+        ? `${title} — ${verdictLabel[verdict] || verdict || "Verified"}`
+        : `Verdict: ${verdictLabel[verdict] || verdict || "Verified"}`;
+    }
     default:
       return null;
   }

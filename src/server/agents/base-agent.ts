@@ -148,6 +148,14 @@ export interface AgentLoopOptions {
   enableConfidenceCheck?: boolean;
   /** Maximum extra confidence rounds (default: 2) */
   maxConfidenceRounds?: number;
+  /**
+   * Skip appending the FINDING_EXTRACTION_PROMPT to the user prompt.
+   * Use for agents that have their own finding emission mechanism (e.g., bugs agent's emit_finding tool).
+   * When true, the agent loop still returns text-extracted findings as a fallback,
+   * but doesn't inject conflicting instructions about <findings> tags.
+   * Default: false
+   */
+  skipFindingExtractionPrompt?: boolean;
 }
 
 const FINDING_EXTRACTION_PROMPT = `
@@ -211,7 +219,9 @@ export async function runAgentLoop(
   const messages: MessageParam[] = [
     {
       role: "user",
-      content: opts.userPrompt + FINDING_EXTRACTION_PROMPT,
+      content: opts.skipFindingExtractionPrompt
+        ? opts.userPrompt
+        : opts.userPrompt + FINDING_EXTRACTION_PROMPT,
     },
   ];
 
@@ -503,14 +513,22 @@ function evaluateInvestigationQuality(
 }
 
 function extractFindings(text: string): AgentFinding[] {
-  // Try to extract from <findings> tags
-  const tagMatch = text.match(/<findings>([\s\S]*?)<\/findings>/);
-  if (tagMatch) {
+  // Try to extract from ALL <findings> tags and merge results
+  const tagRegex = /<findings>([\s\S]*?)<\/findings>/g;
+  const allTagFindings: AgentFinding[] = [];
+  let tagMatch;
+  while ((tagMatch = tagRegex.exec(text)) !== null) {
     try {
-      return JSON.parse(tagMatch[1]);
+      const parsed = JSON.parse(tagMatch[1]);
+      if (Array.isArray(parsed)) {
+        allTagFindings.push(...parsed);
+      }
     } catch {
-      // Fall through to other extraction methods
+      // Skip malformed blocks, continue to next
     }
+  }
+  if (allTagFindings.length > 0) {
+    return allTagFindings;
   }
 
   // Try to find a JSON array in the text

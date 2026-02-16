@@ -19,7 +19,9 @@ export async function patchPropose(
   const repoPath = getActiveRepoPath();
   const fullPath = path.resolve(repoPath, args.filePath);
 
-  if (!fullPath.startsWith(repoPath)) {
+  // Secure path traversal check using path.relative (consistent with patchValidate/applyPatchToFile)
+  const relative = path.relative(repoPath, fullPath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error("Path traversal detected");
   }
 
@@ -132,6 +134,10 @@ export async function applyPatchToFile(patchId: string, store: Store): Promise<{
   const relative = path.relative(repoPath, filePath);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     return { success: false, message: "Path traversal detected" };
+  }
+
+  if (!fs.existsSync(filePath)) {
+    return { success: false, message: `File not found: ${parsed.filePath}` };
   }
 
   const originalContent = fs.readFileSync(filePath, "utf-8");

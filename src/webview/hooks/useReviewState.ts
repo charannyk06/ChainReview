@@ -69,7 +69,7 @@ function reducer(state: ReviewState, action: Action): ReviewState {
       return { ...initialState, status: "running", mode: action.mode, mcpServers: state.mcpServers, fixedFindingIds: new Set() };
 
     case "START_CHAT":
-      return { ...initialState, status: "chatting", mcpServers: state.mcpServers };
+      return { ...initialState, status: "chatting", mcpServers: state.mcpServers, validatingFindings: new Set(), dismissedFindingIds: new Set(), fixedFindingIds: new Set() };
 
     case "ADD_BLOCK": {
       const block = action.block;
@@ -379,7 +379,7 @@ function reducer(state: ReviewState, action: Action): ReviewState {
     }
 
     case "CLEAR_CHAT":
-      return { ...initialState, mcpServers: state.mcpServers };
+      return { ...initialState, mcpServers: state.mcpServers, validatingFindings: new Set(), dismissedFindingIds: new Set(), fixedFindingIds: new Set() };
 
     default:
       return state;

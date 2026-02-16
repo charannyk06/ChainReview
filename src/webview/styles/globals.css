@@ -103,35 +103,7 @@ body {
 
 ::selection { background: rgba(99, 102, 241, 0.3); color: #fff; }
 
-/* ═══════ Button System ═══════ */
-
-.btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  gap: 6px; font-size: var(--cr-font-size-xs); font-weight: 500;
-  line-height: 1; border-radius: var(--cr-radius-md);
-  padding: 6px 12px; border: 1px solid transparent;
-  cursor: pointer; transition: all var(--cr-transition-fast);
-  white-space: nowrap; user-select: none;
-}
-.btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
-.btn:active:not(:disabled) { transform: scale(0.97); }
-
-.btn-primary { background: var(--cr-accent); color: #fff; border-color: rgba(255,255,255,0.1); }
-.btn-primary:hover:not(:disabled) { background: var(--cr-accent-hover); }
-
-.btn-secondary { background: var(--cr-bg-tertiary); color: var(--cr-text-secondary); border-color: var(--cr-border); }
-.btn-secondary:hover:not(:disabled) { background: var(--cr-bg-elevated); color: var(--cr-text-primary); border-color: var(--cr-border-strong); }
-
-.btn-ghost { background: transparent; color: var(--cr-text-tertiary); }
-.btn-ghost:hover:not(:disabled) { background: var(--cr-bg-hover); color: var(--cr-text-secondary); }
-
-.btn-danger { background: var(--cr-error-muted); color: #fca5a5; border-color: rgba(239,68,68,0.2); }
-.btn-danger:hover:not(:disabled) { background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.3); }
-
-.btn-xs { font-size: 10px; padding: 3px 8px; border-radius: var(--cr-radius-sm); }
-.btn-sm { font-size: 11px; padding: 5px 10px; }
-
-/* ═══════ Unified Action Button System (cr-btn) ═══════ */
+/* ═══════ Button System (cr-btn) ═══════ */
 
 .cr-btn {
   display: inline-flex; align-items: center; gap: 6px;

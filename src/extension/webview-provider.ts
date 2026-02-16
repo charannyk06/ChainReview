@@ -282,7 +282,14 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         ? filePath
         : path.join(workspaceFolder, filePath);
 
-      const uri = vscode.Uri.file(fullPath);
+      // Prevent path traversal — resolved path must stay within workspace
+      const resolved = path.resolve(fullPath);
+      if (!resolved.startsWith(workspaceFolder + path.sep) && resolved !== workspaceFolder) {
+        console.error("ChainReview: blocked path traversal attempt:", filePath);
+        return;
+      }
+
+      const uri = vscode.Uri.file(resolved);
       const doc = await vscode.workspace.openTextDocument(uri);
       const editor = await vscode.window.showTextDocument(doc, {
         preview: true,
@@ -1354,6 +1361,24 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       `(Concrete code change — show before and after.)`,
     ].join("\n");
 
+    // Record the explain action to the server and timeline
+    try {
+      await this._crpClient.recordEvent(this._currentRunId, "finding_explained", "explainer", {
+        findingId, findingTitle: finding.title, severity: finding.severity,
+      });
+    } catch { /* Non-critical */ }
+
+    this.postMessage({
+      type: "addEvent",
+      event: {
+        id: `explain-${findingId}-${Date.now()}`,
+        type: "finding_explained",
+        agent: "explainer",
+        timestamp: new Date().toISOString(),
+        data: { findingId, findingTitle: finding.title, severity: finding.severity },
+      },
+    });
+
     // Trigger an actual chat query — the LLM will investigate with tool calls
     await this._handleChatQuery(query);
   }
@@ -1483,6 +1508,24 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       this._validationVerdicts[findingId] = { verdict: result.verdict, reasoning: result.reasoning };
       this._persistValidationVerdicts();
 
+      // Record validation completed to server and timeline
+      try {
+        await this._crpClient.recordEvent(this._currentRunId, "validation_completed", "validator", {
+          findingId, findingTitle: finding.title, verdict: result.verdict,
+        });
+      } catch { /* Non-critical */ }
+
+      this.postMessage({
+        type: "addEvent",
+        event: {
+          id: `val-complete-${findingId}-${Date.now()}`,
+          type: "validation_completed",
+          agent: "validator",
+          timestamp: new Date().toISOString(),
+          data: { findingId, findingTitle: finding.title, verdict: result.verdict },
+        },
+      });
+
       vscode.window.showInformationMessage(`ChainReview: Verification result — ${verdictLabel[result.verdict] || result.verdict}`);
     } catch (err: any) {
       const errMsg = err.message || "Unknown error";
@@ -1549,6 +1592,23 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         type: "patchReady",
         patch: { id: patch.patchId, findingId, diff: patch.diff, validated: false },
       });
+
+      // Record fix generation to server and timeline
+      try {
+        await this._crpClient.recordEvent(this._currentRunId, "patch_generated", undefined, {
+          findingId, findingTitle: finding.title, patchId: patch.patchId,
+        });
+      } catch { /* Non-critical */ }
+
+      this.postMessage({
+        type: "addEvent",
+        event: {
+          id: `gen-${findingId}-${Date.now()}`,
+          type: "patch_generated",
+          timestamp: new Date().toISOString(),
+          data: { findingId, findingTitle: finding.title, patchId: patch.patchId },
+        },
+      });
     } catch (err: any) {
       vscode.window.showErrorMessage(`ChainReview: Patch request failed — ${err.message}`);
     }
@@ -1572,6 +1632,17 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         vscode.window.showInformationMessage("ChainReview: Patch applied successfully");
         if (this._currentRunId) {
           await this._crpClient.recordEvent(this._currentRunId, "human_accepted", undefined, { patchId }).catch(() => {});
+
+          // Emit timeline event for patch applied
+          this.postMessage({
+            type: "addEvent",
+            event: {
+              id: `applied-${patchId}-${Date.now()}`,
+              type: "human_accepted",
+              timestamp: new Date().toISOString(),
+              data: { patchId },
+            },
+          });
         }
       } else {
         vscode.window.showErrorMessage(`ChainReview: Failed to apply patch — ${result.message}`);
@@ -1585,6 +1656,17 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (!this._crpClient?.isConnected() || !this._currentRunId) return;
     try {
       await this._crpClient.recordEvent(this._currentRunId, "human_rejected", undefined, { patchId });
+
+      // Emit timeline event for patch dismissed
+      this.postMessage({
+        type: "addEvent",
+        event: {
+          id: `dismissed-${patchId}-${Date.now()}`,
+          type: "human_rejected",
+          timestamp: new Date().toISOString(),
+          data: { patchId },
+        },
+      });
     } catch { /* Non-critical */ }
   }
 
@@ -1738,6 +1820,23 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     if (agentId === "clipboard" || !agentId) {
       await vscode.env.clipboard.writeText(prompt);
       vscode.window.showInformationMessage("ChainReview: Finding copied to clipboard — paste into your coding agent");
+
+      // Record handoff to clipboard
+      if (this._currentRunId && this._crpClient?.isConnected()) {
+        await this._crpClient.recordEvent(this._currentRunId, "handoff_to_agent", undefined, {
+          findingId, findingTitle: finding.title, targetAgent: "Clipboard",
+        }).catch(() => {});
+
+        this.postMessage({
+          type: "addEvent",
+          event: {
+            id: `handoff-${findingId}-${Date.now()}`,
+            type: "handoff_to_agent",
+            timestamp: new Date().toISOString(),
+            data: { findingId, findingTitle: finding.title, targetAgent: "Clipboard" },
+          },
+        });
+      }
       return;
     }
 
@@ -1844,9 +1943,19 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         this.postMessage({ type: "chatResponseEnd", messageId });
 
         if (this._currentRunId && this._crpClient?.isConnected()) {
-          await this._crpClient.recordEvent(this._currentRunId, "evidence_collected", undefined, {
-            action: "sent_to_coding_agent", agent: agentId, findingId, findingTitle: finding.title,
+          await this._crpClient.recordEvent(this._currentRunId, "handoff_to_agent", undefined, {
+            findingId, findingTitle: finding.title, targetAgent: cliAgent.label,
           }).catch(() => {});
+
+          this.postMessage({
+            type: "addEvent",
+            event: {
+              id: `handoff-${findingId}-${Date.now()}`,
+              type: "handoff_to_agent",
+              timestamp: new Date().toISOString(),
+              data: { findingId, findingTitle: finding.title, targetAgent: cliAgent.label },
+            },
+          });
         }
         return;
       } catch (err: any) {
@@ -2388,10 +2497,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 }
 
 function getNonce(): string {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
+  // Use cryptographically secure random bytes for CSP nonce
+  const crypto = require("crypto");
+  return crypto.randomBytes(16).toString("hex");
 }
