@@ -1,15 +1,14 @@
 import * as vscode from "vscode";
 
 // ── Supabase Auth Configuration ──
-// SUPABASE_URL and SUPABASE_ANON_KEY are intentionally public — these are
-// Supabase's client-side "anon" credentials, designed to be embedded in
-// client code (VS Code extensions, web apps, mobile apps).
-// They are protected by Supabase Row Level Security (RLS) policies.
+// SUPABASE_URL and SUPABASE_ANON_KEY are client-side credentials protected
+// by Supabase Row Level Security (RLS) policies.
+// Set these in .env before building (see .env.example).
 //
 // ⚠️  NEVER embed the service_role key here — that belongs in .dev.vars
 //     (which is gitignored) and deployed as a Cloudflare Workers secret.
-const SUPABASE_URL = "https://aztyzfxiiplydnhollev.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6dHl6ZnhpaXBseWRuaG9sbGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NDkzOTgsImV4cCI6MjA4NzAyNTM5OH0.9MEEVUN4fY8F895xthqWQDIusziG5FhFl3qvCxBORW8";
+const SUPABASE_URL = process.env.SUPABASE_URL ?? "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? "";
 
 export const AUTH_PROVIDER_ID = "chainreview";
 const AUTH_PROVIDER_LABEL = "ChainReview";
