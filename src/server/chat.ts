@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import type {
   MessageParam,
   ToolUseBlock,
@@ -6,6 +6,7 @@ import type {
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
+import { createAnthropicClient } from "./lib/anthropic-client";
 import { routeStandardTool } from "./agents/base-agent";
 import { runReview } from "./orchestrator";
 import type { Store } from "./store";
@@ -410,45 +411,49 @@ async function runStreamingTurn(
   let inText = false;
 
   // Listen to SDK streaming events for true real-time delivery
-  stream.on("contentBlockStart", (event: any) => {
-    const block = event.contentBlock;
-    if (block?.type === "thinking") {
-      inThinking = true;
-      inText = false;
-      currentThinkingContent = "";
-    } else if (block?.type === "text") {
-      inText = true;
-      inThinking = false;
-      currentTextContent = "";
-    } else {
-      inText = false;
-      inThinking = false;
-    }
-  });
-
-  stream.on("contentBlockDelta", (event: any) => {
-    const delta = event.delta;
-    if (!delta) return;
-
-    if (delta.type === "thinking_delta" && delta.thinking) {
-      currentThinkingContent += delta.thinking;
-      callbacks?.onThinkingDelta?.(delta.thinking);
-    } else if (delta.type === "text_delta" && delta.text) {
-      currentTextContent += delta.text;
-      callbacks?.onTextDelta?.(delta.text);
-    }
-  });
-
-  stream.on("contentBlockStop", () => {
-    if (inThinking && currentThinkingContent) {
-      callbacks?.onThinking?.(currentThinkingContent);
-      currentThinkingContent = "";
-      inThinking = false;
-    }
-    if (inText && currentTextContent) {
-      callbacks?.onText?.(currentTextContent);
-      currentTextContent = "";
-      inText = false;
+  stream.on("streamEvent", (event: any) => {
+    switch (event.type) {
+      case "content_block_start": {
+        const block = event.content_block;
+        if (block?.type === "thinking") {
+          inThinking = true;
+          inText = false;
+          currentThinkingContent = "";
+        } else if (block?.type === "text") {
+          inText = true;
+          inThinking = false;
+          currentTextContent = "";
+        } else {
+          inText = false;
+          inThinking = false;
+        }
+        break;
+      }
+      case "content_block_delta": {
+        const delta = event.delta;
+        if (!delta) break;
+        if (delta.type === "thinking_delta" && delta.thinking) {
+          currentThinkingContent += delta.thinking;
+          callbacks?.onThinkingDelta?.(delta.thinking);
+        } else if (delta.type === "text_delta" && delta.text) {
+          currentTextContent += delta.text;
+          callbacks?.onTextDelta?.(delta.text);
+        }
+        break;
+      }
+      case "content_block_stop": {
+        if (inThinking && currentThinkingContent) {
+          callbacks?.onThinking?.(currentThinkingContent);
+          currentThinkingContent = "";
+          inThinking = false;
+        }
+        if (inText && currentTextContent) {
+          callbacks?.onText?.(currentTextContent);
+          currentTextContent = "";
+          inText = false;
+        }
+        break;
+      }
     }
   });
 
@@ -476,7 +481,7 @@ export async function chatQuery(
   options?: ChatQueryOptions,
   conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>,
 ): Promise<ChatQueryResult> {
-  const client = new Anthropic();
+  const client = createAnthropicClient();
   // Allow up to 50 turns for deep investigation — the agent stops naturally
   // when stop_reason !== "tool_use", so this is just a safety ceiling
   const maxTurns = 50;
@@ -799,7 +804,7 @@ export async function validateFinding(
   findingJson: string,
   callbacks?: ChatCallbacks
 ): Promise<ValidateResult> {
-  const client = new Anthropic();
+  const client = createAnthropicClient();
   const maxTurns = 25;
   const toolCalls: ChatToolCall[] = [];
 
@@ -1047,7 +1052,7 @@ export async function generatePatchFix(args: {
   findingTitle: string;
   findingDescription: string;
 }): Promise<GeneratePatchResult> {
-  const client = new Anthropic();
+  const client = createAnthropicClient();
 
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001", // Haiku for fast patch generation

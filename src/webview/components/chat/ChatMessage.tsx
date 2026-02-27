@@ -370,13 +370,15 @@ export function ChatMessage({
     );
   }
 
-  // ── Regular assistant messages — with optional collapse ──
-  // Separate tool/thinking blocks (collapsible) from text blocks (always visible)
-  const toolBlocks = message.blocks.filter(
-    (b) => b.kind === "tool_call" || b.kind === "thinking" || b.kind === "status"
-  );
-  const textBlocks = message.blocks.filter(
-    (b) => b.kind === "text"
+  // ── Regular assistant messages — render blocks in emission order ──
+  // Filter out finding cards and lifecycle events (same as agent path)
+  const orderedBlocks = message.blocks.filter(
+    (b) =>
+      b.kind !== "finding_card" &&
+      !(
+        b.kind === "sub_agent_event" &&
+        (b.event === "started" || b.event === "completed" || b.event === "error")
+      )
   );
 
   return (
@@ -386,10 +388,9 @@ export function ChatMessage({
       transition={{ duration: 0.2 }}
       style={{ padding: "6px 0" }}
     >
-      {/* Collapsible tool-calls section */}
-      {shouldCollapse && toolBlocks.length > 0 && (
+      {/* Collapsed summary header when complete */}
+      {shouldCollapse && !expanded && (
         <div style={{ marginBottom: 6 }}>
-          {/* Toggle header */}
           <button
             style={{
               display: "flex",
@@ -404,12 +405,11 @@ export function ChatMessage({
               background: "transparent",
               border: "none",
             }}
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => setExpanded(true)}
             onMouseEnter={() => setHeaderHovered(true)}
             onMouseLeave={() => setHeaderHovered(false)}
           >
-            {/* Tool icons in collapsed header */}
-            {!expanded && summary.uniqueIcons.length > 0 && (
+            {summary.uniqueIcons.length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                 {summary.uniqueIcons.map((icon) => {
                   const Ic = TOOL_ICON_MAP[icon];
@@ -424,49 +424,90 @@ export function ChatMessage({
               fontWeight: 500,
               color: "var(--cr-text-muted)",
             }}>
-              {expanded ? "Hide" : "Used"} {summary.toolCalls} tool{summary.toolCalls !== 1 ? "s" : ""}
+              Used {summary.toolCalls} tool{summary.toolCalls !== 1 ? "s" : ""}
+              {summary.messages > 0 && ` · ${summary.messages} message${summary.messages !== 1 ? "s" : ""}`}
             </span>
             <ChevronRightIcon style={{
               width: 10,
               height: 10,
               color: "var(--cr-text-ghost)",
               transition: "transform 150ms ease",
-              transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+              transform: "rotate(0deg)",
             }} />
           </button>
-
-          {/* Expanded tool calls */}
-          <AnimatePresence initial={false}>
-            {expanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                style={{ overflow: "hidden" }}
-              >
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4 }}>
-                  {toolBlocks.map((block) => renderInnerBlock(block))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Text preview when collapsed */}
+          {summary.textPreview && (
+            <p style={{
+              fontSize: 11.5,
+              color: "var(--cr-text-secondary)",
+              lineHeight: 1.55,
+              marginTop: 2,
+              paddingLeft: 4,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical" as const,
+              overflow: "hidden",
+            }}>
+              {summary.textPreview}
+            </p>
+          )}
         </div>
       )}
 
-      {/* Non-collapsible: show all tool calls when shouldCollapse is false */}
-      {!shouldCollapse && toolBlocks.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: textBlocks.length > 0 ? 6 : 0 }}>
-          {toolBlocks.map((block) => renderInnerBlock(block))}
-        </div>
+      {/* Expanded: collapse toggle header */}
+      {shouldCollapse && expanded && (
+        <button
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: 4,
+            marginBottom: 4,
+            textAlign: "left",
+            borderRadius: 6,
+            transition: "opacity 100ms ease",
+            cursor: "pointer",
+            opacity: headerHovered ? 0.80 : 1,
+            background: "transparent",
+            border: "none",
+          }}
+          onClick={() => setExpanded(false)}
+          onMouseEnter={() => setHeaderHovered(true)}
+          onMouseLeave={() => setHeaderHovered(false)}
+        >
+          <span style={{
+            fontSize: 10,
+            fontWeight: 500,
+            color: "var(--cr-text-muted)",
+          }}>
+            Hide {summary.toolCalls} tool{summary.toolCalls !== 1 ? "s" : ""}
+          </span>
+          <ChevronRightIcon style={{
+            width: 10,
+            height: 10,
+            color: "var(--cr-text-ghost)",
+            transition: "transform 150ms ease",
+            transform: "rotate(90deg)",
+          }} />
+        </button>
       )}
 
-      {/* Text blocks — always visible (the actual response) */}
-      {textBlocks.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {textBlocks.map((block) => renderInnerBlock(block))}
-        </div>
-      )}
+      {/* Blocks in emission order — shown when expanded or streaming */}
+      <AnimatePresence initial={false}>
+        {(expanded || !shouldCollapse) && orderedBlocks.length > 0 && (
+          <motion.div
+            initial={shouldCollapse ? { height: 0, opacity: 0 } : false}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={shouldCollapse ? { height: 0, opacity: 0 } : undefined}
+            transition={{ duration: 0.15 }}
+            style={{ overflow: "hidden" }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {orderedBlocks.map((block) => renderInnerBlock(block))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {message.status === "streaming" && <TextShimmer />}
     </motion.div>

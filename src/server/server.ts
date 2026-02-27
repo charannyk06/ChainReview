@@ -436,11 +436,17 @@ async function ensureRepoOpen(hint?: { runId?: string; findingJson?: string }): 
 // Gives a clear error for LLM-dependent tools instead of cryptic SDK failures
 
 function requireApiKey(toolName: string): void {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  const hasByokKey = !!process.env.ANTHROPIC_API_KEY;
+  const hasManagedAuth =
+    process.env.CHAINREVIEW_MODE === "managed" &&
+    !!process.env.CHAINREVIEW_JWT &&
+    !!process.env.CHAINREVIEW_PROXY_URL;
+
+  if (!hasByokKey && !hasManagedAuth) {
     throw new Error(
-      `${toolName} requires ANTHROPIC_API_KEY. ` +
-      `Set it in VS Code settings (chainreview.anthropicApiKey), ` +
-      `environment variable, .env file, or ~/.anthropic/api_key, then restart VS Code.`
+      `${toolName} requires authentication. ` +
+      `Either set ANTHROPIC_API_KEY (via VS Code settings, env variable, .env file, or ~/.anthropic/api_key), ` +
+      `or sign in to ChainReview for managed mode.`
     );
   }
 }
@@ -606,6 +612,144 @@ server.tool(
   async (args) => {
     const result = await webSearch(args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+  }
+);
+
+// ── Azure DevOps Tools ──
+
+import {
+  azureListPRs,
+  azureGetPR,
+  azureGetPRThreads,
+  azurePostPRComment,
+  azurePostPRSummary,
+  azureUpdateThreadStatus,
+  azureGetFileContent,
+  azureResolveAllChainReviewThreads,
+} from "./tools/azure";
+
+const azureSchema = {
+  orgUrl: z.string().describe("Azure DevOps org URL, e.g. https://dev.azure.com/myorg"),
+  project: z.string().describe("Azure DevOps project name"),
+  repoName: z.string().describe("Azure Git repository name"),
+  pat: z.string().describe("Azure DevOps Personal Access Token"),
+};
+
+server.tool(
+  "crp.azure.list_prs",
+  "List pull requests in an Azure DevOps Git repository",
+  {
+    ...azureSchema,
+    status: z.enum(["active", "completed", "abandoned", "all"]).optional().describe("PR status filter (default: active)"),
+  },
+  async (args) => {
+    const prs = await azureListPRs(args);
+    return { content: [{ type: "text", text: JSON.stringify(prs, null, 2) }] };
+  }
+);
+
+server.tool(
+  "crp.azure.get_pr",
+  "Fetch a pull request with its unified diff and changed file list from Azure DevOps",
+  {
+    ...azureSchema,
+    prId: z.number().describe("Pull request ID"),
+  },
+  async (args) => {
+    const result = await azureGetPR(args);
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+server.tool(
+  "crp.azure.get_pr_threads",
+  "Get all comment threads on an Azure DevOps pull request",
+  {
+    ...azureSchema,
+    prId: z.number().describe("Pull request ID"),
+  },
+  async (args) => {
+    const threads = await azureGetPRThreads(args);
+    return { content: [{ type: "text", text: JSON.stringify(threads, null, 2) }] };
+  }
+);
+
+server.tool(
+  "crp.azure.post_pr_comment",
+  "Post a ChainReview finding as an inline comment on an Azure DevOps pull request",
+  {
+    ...azureSchema,
+    prId: z.number().describe("Pull request ID"),
+    filePath: z.string().describe("File path in the repo, e.g. /src/index.ts"),
+    lineNumber: z.number().describe("Line number for the inline comment"),
+    comment: z.string().describe("Finding description / comment text"),
+    severity: z.enum(["critical", "high", "medium", "low", "info"]).optional(),
+  },
+  async (args) => {
+    const result = await azurePostPRComment(args);
+    return { content: [{ type: "text", text: JSON.stringify(result) }] };
+  }
+);
+
+server.tool(
+  "crp.azure.post_pr_summary",
+  "Post a ChainReview summary comment on an Azure DevOps pull request with findings breakdown",
+  {
+    ...azureSchema,
+    prId: z.number().describe("Pull request ID"),
+    totalFindings: z.number(),
+    criticalCount: z.number(),
+    highCount: z.number(),
+    mediumCount: z.number(),
+    lowCount: z.number(),
+    validatedCount: z.number(),
+    falsePositivesRemoved: z.number(),
+  },
+  async (args) => {
+    const result = await azurePostPRSummary(args);
+    return { content: [{ type: "text", text: JSON.stringify(result) }] };
+  }
+);
+
+server.tool(
+  "crp.azure.update_thread_status",
+  "Update the status of an Azure DevOps PR comment thread (e.g. mark as fixed)",
+  {
+    ...azureSchema,
+    prId: z.number().describe("Pull request ID"),
+    threadId: z.number().describe("Thread ID"),
+    status: z.enum(["active", "fixed", "wontFix", "closed", "byDesign", "pending"]),
+  },
+  async (args) => {
+    await azureUpdateThreadStatus(args);
+    return { content: [{ type: "text", text: `Thread ${args.threadId} updated to ${args.status}` }] };
+  }
+);
+
+server.tool(
+  "crp.azure.get_file",
+  "Fetch a file's content directly from an Azure DevOps Git repository",
+  {
+    ...azureSchema,
+    filePath: z.string().describe("File path in the repo, e.g. /src/index.ts"),
+    branch: z.string().optional().describe("Branch name (default: main)"),
+  },
+  async (args) => {
+    const content = await azureGetFileContent(args);
+    return { content: [{ type: "text", text: content }] };
+  }
+);
+
+server.tool(
+  "crp.azure.resolve_all_threads",
+  "Resolve all active ChainReview comment threads on an Azure DevOps pull request (use before re-review)",
+  {
+    ...azureSchema,
+    prId: z.number().describe("Pull request ID"),
+  },
+  async (args) => {
+    const result = await azureResolveAllChainReviewThreads(args);
+    return { content: [{ type: "text", text: `Resolved ${result.resolved} ChainReview threads` }] };
   }
 );
 

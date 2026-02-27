@@ -1,10 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import type {
   MessageParam,
   ToolUseBlock,
   TextBlock,
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
+import { createAnthropicClient } from "../lib/anthropic-client";
 import { repoTree, repoFile, repoSearch, repoDiff } from "../tools/repo";
 import { codeImportGraph, codePatternScan } from "../tools/code";
 import { codeCallGraph, codeSymbolLookup, codeImpactAnalysis } from "../tools/graph";
@@ -203,7 +204,7 @@ Example:
 export async function runAgentLoop(
   opts: AgentLoopOptions
 ): Promise<AgentFinding[]> {
-  const client = new Anthropic();
+  const client = createAnthropicClient();
   // No artificial limit — agents run until they naturally stop (stop_reason !== "tool_use")
   // A safety ceiling of 200 prevents infinite loops but never constrains real analysis
   const maxTurns = opts.maxTurns ?? 200;

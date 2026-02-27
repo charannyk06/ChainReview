@@ -56,3 +56,21 @@ export interface AuditEvent {
   timestamp: string;
   data: Record<string, unknown>;
 }
+
+// ── Auth Types ──
+
+export type AuthMode = "byok" | "managed";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl?: string;
+  plan: string;
+}
+
+export interface AuthStatePayload {
+  mode: AuthMode;
+  user: AuthUser | null;
+  authenticated: boolean;
+}

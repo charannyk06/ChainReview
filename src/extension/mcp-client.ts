@@ -3,6 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import * as path from "path";
 import * as fs from "fs";
 import type { Finding, Patch, AuditEvent } from "./types";
+import { getAuthState, refreshJWT } from "./auth-state";
 
 // Re-export types for convenience
 export type { Finding, Patch, AuditEvent };
@@ -53,7 +54,7 @@ export async function migrateKeysToSecretStorage(
       ["anthropicApiKey", "ANTHROPIC_API_KEY"],
       ["braveSearchApiKey", "BRAVE_SEARCH_API_KEY"],
     ] as const) {
-      const plainTextValue = config.get<string>(settingName);
+      const plainTextValue = config.get(settingName) as string | undefined;
       if (plainTextValue && plainTextValue.trim()) {
         // Migrate to SecretStorage
         await storeApiKeySecurely(secrets, envName, plainTextValue.trim());
@@ -89,7 +90,7 @@ function resolveApiKey(keyName: string, settingName: string): string | undefined
   try {
     const vscode = require("vscode");
     const config = vscode.workspace.getConfiguration("chainreview");
-    const settingValue = config.get<string>(settingName);
+    const settingValue = config.get(settingName) as string | undefined;
     if (settingValue && settingValue.trim()) {
       console.warn(
         `ChainReview: API key "${settingName}" found in plain-text settings. ` +
@@ -150,6 +151,13 @@ export class CrpClient {
   private _onStreamEvent: StreamEventHandler | null = null;
   private _stderrBuffer = "";
 
+  /**
+   * Pending stream-completion sentinels.
+   * Maps sentinel event type (e.g. "chatStreamComplete") to its resolver.
+   * When the server emits a sentinel via stderr, the corresponding promise resolves.
+   */
+  private _pendingSentinels: Map<string, () => void> = new Map();
+
   constructor() {
     this.client = new Client({
       name: "chainreview-extension",
@@ -160,6 +168,42 @@ export class CrpClient {
   /** Register handler for real-time stream events from server stderr */
   onStreamEvent(handler: StreamEventHandler) {
     this._onStreamEvent = handler;
+  }
+
+  /**
+   * Wait for a stream-completion sentinel event from stderr.
+   *
+   * The server emits sentinel events (e.g. "chatStreamComplete", "validateStreamComplete")
+   * via stderr AFTER all streaming events have been written but BEFORE returning the MCP
+   * result via stdout. This method returns a promise that resolves when the sentinel
+   * arrives, replacing the brittle setTimeout-based flush.
+   *
+   * A safety timeout ensures we don't hang forever if the sentinel is lost (e.g. the
+   * server crashed or stderr was disconnected).
+   *
+   * @param sentinelType - The event type to wait for (e.g. "chatStreamComplete")
+   * @param timeoutMs - Safety timeout in ms (default: 5000)
+   */
+  waitForStreamComplete(sentinelType: string, timeoutMs = 5000): Promise<void> {
+    return new Promise<void>((resolve) => {
+      // If there's already a pending sentinel for this type, resolve the old one
+      // to prevent leaks
+      const existing = this._pendingSentinels.get(sentinelType);
+      if (existing) {
+        existing();
+        this._pendingSentinels.delete(sentinelType);
+      }
+
+      const timer = setTimeout(() => {
+        this._pendingSentinels.delete(sentinelType);
+        resolve();
+      }, timeoutMs);
+
+      this._pendingSentinels.set(sentinelType, () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   }
 
   async start(extensionPath: string): Promise<void> {
@@ -178,17 +222,29 @@ export class CrpClient {
       HOME: process.env.HOME || process.env.USERPROFILE || "",
     };
 
-    // Resolve API keys from multiple sources (VS Code settings → env → .env → key file)
-    const anthropicKey = resolveApiKey("ANTHROPIC_API_KEY", "anthropicApiKey");
-    if (anthropicKey) {
-      env.ANTHROPIC_API_KEY = anthropicKey;
+    // ── Auth mode: BYOK vs Managed ──
+    const authState = getAuthState();
+
+    if (authState.mode === "managed" && authState.jwt) {
+      // Managed mode: pass JWT and proxy URL to server subprocess
+      env.CHAINREVIEW_MODE = "managed";
+      env.CHAINREVIEW_JWT = authState.jwt;
+      env.CHAINREVIEW_PROXY_URL = "https://api.chainreview.dev";
+      console.log("ChainReview: Starting server in managed mode");
     } else {
-      console.error(
-        "ChainReview: WARNING — ANTHROPIC_API_KEY not found. " +
-        "Set it in VS Code settings (chainreview.anthropicApiKey), " +
-        "environment variable, .env file, or ~/.anthropic/api_key. " +
-        "LLM-powered features (review, chat, validation) will not work."
-      );
+      // BYOK mode: resolve API keys from multiple sources
+      const anthropicKey = resolveApiKey("ANTHROPIC_API_KEY", "anthropicApiKey");
+      if (anthropicKey) {
+        env.ANTHROPIC_API_KEY = anthropicKey;
+      } else {
+        console.error(
+          "ChainReview: WARNING — ANTHROPIC_API_KEY not found. " +
+          "Set it in VS Code settings (chainreview.anthropicApiKey), " +
+          "environment variable, .env file, or ~/.anthropic/api_key, " +
+          "or sign in for managed mode. " +
+          "LLM-powered features (review, chat, validation) will not work."
+        );
+      }
     }
 
     const braveKey = resolveApiKey("BRAVE_SEARCH_API_KEY", "braveSearchApiKey");
@@ -257,8 +313,20 @@ export class CrpClient {
 
       try {
         const parsed = JSON.parse(trimmed);
-        if (parsed.__crp_stream && this._onStreamEvent) {
-          this._onStreamEvent(parsed);
+        if (parsed.__crp_stream) {
+          // Check if this is a sentinel event that a caller is waiting for
+          const eventType = parsed.type as string;
+          if (eventType) {
+            const sentinelResolver = this._pendingSentinels.get(eventType);
+            if (sentinelResolver) {
+              this._pendingSentinels.delete(eventType);
+              sentinelResolver();
+            }
+          }
+
+          if (this._onStreamEvent) {
+            this._onStreamEvent(parsed);
+          }
         }
       } catch {
         // Non-JSON stderr output — forward ChainReview errors as stream events
@@ -471,6 +539,64 @@ export class CrpClient {
   }> {
     const result = await this.callTool("crp.review.validate_finding", { findingJson });
     return this.parseToolResult(result, "crp.review.validate_finding");
+  }
+
+  // ── Azure DevOps Tools ──
+
+  async azureListPRs(args: {
+    orgUrl: string; project: string; repoName: string; pat: string;
+    status?: "active" | "completed" | "abandoned" | "all";
+  }) {
+    const result = await this.callTool("crp.azure.list_prs", args as Record<string, unknown>);
+    return this.parseToolResult<any[]>(result, "crp.azure.list_prs");
+  }
+
+  async azureGetPR(args: {
+    orgUrl: string; project: string; repoName: string; pat: string; prId: number;
+  }) {
+    const result = await this.callTool("crp.azure.get_pr", args as Record<string, unknown>);
+    return this.parseToolResult<{ pr: any; files: any[]; diff: string }>(result, "crp.azure.get_pr");
+  }
+
+  async azureGetPRThreads(args: {
+    orgUrl: string; project: string; repoName: string; pat: string; prId: number;
+  }) {
+    const result = await this.callTool("crp.azure.get_pr_threads", args as Record<string, unknown>);
+    return this.parseToolResult<any[]>(result, "crp.azure.get_pr_threads");
+  }
+
+  async azurePostPRComment(args: {
+    orgUrl: string; project: string; repoName: string; pat: string;
+    prId: number; filePath: string; lineNumber: number;
+    comment: string; severity?: string;
+  }) {
+    const result = await this.callTool("crp.azure.post_pr_comment", args as Record<string, unknown>);
+    return this.parseToolResult<{ threadId: number; commentId: number }>(result, "crp.azure.post_pr_comment");
+  }
+
+  async azurePostPRSummary(args: {
+    orgUrl: string; project: string; repoName: string; pat: string;
+    prId: number; totalFindings: number; criticalCount: number;
+    highCount: number; mediumCount: number; lowCount: number;
+    validatedCount: number; falsePositivesRemoved: number;
+  }) {
+    const result = await this.callTool("crp.azure.post_pr_summary", args as Record<string, unknown>);
+    return this.parseToolResult<{ threadId: number }>(result, "crp.azure.post_pr_summary");
+  }
+
+  async azureResolveAllThreads(args: {
+    orgUrl: string; project: string; repoName: string; pat: string; prId: number;
+  }) {
+    const result = await this.callTool("crp.azure.resolve_all_threads", args as Record<string, unknown>);
+    return this.parseToolResult<{ resolved: number }>(result, "crp.azure.resolve_all_threads");
+  }
+
+  async azureGetFile(args: {
+    orgUrl: string; project: string; repoName: string; pat: string;
+    filePath: string; branch?: string;
+  }) {
+    const result = await this.callTool("crp.azure.get_file", args as Record<string, unknown>);
+    return result;
   }
 
   // ── Internal Helpers ──

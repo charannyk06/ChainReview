@@ -222,7 +222,14 @@ export type WebviewMessage =
   | { type: "deleteReviewRun"; runId: string }
   | { type: "loadReviewRun"; runId: string }
   | { type: "clearChat" }
-  | { type: "persistMessages"; messages: ConversationMessage[] };
+  | { type: "persistMessages"; messages: ConversationMessage[] }
+  | { type: "login" }
+  | { type: "logout" }
+  | { type: "switchMode"; mode: AuthMode }
+  | { type: "getAuthState" }
+  | { type: "webviewReady" }
+  | { type: "startAzurePRReview" }
+  | { type: "startAzurePRReviewWithId"; prId: number };
 
 // Extension → Webview
 export type ValidatorVerdict = "still_present" | "partially_fixed" | "fixed" | "unable_to_determine";
@@ -253,7 +260,26 @@ export type ExtensionMessage =
   | { type: "injectUserMessage"; text: string }
   | { type: "restoreMessages"; messages: ConversationMessage[] }
   | { type: "restoreReviewState"; findings: Finding[]; events: AuditEvent[]; status: string; mode?: string }
-  | { type: "requestPersistMessages" };
+  | { type: "requestPersistMessages" }
+  | { type: "authStateChanged"; auth: AuthStatePayload };
+
+// ── Auth Types ──
+
+export type AuthMode = "byok" | "managed";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl?: string;
+  plan: string;
+}
+
+export interface AuthStatePayload {
+  mode: AuthMode;
+  user: AuthUser | null;
+  authenticated: boolean;
+}
 
 // ── Review State ──
 
@@ -285,4 +311,6 @@ export interface ReviewState {
   dismissedFindingIds: Set<string>;
   /** Finding IDs marked as fixed — hidden from active list, cleared on re-review */
   fixedFindingIds: Set<string>;
+  /** Authentication state */
+  auth?: AuthStatePayload;
 }
