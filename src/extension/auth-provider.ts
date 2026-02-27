@@ -1,14 +1,14 @@
 import * as vscode from "vscode";
 
 // ── Supabase Auth Configuration ──
-// SUPABASE_URL and SUPABASE_ANON_KEY are client-side credentials protected
+// SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are client-side credentials protected
 // by Supabase Row Level Security (RLS) policies.
 // Set these in .env before building (see .env.example).
 //
 // ⚠️  NEVER embed the service_role key here — that belongs in .dev.vars
 //     (which is gitignored) and deployed as a Cloudflare Workers secret.
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? "";
+const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY ?? "";
 
 export const AUTH_PROVIDER_ID = "chainreview";
 const AUTH_PROVIDER_LABEL = "ChainReview";
@@ -218,7 +218,7 @@ export class ChainReviewAuthProvider
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        apikey: SUPABASE_ANON_KEY,
+        apikey: SUPABASE_PUBLISHABLE_KEY,
       },
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
