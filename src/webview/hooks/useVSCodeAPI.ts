@@ -41,6 +41,11 @@ export function useVSCodeAPI(onMessage?: (message: ExtensionMessage) => void) {
     return () => window.removeEventListener("message", handler);
   }, []);
 
+  // Notify extension that the webview has mounted and is ready to receive messages
+  useEffect(() => {
+    getVSCodeAPI().postMessage({ type: "webviewReady" });
+  }, []);
+
   const postMessage = useCallback((message: WebviewMessage) => {
     getVSCodeAPI().postMessage(message);
   }, []);

@@ -48,6 +48,26 @@
       {
         "command": "chainreview.startDiffReview",
         "title": "ChainReview: Review Diff"
+      },
+      {
+        "command": "chainreview.login",
+        "title": "ChainReview: Sign In"
+      },
+      {
+        "command": "chainreview.logout",
+        "title": "ChainReview: Sign Out"
+      },
+      {
+        "command": "chainreview.switchMode",
+        "title": "ChainReview: Switch Auth Mode"
+      },
+      {
+        "command": "chainreview.azure.setPAT",
+        "title": "ChainReview: Set Azure DevOps PAT (Secure)"
+      },
+      {
+        "command": "chainreview.azure.reviewPR",
+        "title": "ChainReview: Review Azure DevOps PR"
       }
     ],
     "configuration": {
@@ -59,11 +79,27 @@
           "description": "Anthropic API key for LLM-powered features (review agents, chat, validation). Required for CRP tools to function.",
           "order": 0
         },
+        "chainreview.serviceMode": {
+          "type": "string",
+          "enum": [
+            "byok",
+            "managed"
+          ],
+          "default": "byok",
+          "description": "Authentication mode: 'byok' (Bring Your Own Key \u2014 provide your own Anthropic API key) or 'managed' (sign in to ChainReview for managed LLM access).",
+          "order": 1
+        },
         "chainreview.braveSearchApiKey": {
           "type": "string",
           "default": "",
-          "description": "Brave Search API key for web search capabilities. Optional — get a free key at https://api.search.brave.com/",
-          "order": 1
+          "description": "Brave Search API key for web search capabilities. Optional \u2014 get a free key at https://api.search.brave.com/",
+          "order": 2
+        },
+        "chainreview.syncReviews": {
+          "type": "boolean",
+          "default": false,
+          "description": "Sync review run summaries to ChainReview cloud for dashboard viewing (managed mode only).",
+          "order": 3
         },
         "chainreview.mcpServers": {
           "type": "array",
@@ -100,6 +136,31 @@
               "command"
             ]
           }
+        },
+        "chainreview.azure.orgUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps organization URL (e.g. https://dev.azure.com/myorg)"
+        },
+        "chainreview.azure.project": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps project name"
+        },
+        "chainreview.azure.repoName": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps Git repository name"
+        },
+        "chainreview.azure.autoPostComments": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically post ChainReview findings as PR comments after review"
+        },
+        "chainreview.azure.postSummaryComment": {
+          "type": "boolean",
+          "default": true,
+          "description": "Post a summary comment with findings breakdown at the end of review"
         }
       }
     }
@@ -107,8 +168,8 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "build": "npm run build:webview && npm run build:extension && npm run build:server",
-    "build:extension": "esbuild src/extension/extension.ts --bundle --outfile=dist/extension/extension.js --external:vscode --external:better-sqlite3 --external:ts-morph --external:@anthropic-ai/sdk --external:@modelcontextprotocol/sdk --external:simple-git --format=cjs --platform=node --sourcemap",
-    "build:server": "esbuild src/server/server.ts --bundle --outfile=dist/server/server.js --external:better-sqlite3 --external:ts-morph --external:@anthropic-ai/sdk --external:@modelcontextprotocol/sdk --external:simple-git --format=cjs --platform=node --sourcemap",
+    "build:extension": "esbuild src/extension/extension.ts --bundle --outfile=dist/extension/extension.js --external:vscode --external:better-sqlite3 --external:ts-morph --external:@anthropic-ai/sdk --external:@modelcontextprotocol/sdk --external:simple-git --external:@supabase/supabase-js --format=cjs --platform=node --sourcemap",
+    "build:server": "esbuild src/server/server.ts --bundle --outfile=dist/server/server.js --external:better-sqlite3 --external:ts-morph --external:@anthropic-ai/sdk --external:@modelcontextprotocol/sdk --external:simple-git --external:@supabase/supabase-js --format=cjs --platform=node --sourcemap",
     "build:webview": "vite build",
     "watch:extension": "esbuild src/extension/extension.ts --bundle --outfile=dist/extension/extension.js --external:vscode --external:better-sqlite3 --external:ts-morph --external:@anthropic-ai/sdk --external:@modelcontextprotocol/sdk --external:simple-git --format=cjs --platform=node --sourcemap --watch",
     "watch:webview": "vite build --watch",
@@ -131,6 +192,7 @@
     "motion": "^12.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "@supabase/supabase-js": "^2.49.0",
     "simple-git": "^3.27.0",
     "tailwind-merge": "^3.0.0",
     "ts-morph": "^25.0.0",

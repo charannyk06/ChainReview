@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import type { CrpClient } from "./mcp-client";
-import type { Finding, AuditEvent } from "./types";
+import type { Finding, AuditEvent, AuthStatePayload } from "./types";
+import {
+  getAuthState,
+  onAuthStateChange,
+  switchMode,
+} from "./auth-state";
 
 // Tool display info for block reconstruction
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -66,6 +71,15 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _currentRunId?: string;
   private _findings: Finding[] = [];
+  /** Set when a review was triggered from an Azure PR — used to auto-post findings after completion */
+  private _pendingAzurePR: {
+    prId: number;
+    orgUrl: string;
+    project: string;
+    repoName: string;
+    pat: string;
+    tmpDiffPath: string;
+  } | null = null;
   private _validationVerdicts: Record<string, { verdict: string; reasoning: string }> = {};
   private _blockCounter = 0;
   /** Flag to suppress error messages when review was user-cancelled */
@@ -100,6 +114,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   /** Conversation history for multi-turn LLM context (persisted across panel reloads) */
   private _conversationHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
 
+  /** Auth state change unsubscribe */
+  private _unsubAuth: (() => void) | null = null;
+
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _crpClient?: CrpClient,
@@ -114,6 +131,22 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
     // Load saved MCP server configurations
     this._loadMCPServersFromConfig();
+
+    // Subscribe to auth state changes and forward to webview
+    this._unsubAuth = onAuthStateChange((state) => {
+      const payload: AuthStatePayload = {
+        mode: state.mode,
+        user: state.user ? {
+          id: state.user.id,
+          email: state.user.email,
+          name: state.user.name,
+          avatarUrl: state.user.avatarUrl,
+          plan: (state.user as any).plan || "free",
+        } : null,
+        authenticated: state.authenticated,
+      };
+      this.postMessage({ type: "authStateChanged", auth: payload });
+    });
   }
 
   public resolveWebviewView(
@@ -149,6 +182,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
     // Restore persisted state when webview first loads
     this._restorePersistedState();
+
+    // Send initial auth state so the home page shows the correct sign-in UI
+    // Use a small delay to ensure the webview React app has mounted
+    setTimeout(() => this._sendAuthState(), 300);
   }
 
   public postMessage(message: unknown) {
@@ -179,6 +216,20 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
   private async _handleMessage(message: Record<string, unknown>) {
     switch (message.type) {
+      case "webviewReady": {
+        // Webview has mounted — push current auth state immediately
+        this._sendAuthState();
+        break;
+      }
+      case "startAzurePRReview": {
+        await this._startAzurePRReview();
+        break;
+      }
+      case "startAzurePRReviewWithId": {
+        const prId = typeof message.prId === "number" ? message.prId : parseInt(String(message.prId), 10);
+        if (!isNaN(prId)) await this._startAzurePRReviewById(prId);
+        break;
+      }
       case "startReview": {
         const mode = message.mode === "diff" ? "diff" : "repo";
         await this._startReview(mode, this._safeStr(message.path, 1000) || undefined);
@@ -267,7 +318,284 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       case "persistMessages":
         this._persistChatMessages(message.messages as unknown[]);
         break;
+      // ── Auth ──
+      case "login":
+        vscode.commands.executeCommand("chainreview.login");
+        break;
+      case "logout":
+        vscode.commands.executeCommand("chainreview.logout");
+        break;
+      case "switchMode": {
+        const nextMode = message.mode === "managed" ? "managed" : "byok";
+        switchMode(nextMode as "byok" | "managed");
+        break;
+      }
+      case "getAuthState":
+        this._sendAuthState();
+        break;
     }
+  }
+
+  // ── Azure PR Review ──
+
+  private async _postAzurePRFindings(
+    pending: { prId: number; orgUrl: string; project: string; repoName: string; pat: string },
+    findings: Finding[],
+    postSummary: boolean
+  ): Promise<void> {
+    if (!this._crpClient) return;
+
+    const azureArgs = {
+      orgUrl: pending.orgUrl,
+      project: pending.project,
+      repoName: pending.repoName,
+      pat: pending.pat,
+      prId: pending.prId,
+    };
+
+    // Count by severity
+    const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+    for (const f of findings) {
+      const sev = (f.severity || "info").toLowerCase() as keyof typeof counts;
+      if (sev in counts) counts[sev]++;
+    }
+
+    let posted = 0;
+    let failed = 0;
+
+    // Post inline comment for each finding that has file + line evidence
+    for (const finding of findings) {
+      // Use first evidence item for file/line location
+      const primaryEvidence = finding.evidence?.[0];
+      const filePath = primaryEvidence?.filePath;
+      const lineNumber = primaryEvidence?.startLine || 1;
+
+      if (!filePath) continue; // Skip findings without file location
+
+      try {
+        await this._crpClient.azurePostPRComment({
+          ...azureArgs,
+          filePath: filePath.startsWith("/") ? filePath : `/${filePath}`,
+          lineNumber,
+          comment: [
+            `**${finding.title}**`,
+            `\n${finding.description}`,
+            primaryEvidence?.snippet
+              ? `\n\n\`\`\`\n${primaryEvidence.snippet.slice(0, 500)}\n\`\`\``
+              : "",
+          ].filter(Boolean).join(""),
+          severity: (finding.severity || "medium").toLowerCase() as any,
+        });
+        posted++;
+        // Small delay to avoid Azure API rate limits
+        await new Promise((r) => setTimeout(r, 200));
+      } catch (err: any) {
+        failed++;
+        console.warn(`ChainReview: Failed to post comment for finding "${finding.title}": ${err.message}`);
+      }
+    }
+
+    // Post summary comment
+    if (postSummary) {
+      try {
+        await this._crpClient.azurePostPRSummary({
+          ...azureArgs,
+          totalFindings: findings.length,
+          criticalCount: counts.critical,
+          highCount: counts.high,
+          mediumCount: counts.medium,
+          lowCount: counts.low,
+          validatedCount: findings.length, // All findings have been through validator
+          falsePositivesRemoved: 0, // Would need to track this from orchestrator
+        });
+      } catch (err: any) {
+        console.warn("ChainReview: Failed to post PR summary:", err.message);
+      }
+    }
+
+    // Notify the webview
+    this.postMessage({
+      type: "addBlock",
+      block: {
+        id: `azure-posted-${Date.now()}`,
+        type: "text",
+        content: posted > 0
+          ? `🔷 **Azure DevOps** — Posted ${posted} finding${posted !== 1 ? "s" : ""} as inline PR comments on PR #${pending.prId}${failed > 0 ? ` (${failed} failed)` : ""}`
+          : `🔷 **Azure DevOps** — No findings with file locations to post on PR #${pending.prId}`,
+        agent: "Architecture" as const,
+        status: "complete" as const,
+      },
+    });
+  }
+
+  private async _getAzureConfig(): Promise<{ orgUrl: string; project: string; repoName: string; pat: string } | null> {
+    const config = vscode.workspace.getConfiguration("chainreview");
+    const orgUrl = config.get<string>("azure.orgUrl")?.trim() || "";
+    const project = config.get<string>("azure.project")?.trim() || "";
+    const repoName = config.get<string>("azure.repoName")?.trim() || "";
+
+    // PAT is ALWAYS read from SecretStorage — never from plain settings
+    // (settings.json is stored unencrypted on disk)
+    const pat = (await this._context?.secrets.get("chainreview.azure.pat")) || "";
+
+    if (!orgUrl || !project || !repoName || !pat) return null;
+    return { orgUrl, project, repoName, pat };
+  }
+
+  /** Prompt the user to enter their Azure PAT and store it securely in SecretStorage */
+  async promptAndSaveAzurePAT(): Promise<void> {
+    const pat = await vscode.window.showInputBox({
+      prompt: "Enter your Azure DevOps Personal Access Token",
+      placeHolder: "Paste your PAT here...",
+      password: true, // Masks input
+      validateInput: (val) => {
+        if (!val?.trim()) return "PAT cannot be empty";
+        if (val.length < 20) return "PAT looks too short — check it's correct";
+        return undefined;
+      },
+    });
+
+    if (!pat) return;
+
+    await this._context?.secrets.store("chainreview.azure.pat", pat.trim());
+    vscode.window.showInformationMessage("✅ Azure DevOps PAT saved securely in VS Code SecretStorage.");
+  }
+
+  private async _startAzurePRReview(): Promise<void> {
+    const azureConfig = await this._getAzureConfig();
+    if (!azureConfig) {
+      const action = await vscode.window.showErrorMessage(
+        "Azure DevOps not configured. Set org URL, project, repo, and PAT in ChainReview settings.",
+        "Open Settings"
+      );
+      if (action === "Open Settings") {
+        vscode.commands.executeCommand("workbench.action.openSettings", "chainreview.azure");
+      }
+      return;
+    }
+
+    this.postMessage({ type: "reviewStarted", mode: "repo" });
+    this.postMessage({
+      type: "addBlock",
+      block: {
+        id: `azure-loading-${Date.now()}`,
+        type: "text",
+        content: "🔷 Fetching open pull requests from Azure DevOps...",
+        agent: "Architecture" as const,
+        status: "complete" as const,
+      },
+    });
+
+    try {
+      const prs = await this._crpClient?.azureListPRs(azureConfig);
+      if (!prs || prs.length === 0) {
+        this.postMessage({ type: "reviewError", error: "No open pull requests found." });
+        return;
+      }
+
+      const items = prs.map((pr: any) => ({
+        label: `#${pr.id} ${pr.title}`,
+        description: `${pr.sourceBranch} → ${pr.targetBranch}`,
+        detail: `by ${pr.author} · ${new Date(pr.createdDate).toLocaleDateString()}`,
+        prId: pr.id,
+      }));
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: "Select a pull request to review",
+        matchOnDescription: true,
+        matchOnDetail: true,
+      });
+
+      if (!selected) {
+        this.postMessage({ type: "reviewCancelled" });
+        return;
+      }
+
+      await this._startAzurePRReviewById(selected.prId);
+    } catch (err: any) {
+      this.postMessage({ type: "reviewError", error: `Azure DevOps error: ${err.message}` });
+    }
+  }
+
+  private async _startAzurePRReviewById(prId: number): Promise<void> {
+    const azureConfig = await this._getAzureConfig();
+    if (!azureConfig || !this._crpClient) return;
+
+    this.postMessage({
+      type: "addBlock",
+      block: {
+        id: `azure-pr-${prId}-${Date.now()}`,
+        type: "text",
+        content: `🔷 Loading PR #${prId} from Azure DevOps...`,
+        agent: "Architecture" as const,
+        status: "complete" as const,
+      },
+    });
+
+    try {
+      const { pr, files, diff } = await this._crpClient.azureGetPR({ ...azureConfig, prId });
+
+      this.postMessage({
+        type: "addBlock",
+        block: {
+          id: `azure-pr-info-${prId}`,
+          type: "text",
+          content: [
+            `## 🔷 PR #${pr.id}: ${pr.title}`,
+            `**${pr.sourceBranch}** → **${pr.targetBranch}** · by ${pr.author}`,
+            `${files.length} files changed`,
+            pr.description ? `\n> ${pr.description.slice(0, 200)}` : "",
+          ].filter(Boolean).join("\n"),
+          agent: "Architecture" as const,
+          status: "complete" as const,
+        },
+      });
+
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspaceFolder) {
+        this.postMessage({ type: "reviewError", error: "No workspace folder open." });
+        return;
+      }
+
+      const fs = await import("fs");
+      const path = await import("path");
+      const crDir = path.join(workspaceFolder, ".chainreview");
+      fs.mkdirSync(crDir, { recursive: true });
+
+      // Write diff to temp file for the review engine
+      const tmpDiff = path.join(crDir, `azure-pr-${prId}.diff`);
+      fs.writeFileSync(tmpDiff, diff, "utf8");
+
+      // Store pending Azure PR context so we can post comments after review completes
+      this._pendingAzurePR = {
+        prId,
+        ...azureConfig,
+        tmpDiffPath: tmpDiff,
+      };
+
+      // Run diff review against the PR diff
+      this._startReview("diff", tmpDiff);
+    } catch (err: any) {
+      this.postMessage({ type: "reviewError", error: `Failed to load PR #${prId}: ${err.message}` });
+    }
+  }
+
+  // ── Auth ──
+
+  private _sendAuthState() {
+    const state = getAuthState();
+    const payload: AuthStatePayload = {
+      mode: state.mode,
+      user: state.user ? {
+        id: state.user.id,
+        email: state.user.email,
+        name: state.user.name,
+        avatarUrl: state.user.avatarUrl,
+        plan: (state.user as any).plan || "free",
+      } : null,
+      authenticated: state.authenticated,
+    };
+    this.postMessage({ type: "authStateChanged", auth: payload });
   }
 
   // ── Open File in Editor ──
@@ -316,7 +644,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
     this._reviewCancelled = true;
 
     if (this._crpClient) {
-      this._crpClient.cancelReview().catch(() => {});
+      this._crpClient.cancelReview().catch((err: any) => {
+        console.error("ChainReview: Failed to cancel review on server:", err.message);
+      });
     }
     this._emitBlock({
       kind: "sub_agent_event",
@@ -943,6 +1273,32 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 
       this.postMessage({ type: "reviewComplete", findings: result.findings, events: result.events });
 
+      // ── Azure PR: auto-post findings as PR comments ──
+      if (this._pendingAzurePR && this._crpClient) {
+        const pending = this._pendingAzurePR;
+        this._pendingAzurePR = null; // clear before async work to prevent double-posting
+
+        const config = vscode.workspace.getConfiguration("chainreview");
+        const autoPost = config.get<boolean>("azure.autoPostComments", true);
+        const postSummary = config.get<boolean>("azure.postSummaryComment", true);
+
+        if (autoPost && this._findings.length > 0) {
+          this._postAzurePRFindings(pending, this._findings, postSummary).catch((err) => {
+            console.warn("ChainReview: Azure PR comment posting failed:", err.message);
+          });
+        }
+
+        // Clean up temp diff file
+        try {
+          const fs = await import("fs");
+          if (fs.existsSync(pending.tmpDiffPath)) {
+            fs.unlinkSync(pending.tmpDiffPath);
+          }
+        } catch {
+          // Non-fatal
+        }
+      }
+
       // Persist review state after completion
       this._persistReviewState({
         findings: this._findings,
@@ -1166,15 +1522,14 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
   // 1. Create a streaming assistant message (chatResponseStart)
   // 2. As the MCP call runs, stderr events fire: chatThinking, chatText, chatToolCall, chatToolResult
   // 3. These events push blocks to the webview INCREMENTALLY via chatResponseBlock
-  // 4. When the MCP call completes, we flush stderr, inject fallback answer if needed,
-  //    then mark the message complete (chatResponseEnd)
+  // 4. When the MCP call completes, we wait for the "chatStreamComplete" sentinel from
+  //    stderr, inject fallback answer if needed, then mark the message complete (chatResponseEnd)
   //
-  // IMPORTANT: There is a race condition between stderr (streaming events) and
-  // stdout (MCP result). The MCP result may arrive before all stderr events have
-  // been flushed. We handle this by:
-  //   a) Waiting for stderr to flush after the MCP call completes
-  //   b) Using the MCP result's `answer` field as a fallback if no text blocks were streamed
-  //   c) Keeping _activeChatMessageId alive during the flush window
+  // SYNCHRONIZATION: The server emits a sentinel event (chatStreamComplete / validateStreamComplete)
+  // via stderr AFTER all streaming events but BEFORE returning the MCP result via stdout.
+  // We register a sentinel listener BEFORE the MCP call, then await it after the MCP result
+  // arrives. This guarantees all stderr events have been processed before we finalize the
+  // message. A safety timeout (5s) prevents hanging if the sentinel is lost.
 
   /** Count of text blocks emitted during current chat query (for fallback detection) */
   private _chatTextBlockCount = 0;
@@ -1205,15 +1560,15 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       // the server streams events via stderr → _handleStreamEvent → chatThinking/chatText/chatToolCall/chatToolResult
       // which push blocks to the webview INCREMENTALLY.
       //
-      // RACE CONDITION FIX: stderr events from the final LLM turn may still be
-      // in transit when the MCP result arrives via stdout. We flush stderr by
-      // waiting a few event-loop ticks before marking the message complete.
+      // The server emits a "chatStreamComplete" sentinel via stderr AFTER all
+      // streaming events but BEFORE the MCP stdout result. We start listening
+      // for the sentinel BEFORE the MCP call so we don't miss it.
+      const streamDone = this._crpClient.waitForStreamComplete("chatStreamComplete");
       const result = await this._crpClient.chatQuery(query, this._currentRunId, this._conversationHistory.slice(0, -1));
 
-      // ── Flush stderr: wait for any in-flight events to be processed ──
-      // Node.js processes I/O callbacks in phases. Multiple ticks allow
-      // buffered stderr chunks to be received and handled.
-      await new Promise(resolve => setTimeout(resolve, 150));
+      // Wait for the sentinel — guarantees all stderr events have been processed.
+      // Falls back to a 5s safety timeout if the sentinel is lost.
+      await streamDone;
 
       // ── Fallback: if no text blocks were streamed, inject the answer directly ──
       // This handles the case where stderr events were dropped or never arrived.
@@ -1453,11 +1808,13 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       await this._crpClient.recordEvent(this._currentRunId, "evidence_collected", "validator", { findingId, action: "manual_validation_request" });
 
       // The validateFinding MCP call blocks, but stderr events stream in real-time
-      // (validateThinking, validateText, validateToolCall, validateToolResult)
+      // (validateThinking, validateText, validateToolCall, validateToolResult).
+      // The server emits "validateStreamComplete" after all events, before the MCP result.
+      const streamDone = this._crpClient.waitForStreamComplete("validateStreamComplete");
       const result = await this._crpClient.validateFinding(JSON.stringify(finding));
 
-      // Flush stderr — wait for any in-flight streaming events to be processed
-      await new Promise(resolve => setTimeout(resolve, 150));
+      // Wait for the sentinel — guarantees all stderr events have been processed.
+      await streamDone;
 
       // Emit verdict summary
       const verdictLabel: Record<string, string> = {
@@ -1631,7 +1988,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       if (result.success) {
         vscode.window.showInformationMessage("ChainReview: Patch applied successfully");
         if (this._currentRunId) {
-          await this._crpClient.recordEvent(this._currentRunId, "human_accepted", undefined, { patchId }).catch(() => {});
+          await this._crpClient.recordEvent(this._currentRunId, "human_accepted", undefined, { patchId }).catch((err: any) => {
+            console.error("ChainReview: Failed to record patch acceptance event:", err.message);
+          });
 
           // Emit timeline event for patch applied
           this.postMessage({
@@ -1825,7 +2184,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       if (this._currentRunId && this._crpClient?.isConnected()) {
         await this._crpClient.recordEvent(this._currentRunId, "handoff_to_agent", undefined, {
           findingId, findingTitle: finding.title, targetAgent: "Clipboard",
-        }).catch(() => {});
+        }).catch((err: any) => {
+          console.error("ChainReview: Failed to record clipboard handoff event:", err.message);
+        });
 
         this.postMessage({
           type: "addEvent",
@@ -1945,7 +2306,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
         if (this._currentRunId && this._crpClient?.isConnected()) {
           await this._crpClient.recordEvent(this._currentRunId, "handoff_to_agent", undefined, {
             findingId, findingTitle: finding.title, targetAgent: cliAgent.label,
-          }).catch(() => {});
+          }).catch((err: any) => {
+            console.error("ChainReview: Failed to record agent handoff event:", err.message);
+          });
 
           this.postMessage({
             type: "addEvent",
@@ -2035,7 +2398,10 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
       const [findings, events, chatMessages] = await Promise.all([
         this._crpClient.getFindings(runId),
         this._crpClient.getEvents(runId),
-        this._crpClient.getChatMessages(runId).catch(() => [] as unknown[]),
+        this._crpClient.getChatMessages(runId).catch((err: any) => {
+          console.error("ChainReview: Failed to load chat messages for run:", err.message);
+          return [] as unknown[];
+        }),
       ]);
 
       if (!Array.isArray(findings) || !Array.isArray(events)) {
@@ -2454,6 +2820,9 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
             validationVerdicts: this._validationVerdicts,
           });
         }
+
+        // Always send current auth state on restore
+        this._sendAuthState();
       } catch (err: any) {
         console.error("ChainReview: Failed to restore persisted state:", err.message);
       }
@@ -2484,7 +2853,7 @@ export class ReviewCockpitProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource}; img-src ${webview.cspSource} https://cdn.simpleicons.org https://cursor.sh https://codeium.com data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:;">
   <link href="${styleUri}" rel="stylesheet">
   <title>ChainReview</title>
 </head>

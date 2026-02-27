@@ -177,7 +177,7 @@ export function HandoffMenu({ open, onSelect, triggerRef, align = "left" }: Hand
                   }}
                 >
                   {/* Agent icon */}
-                  <AgentIcon icon={agent.icon} iconColor={agent.iconColor} />
+                  <AgentIcon icon={agent.icon} />
 
                   {/* Label */}
                   <span style={{

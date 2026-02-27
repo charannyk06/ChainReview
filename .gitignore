@@ -3,6 +3,7 @@ dist/
 *.vsix
 .env
 .env.*
+!.env.example
 *.sqlite
 *.sqlite3
 chainreview-store.db
@@ -11,3 +12,17 @@ chainreview-store.db
 .claude/
 .chainreview/
 *.code-workspace
+
+# Cloudflare Workers
+.dev.vars
+.dev.vars.*
+.wrangler/
+chainreview-api/.wrangler/
+chainreview-api/.dev.vars
+
+# Next.js dashboard
+chainreview-dashboard/.next/
+chainreview-dashboard/out/
+
+# Supabase local
+.supabase/

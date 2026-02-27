@@ -13,7 +13,7 @@ import { MCPManagerPanel } from "./components/mcp/MCPManagerPanel";
 import { TaskHistory } from "./components/history/TaskHistory";
 import type { FindingActions } from "./components/chat/ChatMessage";
 import { MILESTONE_EVENTS } from "./lib/constants";
-import type { Patch, ExtensionMessage, MCPServerConfig } from "./lib/types";
+import type { Patch, ExtensionMessage, MCPServerConfig, AuthMode } from "./lib/types";
 
 export default function App() {
   const {
@@ -214,6 +214,26 @@ export default function App() {
     postMessage({ type: "cancelReview" });
   }, [postMessage]);
 
+  // ── Azure PR handler ──
+  const handleStartAzurePRReview = useCallback(() => {
+    postMessage({ type: "startAzurePRReview" });
+    setActiveTab("chat");
+  }, [postMessage]);
+
+  // ── Auth handlers ──
+  const handleLogin = useCallback(() => {
+    postMessage({ type: "login" });
+  }, [postMessage]);
+
+  const handleLogout = useCallback(() => {
+    postMessage({ type: "logout" });
+  }, [postMessage]);
+
+  const handleSwitchMode = useCallback(() => {
+    const nextMode: AuthMode = state.auth?.mode === "managed" ? "byok" : "managed";
+    postMessage({ type: "switchMode", mode: nextMode });
+  }, [postMessage, state.auth?.mode]);
+
   const handleDismissPatch = () => {
     if (activePatch) {
       postMessage({ type: "dismissPatch", patchId: activePatch.id });
@@ -275,6 +295,11 @@ export default function App() {
           onStartDiffReview={() => handleStartReview("diff")}
           onStartChat={handleStartChat}
           onOpenHistory={handleOpenHistory}
+          onStartAzurePRReview={handleStartAzurePRReview}
+          auth={state.auth}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          onSwitchMode={handleSwitchMode}
         />
       </OpenFileProvider>
     );

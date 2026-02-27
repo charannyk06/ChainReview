@@ -174,7 +174,7 @@ export async function codeCallGraph(args: {
     const classes = sf.getClasses();
     const methods = classes.flatMap((c) => c.getMethods());
     const allDecls = [...functions, ...methods];
-    const exportedCount = allDecls.filter((d) => d.isExported?.() || false).length +
+    const exportedCount = functions.filter((d) => d.isExported()).length +
       classes.filter((c) => c.isExported()).length;
 
     const symbolCounts = {

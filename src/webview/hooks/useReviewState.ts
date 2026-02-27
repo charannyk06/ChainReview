@@ -14,6 +14,7 @@ import type {
   ValidationResult,
   ReviewRunSummary,
   AgentName,
+  AuthStatePayload,
 } from "../lib/types";
 
 const initialState: ReviewState = {
@@ -28,6 +29,13 @@ const initialState: ReviewState = {
   validatingFindings: new Set(),
   dismissedFindingIds: new Set(),
   fixedFindingIds: new Set(),
+  // Default auth: managed mode, not authenticated yet
+  // The extension will send the real state via authStateChanged on load
+  auth: {
+    mode: "managed",
+    user: null,
+    authenticated: false,
+  },
 };
 
 type Action =
@@ -61,7 +69,8 @@ type Action =
   | { type: "RESTORE_REVIEW_STATE"; findings: Finding[]; events: AuditEvent[]; status: ReviewStatus; mode?: ReviewMode; validationVerdicts?: Record<string, ValidationResult> }
   | { type: "MARK_FALSE_POSITIVE"; findingId: string }
   | { type: "MARK_FIXED"; findingId: string }
-  | { type: "CLEAR_CHAT" };
+  | { type: "CLEAR_CHAT" }
+  | { type: "AUTH_STATE_CHANGED"; auth: AuthStatePayload };
 
 function reducer(state: ReviewState, action: Action): ReviewState {
   switch (action.type) {
@@ -379,7 +388,10 @@ function reducer(state: ReviewState, action: Action): ReviewState {
     }
 
     case "CLEAR_CHAT":
-      return { ...initialState, mcpServers: state.mcpServers, validatingFindings: new Set(), dismissedFindingIds: new Set(), fixedFindingIds: new Set() };
+      return { ...initialState, mcpServers: state.mcpServers, validatingFindings: new Set(), dismissedFindingIds: new Set(), fixedFindingIds: new Set(), auth: state.auth };
+
+    case "AUTH_STATE_CHANGED":
+      return { ...state, auth: action.auth };
 
     default:
       return state;
@@ -491,6 +503,11 @@ export function useReviewState() {
       // Persistence request — webview sends messages back to extension for storage
       case "requestPersistMessages":
         // handled in App.tsx via postMessage
+        break;
+
+      // Auth state
+      case "authStateChanged":
+        dispatch({ type: "AUTH_STATE_CHANGED", auth: msg.auth });
         break;
     }
   }, []);
