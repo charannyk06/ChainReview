@@ -24,13 +24,13 @@
   <img src="media/findings.gif" alt="ChainReview — Finding Detail with Fix Workflow" width="600" />
 </p>
 
-<p align="center"><em>Finding detail — evidence, code context, Generate Fix → Verify Fix pipeline</em></p>
+<p align="center"><em>Finding detail — evidence, code context, Generate Fix and Verify Fix pipeline</em></p>
 
 <p align="center">
   <img src="media/findings-list.gif" alt="ChainReview — Findings List" width="600" />
 </p>
 
-<p align="center"><em>Live findings list — Fixed ✓ / Still Present badges, severity, confidence scores</em></p>
+<p align="center"><em>Live findings list — Fixed / Still Present badges, severity, confidence scores</em></p>
 
 <p align="center">
   <img src="media/timeline.gif" alt="ChainReview — Audit Timeline" width="600" />
@@ -54,14 +54,14 @@ It runs **five specialized agents in parallel** inside VS Code — each groundin
 
 | | |
 |---|---|
-| 🤖 **5 specialized agents** | Architecture · Security · Bugs · Validator · Explainer |
-| 🔍 **Evidence-backed findings** | File path + line range + code snippet + confidence score |
-| 🩹 **Validated patches** | TypeScript compiler + clean-apply check before you see a fix |
-| 🔗 **Coding agent handoff** | Send findings to Claude Code, Cursor, Windsurf, Copilot, or Codex |
-| 📋 **Audit trail** | 8 event types recorded in local SQLite — fully replayable |
-| 💬 **@mention routing** | `@security`, `@bugs`, `@architecture` — run only what you need |
-| 🔄 **Diff mode** | Review only staged/unstaged changes — fast PR-style feedback |
-| 🔌 **MCP extensible** | Add external MCP servers from the UI |
+| **5 specialized agents** | Architecture · Security · Bugs · Validator · Explainer |
+| **Evidence-backed findings** | File path + line range + code snippet + confidence score |
+| **Validated patches** | TypeScript compiler + clean-apply check before you see a fix |
+| **Coding agent handoff** | Send findings to Claude Code, Cursor, Windsurf, Copilot, or Codex |
+| **Audit trail** | 8 event types recorded in local SQLite — fully replayable |
+| **@mention routing** | `@security`, `@bugs`, `@architecture` — run only what you need |
+| **Diff mode** | Review only staged/unstaged changes — fast PR-style feedback |
+| **MCP extensible** | Add external MCP servers from the UI |
 
 ---
 
@@ -102,14 +102,14 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 ```
 Finding card
-  ├── ✨ Explain        → Explainer agent deep-dive
-  ├── 🔧 Generate Fix   → LLM-generated unified diff patch
-  ├── ✅ Verify Fix     → Validator re-checks the proposed fix
-  ├── ⚙️ Handoff To     → Claude Code / Cursor / Windsurf / Copilot / Codex
-  └── ❌ False Positive → Dismiss and record
+  ├── Explain          → Explainer agent deep-dive
+  ├── Generate Fix     → LLM-generated unified diff patch
+  ├── Verify Fix       → Validator re-checks the proposed fix
+  ├── Handoff To       → Claude Code / Cursor / Windsurf / Copilot / Codex
+  └── False Positive   → Dismiss and record
 ```
 
-Patches go through **TypeScript syntax check (ts-morph)** and **clean-apply verification** before you see them. "Fixed ✓" and "Still Present" badges update after Verify.
+Patches go through **TypeScript syntax check (ts-morph)** and **clean-apply verification** before you see them. "Fixed" and "Still Present" badges update after Verify.
 
 ---
 
@@ -136,13 +136,18 @@ Browse the full timeline in the **Audit Trail** tab. No telemetry. No cloud sync
 
 ---
 
-## Privacy & Security
+## Privacy and Security
 
-- **Local-first** — all review data in `~/.chainreview/chainreview.db`. No telemetry.
-- **Semgrep runs locally** — no code sent to external scanning services.
-- **Secrets redaction** — strips API keys, tokens, and passwords from snippets before Claude sees them.
-- **No destructive actions** without explicit confirmation — patches require manual Apply.
-- **Path traversal protection** — patches can't write outside the repo boundary.
+ChainReview is designed with a local-first, defense-in-depth security model. No code or review data leaves your machine unless you explicitly initiate a request to the Claude API.
+
+- **Local-first storage** — all review data is stored in `~/.chainreview/chainreview.db` (SQLite). No telemetry, no cloud sync.
+- **Local static analysis** — Semgrep runs entirely on your machine. No code is sent to external scanning services.
+- **Secrets redaction** — API keys, tokens, and passwords are stripped from code snippets before they are sent to the Claude API.
+- **No destructive actions without confirmation** — patches require explicit manual Apply. No file is modified automatically.
+- **Path traversal protection** — the patch engine enforces repository boundary checks. Patches cannot write outside the root of the open repository.
+- **Allowlisted shell execution** — the `crp.exec.command` tool only runs commands from an explicit allowlist. Arbitrary shell execution is blocked.
+- **API key handling** — your Anthropic API key is stored using VS Code's built-in secret storage and is never written to disk in plaintext.
+- **Minimal network surface** — the only outbound connections are to `api.anthropic.com` (LLM calls) and, optionally, the Brave Search API if web search is enabled.
 
 ---
 
