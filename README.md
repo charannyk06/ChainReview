@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/charannyk06/ChainReview/stargazers"><img src="https://img.shields.io/github/stars/charannyk06/ChainReview?style=social&label=GitHub%20Stars&color=6366f1" alt="GitHub Stars" /></a>
+  <a href="https://github.com/charannyk06/ChainReview/stargazers"><img src="https://img.shields.io/github/stars/charannyk06/ChainReview?style=flat&color=6366f1&labelColor=0f0f0f" alt="GitHub Stars" /></a>
   <a href="https://marketplace.visualstudio.com/items?itemName=chainreview.chainreview"><img src="https://img.shields.io/badge/VS%20Code-Install-6366f1?style=flat&labelColor=0f0f0f&logo=visualstudiocode" alt="VS Code" /></a>
   <a href="https://github.com/charannyk06/ChainReview/blob/main/LICENSE"><img src="https://img.shields.io/github/license/charannyk06/ChainReview?style=flat&color=6366f1&labelColor=0f0f0f" alt="License" /></a>
   <a href="https://github.com/charannyk06/ChainReview/issues"><img src="https://img.shields.io/github/issues/charannyk06/ChainReview?style=flat&color=6366f1&labelColor=0f0f0f" alt="Issues" /></a>
