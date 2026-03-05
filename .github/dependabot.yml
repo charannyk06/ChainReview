@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      dev-dependencies:
+        dependency-type: "development"
+
+  - package-ecosystem: "npm"
+    directory: "/chainreview-api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+  - package-ecosystem: "npm"
+    directory: "/chainreview-dashboard"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
